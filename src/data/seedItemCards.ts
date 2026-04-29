@@ -8,8 +8,18 @@ import sourcesFixture from "../../seed/fixtures/02_sources.json";
 import type { ItemCardProps, RightsStatus } from "../components/items";
 import type { ItemStatus, ItemType } from "../components/atoms";
 
+export type ItemCardQuery = {
+  workspaceId: string;
+  itemIds?: string[];
+};
+
+export type ItemCardReader = {
+  listItemCards(query: ItemCardQuery): Promise<ItemCardProps[]>;
+};
+
 type FixtureItem = {
   id: string;
+  workspace_id: string;
   type: ItemType;
   status: ItemStatus;
   title: string | null;
@@ -48,15 +58,7 @@ type FixtureAnnotation = {
   review_status: string;
 };
 
-const items = itemsFixture as FixtureItem[];
-const sources = sourcesFixture as FixtureSource[];
-const captions = captionsFixture as FixtureCaption[];
-const notes = notesFixture as FixtureNote[];
-const links = linksFixture as FixtureLink[];
-const relationships = relationshipsFixture as FixtureRelationship[];
-const annotations = annotationsFixture as FixtureAnnotation[];
-
-const representativeItemIds = [
+const defaultProofItemIds = [
   "seed:img001",
   "seed:img004",
   "seed:img008",
@@ -67,35 +69,55 @@ const representativeItemIds = [
   "seed:camp001",
 ];
 
-export const seedProofItems: ItemCardProps[] = representativeItemIds.map((id) => {
-  const item = requireFixture(items.find((row) => row.id === id), `item ${id}`);
-  const source = sources.find((row) => row.id === item.source_id);
-  const caption = captions.find((row) => row.item_id === item.id);
-  const note = notes.find((row) => row.item_id === item.id);
-  const link = links.find((row) => row.item_id === item.id);
-  const ogMetadata = parseOgMetadata(link?.og_metadata ?? null);
+const items = itemsFixture as FixtureItem[];
+const sources = sourcesFixture as FixtureSource[];
+const captions = captionsFixture as FixtureCaption[];
+const notes = notesFixture as FixtureNote[];
+const links = linksFixture as FixtureLink[];
+const relationships = relationshipsFixture as FixtureRelationship[];
+const annotations = annotationsFixture as FixtureAnnotation[];
 
-  return {
-    id: item.id,
-    type: item.type,
-    status: item.status,
-    source: source?.kind ?? "manual",
-    usageCount: relationships.filter(
-      (relationship) => relationship.type === "used_in" && relationship.from_id === item.id,
-    ).length,
-    title: item.title,
-    captionText: caption?.body ?? null,
-    noteParagraph: note?.body ?? null,
-    url: link?.url ?? null,
-    ogImageUrl: ogMetadata.image,
-    ogTitle: ogMetadata.title,
-    hasPendingAIAnnotations: annotations.some(
-      (annotation) => annotation.item_id === item.id && annotation.review_status === "pending",
-    ),
-    rightsStatus: item.rights_status,
-    onNavigate: () => undefined,
-  };
-});
+export const seedFixtureItemCardReader: ItemCardReader = {
+  async listItemCards(query) {
+    return getSeedFixtureItemCards(query);
+  },
+};
+
+function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds }: ItemCardQuery) {
+  return itemIds.map((id) => {
+    const item = requireFixture(items.find((row) => row.id === id), `item ${id}`);
+    if (item.workspace_id !== workspaceId) {
+      throw new Error(`Seed fixture item ${id} is outside workspace ${workspaceId}`);
+    }
+
+    const source = sources.find((row) => row.id === item.source_id);
+    const caption = captions.find((row) => row.item_id === item.id);
+    const note = notes.find((row) => row.item_id === item.id);
+    const link = links.find((row) => row.item_id === item.id);
+    const ogMetadata = parseOgMetadata(link?.og_metadata ?? null);
+
+    return {
+      id: item.id,
+      type: item.type,
+      status: item.status,
+      source: source?.kind ?? "manual",
+      usageCount: relationships.filter(
+        (relationship) => relationship.type === "used_in" && relationship.from_id === item.id,
+      ).length,
+      title: item.title,
+      captionText: caption?.body ?? null,
+      noteParagraph: note?.body ?? null,
+      url: link?.url ?? null,
+      ogImageUrl: ogMetadata.image,
+      ogTitle: ogMetadata.title,
+      hasPendingAIAnnotations: annotations.some(
+        (annotation) => annotation.item_id === item.id && annotation.review_status === "pending",
+      ),
+      rightsStatus: item.rights_status,
+      onNavigate: () => undefined,
+    };
+  });
+}
 
 function requireFixture<T>(value: T | undefined, label: string) {
   if (!value) {

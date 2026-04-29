@@ -1,7 +1,35 @@
+import { useEffect, useState } from "react";
 import { MasonryGrid } from "./components/items";
-import { seedProofItems } from "./data/seedItemCards";
+import { seedFixtureItemCardReader, type ItemCardReader } from "./data/seedItemCards";
+import type { ItemCardProps } from "./components/items";
+
+const itemCardReader: ItemCardReader = seedFixtureItemCardReader;
 
 export function App() {
+  const [items, setItems] = useState<ItemCardProps[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    itemCardReader
+      .listItemCards({ workspaceId: "seed:ws001" })
+      .then((nextItems) => {
+        if (isCurrent) {
+          setItems(nextItems);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
   return (
     <main className="app-shell" aria-label="Vita archive">
       <section className="proof-panel" aria-labelledby="proof-title">
@@ -11,7 +39,13 @@ export function App() {
           The MasonryGrid slice is mounted with representative rows from seed fixtures and no
           route, persistence, or drag layer.
         </p>
-        <MasonryGrid items={seedProofItems} density="comfortable" ariaLabel="seeded proof items grid" />
+        <MasonryGrid
+          items={items}
+          density="comfortable"
+          loading={isLoading}
+          emptyState={<p className="proof-empty">No seeded proof items.</p>}
+          ariaLabel="seeded proof items grid"
+        />
       </section>
     </main>
   );
