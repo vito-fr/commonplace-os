@@ -94,7 +94,7 @@ A relationship row may carry:
 ## Rules
 
 1. A relationship's `type` must exist in the registry. Foreign-keyed.
-2. Symmetric types insert once. The CHECK constraint enforces `from_id < to_id`.
+2. Symmetric types insert once. The database trigger `trg_relationships_symmetric_ordering` enforces `from_id < to_id` for rows whose type is registered as symmetric.
 3. `from_id != to_id` always. Self-relationships are not modeled.
 4. AI-asserted relationships (`asserted_by` starts with `subagent:`) are only allowed when at least one endpoint has `status='inbox'`. For all other cases, AI proposes via `ai_annotations` with `field_name='relationship_suggestion'`.
 5. Removing a relationship logs a `relationship_removed` event on both endpoints.

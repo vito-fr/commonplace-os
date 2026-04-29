@@ -136,13 +136,16 @@ The complete pre-coding state. Twenty-eight files. Most already exist from prior
 
 ---
 
-## 4. What files should NOT exist yet
+## 4. Deferred files at filesystem-planning time
 
-These are deferred to specific later milestones. Creating them now is premature commitment to an implementation that may shift during planning.
+These were deferred to specific later milestones at the time this filesystem plan was written. The M0.1 migration has since been created and accepted; later files remain deferred until their milestones.
 
-**Defer to M0.1 (the first implementation milestone):**
+**M0.1 status:**
 
-- `pocketbase/pb_migrations/0001_initial_schema.js` (or whatever the migration file ends up named) — the first migration. This is a stop-and-ask before it is written. The schema is locked in `SCHEMA.md`; the migration is the SQL/JS rendering of that schema and gets line-by-line review.
+- `pocketbase/pb_migrations/0001_initial_schema.js` — complete and accepted under PocketBase v0.36.9.
+
+**Still deferred after M0.1 migration acceptance:**
+
 - `seed/load.ts` — the seed loader script.
 - `seed/fixtures/*.json` — the curated fixture files.
 
@@ -262,7 +265,7 @@ The query helpers are the choke points where `workspace_id` enforcement is verif
 Server-side feature logic lives in `pocketbase/pb_hooks/`:
 
 - `pocketbase/pb_hooks/import.pb.js` — URL fetch on item creation, OG metadata extraction, content-type classification
-- `pocketbase/pb_hooks/relationships.pb.js` — symmetric relationship CHECK enforcement (belt-and-braces with the schema constraint)
+- `pocketbase/pb_hooks/relationships.pb.js` — application-boundary relationship validation; symmetric canonical ordering is enforced by `trg_relationships_symmetric_ordering`
 - `pocketbase/pb_hooks/events.pb.js` — automatic event logging for status changes, etc., when not handled by the client
 
 The hooks enforce data invariants at the backend boundary. They do not duplicate UI logic.
@@ -434,7 +437,7 @@ Schema work is always a stop-and-ask. The reading happens before plan mode is en
 **Relationships (anything affecting `relationships` or relationship semantics):**
 1. `docs/decisions/0004-relationship-model.md`
 2. `docs/relationships.md` (the type registry)
-3. `SCHEMA.md` (relationships table, CHECK constraints)
+3. `SCHEMA.md` (relationships table, trigger, CHECK constraints)
 4. `UI_ARCHITECTURE.md` §9 (relationship list rendering)
 
 **Campaigns (anything affecting `campaign_profiles`, campaign UI, or campaign attachment):**
@@ -568,9 +571,9 @@ The output should match the file inventory in section 1 of this document, with e
 
 ---
 
-## Next prompt
+## Historical next prompt
 
-When the filesystem is in place and the initial commit is made, the next prompt for M0.1 planning is:
+This was the next prompt at filesystem-planning time. It produced `docs/runbooks/m0.1-plan.md`; the migration has since been written and accepted.
 
 > M0.1 begins. Stop-and-ask before any code or SQL is written.
 >

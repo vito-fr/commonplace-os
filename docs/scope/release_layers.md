@@ -72,7 +72,7 @@ There is no automatic post-import enrichment in v0.1. There is no nightly catchu
 
 ### Search level
 
-FTS5 full-text search over canonical title, description, summary, and tag names. Structured filters by type, status, tag (approved only), source, collection, campaign, date captured.
+FTS5 full-text search over canonical title, description, and summary. Structured filters by type, status, tag (approved only), source, collection, campaign, date captured.
 
 No semantic search. No visual similarity. No "more like this" affordance. No smart filters (those depend on event coverage that is partially built in v0.1).
 
@@ -187,7 +187,7 @@ Banned phrase filter, length caps, tag vocabulary lock all enforced. Auto-approv
 
 ### Search level
 
-Same as v0.1 — full-text via FTS5, structured filters, smart filters now functional thanks to complete event coverage. Vector storage scaffolding (`embeddings` table, sqlite-vec extension loaded) is in place but no semantic queries yet.
+Same as v0.1 — full-text via FTS5, structured filters, smart filters now functional thanks to complete event coverage. Vector storage scaffolding (`embeddings` table with `vector BLOB` placeholder storage) is in place but no semantic queries yet.
 
 ### Graph level
 
@@ -260,7 +260,7 @@ v1.5 is when the archive starts to feel intelligent rather than merely organized
 
 Same as v1, plus:
 
-- Vector index populated in sqlite-vec for semantic search
+- Native vector index/query layer populated for semantic search
 - Embeddings produced for canonical text on item create/update via Ollama (`nomic-embed-text`)
 - Visual embeddings or perceptual-hash-based similarity index for image items
 - OCR pipeline as a polished enrichment workflow (Tesseract or equivalent, integrated through the `ai-enrichment` subagent)
@@ -453,8 +453,8 @@ v0.1 puts the Owner in the system within a few weeks of starting. They capture t
 
 The original `docs/scope/v1.md` is a great document and the wrong starting point. Build v0.1 first. Use the system for at least four weeks with real content. Then start v1 — and at that point, the production hardening is hardening something that's already proven, not building speculatively against a spec.
 
-The next prompt to issue, when ready:
+Historical next prompt issued for M0.1 planning:
 
-> v0.1 begins. Stop-and-ask before any code is written. Produce the M0.1 plan: the local-only foundation. Confirm the local development setup, the first migration `migrations/0001_initial.sql`, the seed-data loader, and the initial component build order. Do not provision infrastructure. Do not write SQL yet. Do not commit yet. Produce a written plan only.
+> v0.1 begins. Stop-and-ask before any code is written. Produce the M0.1 plan: the local-only foundation. Confirm the local development setup, the first PocketBase JS migration `pocketbase/pb_migrations/0001_initial_schema.js`, the seed-data loader, and the initial component build order. Do not provision infrastructure. Do not write SQL yet. Do not commit yet. Produce a written plan only.
 
-This sequences the work so the Owner is using the system within the shortest reasonable time, then hardens what already works.
+This sequenced the work so the Owner could use the system within the shortest reasonable time, then harden what already works. The M0.1 migration has since been written and accepted under PocketBase v0.36.9.

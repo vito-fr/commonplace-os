@@ -23,9 +23,9 @@ pocketbase/
 
 ## Local setup (M0.1)
 
-PocketBase version, install steps, admin user creation, and the first migration are all defined in the M0.1 implementation plan. The plan is reviewed line-by-line before any code or migration is committed.
+PocketBase version, install steps, admin user creation, and the first migration verification are defined in the M0.1 implementation plan.
 
-When the plan is approved, the steps to follow live in `docs/runbooks/m0.1-plan.md`.
+The current setup and verification steps live in `docs/runbooks/m0.1-plan.md`.
 
 ---
 
@@ -35,7 +35,7 @@ Every schema change is a numbered JS migration in `pb_migrations/`. Migration fi
 
 Migrations are stop-and-ask in `CLAUDE.md`. Adding, removing, modifying any migration triggers plan mode. The migration text is reviewed line-by-line before commit.
 
-The first migration `0001_initial_schema.js` (final filename TBD during M0.1) creates every table from `SCHEMA.md` plus indexes, CHECK constraints, and FK constraints. After it runs, `SCHEMA.md` is verified to match.
+The first migration `0001_initial_schema.js` creates every table from `SCHEMA.md` plus indexes, triggers, CHECK constraints, and FK constraints. It has been accepted as-is under PocketBase v0.36.9, and `SCHEMA.md` is the matching human-readable mirror.
 
 ---
 
@@ -46,7 +46,7 @@ Server-side logic that enforces invariants at the backend boundary lives in `pb_
 Examples of v0.1 hooks (final list defined during M1.1+):
 
 - `import.pb.js` — URL fetch on item creation, OG metadata extraction, content-type classification
-- `relationships.pb.js` — symmetric relationship CHECK enforcement (belt-and-braces with the schema constraint)
+- `relationships.pb.js` — application-boundary relationship validation; symmetric canonical ordering is enforced by the database trigger `trg_relationships_symmetric_ordering`
 - `events.pb.js` — automatic event logging for status transitions when not handled by the client
 
 Hooks do NOT duplicate UI logic. They enforce data invariants. If a rule should fire regardless of which client is making the request, it lives in a hook. If a rule is about user experience, it lives in the frontend.
