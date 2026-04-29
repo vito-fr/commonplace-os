@@ -1,0 +1,23 @@
+[
+  {
+    "item_id": "seed:link001",
+    "url": "seed://redacted/link001",
+    "og_metadata": null,
+    "content_type": "unknown",
+    "fetched_at": null
+  },
+  {
+    "item_id": "seed:link002",
+    "url": "seed://redacted/link002",
+    "og_metadata": null,
+    "content_type": "unknown",
+    "fetched_at": null
+  },
+  {
+    "item_id": "seed:link003",
+    "url": "seed://redacted/link003",
+    "og_metadata": null,
+    "content_type": "unknown",
+    "fetched_at": null
+  }
+]

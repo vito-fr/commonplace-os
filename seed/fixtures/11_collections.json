@@ -1,0 +1,16 @@
+[
+  {
+    "id": "seed:col001",
+    "workspace_id": "seed:ws001",
+    "name": "Visual Direction Q2",
+    "description": null,
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:col002",
+    "workspace_id": "seed:ws001",
+    "name": "Reference Archive",
+    "description": null,
+    "created_at": "2026-04-29T00:00:00Z"
+  }
+]

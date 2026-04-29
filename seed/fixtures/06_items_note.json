@@ -1,0 +1,22 @@
+[
+  {
+    "item_id": "seed:note001",
+    "body": "[REDACTED: required note body seed:note001]",
+    "format": "plain"
+  },
+  {
+    "item_id": "seed:note002",
+    "body": "[REDACTED: required note body seed:note002]",
+    "format": "plain"
+  },
+  {
+    "item_id": "seed:note003",
+    "body": "[REDACTED: required note body seed:note003]",
+    "format": "plain"
+  },
+  {
+    "item_id": "seed:canary",
+    "body": "[REDACTED: required canary note body]",
+    "format": "plain"
+  }
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "seed:tag001",
+    "workspace_id": "seed:ws001",
+    "name": "identity",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag002",
+    "workspace_id": "seed:ws001",
+    "name": "typography",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag003",
+    "workspace_id": "seed:ws001",
+    "name": "colour-palette",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag004",
+    "workspace_id": "seed:ws001",
+    "name": "campaign-spring",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag005",
+    "workspace_id": "seed:ws001",
+    "name": "reference-imagery",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag006",
+    "workspace_id": "seed:ws001",
+    "name": "layout",
+    "status": "pending",
+    "created_by": "subagent:enrichment",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag007",
+    "workspace_id": "seed:ws001",
+    "name": "social-media",
+    "status": "approved",
+    "created_by": "human",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:tag008",
+    "workspace_id": "seed:ws001",
+    "name": "archive-2025",
+    "status": "rejected",
+    "created_by": "subagent:enrichment",
+    "created_at": "2026-04-29T00:00:00Z"
+  }
+]

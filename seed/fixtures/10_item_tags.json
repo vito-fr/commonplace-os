@@ -1,0 +1,62 @@
+[
+  {
+    "item_id": "seed:img004",
+    "tag_id": "seed:tag001",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:cap001",
+    "tag_id": "seed:tag002",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:img005",
+    "tag_id": "seed:tag003",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:camp001",
+    "tag_id": "seed:tag004",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:img003",
+    "tag_id": "seed:tag005",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:link001",
+    "tag_id": "seed:tag005",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:img001",
+    "tag_id": "seed:tag006",
+    "applied_by": "subagent:enrichment",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:cap001",
+    "tag_id": "seed:tag007",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:cap002",
+    "tag_id": "seed:tag007",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "item_id": "seed:note003",
+    "tag_id": "seed:tag008",
+    "applied_by": "human",
+    "applied_at": "2026-04-29T00:00:00Z"
+  }
+]

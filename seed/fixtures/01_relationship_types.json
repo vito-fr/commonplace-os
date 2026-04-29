@@ -1,0 +1,42 @@
+[
+  {
+    "type": "inspired_by",
+    "is_symmetric": 0,
+    "description": "X drew from Y as a source of inspiration."
+  },
+  {
+    "type": "references",
+    "is_symmetric": 0,
+    "description": "X cites or points to Y as evidence, source, or example."
+  },
+  {
+    "type": "derived_from",
+    "is_symmetric": 0,
+    "description": "X is a derivative or transformation of Y."
+  },
+  {
+    "type": "annotates",
+    "is_symmetric": 0,
+    "description": "X is metadata, commentary, or caption for Y."
+  },
+  {
+    "type": "used_in",
+    "is_symmetric": 0,
+    "description": "X was deployed in container Y."
+  },
+  {
+    "type": "retired_by",
+    "is_symmetric": 0,
+    "description": "X was retired and Y is its replacement."
+  },
+  {
+    "type": "contradicts",
+    "is_symmetric": 1,
+    "description": "X and Y are mutually exclusive, conflicting, or compete for the same role."
+  },
+  {
+    "type": "visually_similar_to",
+    "is_symmetric": 1,
+    "description": "X and Y share visual DNA."
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "seed:src001",
+    "workspace_id": "seed:ws001",
+    "kind": "pinterest",
+    "identifier": "seed:board001",
+    "label": "Inspiration Board",
+    "default_privacy_level": "personal",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:src002",
+    "workspace_id": "seed:ws001",
+    "kind": "arena",
+    "identifier": "seed:channel001",
+    "label": "Visual References",
+    "default_privacy_level": "personal",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:src003",
+    "workspace_id": "seed:ws001",
+    "kind": "url",
+    "identifier": "seed:domain001",
+    "label": "URL captures",
+    "default_privacy_level": "private",
+    "created_at": "2026-04-29T00:00:00Z"
+  },
+  {
+    "id": "seed:src004",
+    "workspace_id": "seed:ws001",
+    "kind": "manual",
+    "identifier": "manual",
+    "label": "Manual entries",
+    "default_privacy_level": "private",
+    "created_at": "2026-04-29T00:00:00Z"
+  }
+]

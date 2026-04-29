@@ -1,0 +1,20 @@
+[
+  {
+    "item_id": "seed:camp001",
+    "phase": "live",
+    "channel": null,
+    "start_at": null,
+    "end_at": null,
+    "brief": null,
+    "kpi_summary": null
+  },
+  {
+    "item_id": "seed:camp002",
+    "phase": "post_mortem",
+    "channel": null,
+    "start_at": null,
+    "end_at": null,
+    "brief": null,
+    "kpi_summary": null
+  }
+]

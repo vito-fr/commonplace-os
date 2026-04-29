@@ -1,0 +1,32 @@
+[
+  {
+    "collection_id": "seed:col001",
+    "item_id": "seed:img004",
+    "added_at": "2026-04-29T00:00:00Z",
+    "added_by": "system"
+  },
+  {
+    "collection_id": "seed:col001",
+    "item_id": "seed:img005",
+    "added_at": "2026-04-29T00:00:00Z",
+    "added_by": "system"
+  },
+  {
+    "collection_id": "seed:col001",
+    "item_id": "seed:cap001",
+    "added_at": "2026-04-29T00:00:00Z",
+    "added_by": "system"
+  },
+  {
+    "collection_id": "seed:col002",
+    "item_id": "seed:note001",
+    "added_at": "2026-04-29T00:00:00Z",
+    "added_by": "system"
+  },
+  {
+    "collection_id": "seed:col002",
+    "item_id": "seed:link001",
+    "added_at": "2026-04-29T00:00:00Z",
+    "added_by": "system"
+  }
+]
