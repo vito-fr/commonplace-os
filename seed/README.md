@@ -6,9 +6,9 @@ The loader is `seed/load.js`. It writes the fixtures into the PocketBase SQLite 
 
 ## Requirements
 
-- Node.js 24 or newer, for the built-in `node:sqlite` module.
-- PocketBase migrations already run.
-- PocketBase stopped while the loader writes to `pocketbase/pb_data/data.db`.
+- Node.js 24 or newer. The loader uses the built-in `node:sqlite` module, which is still experimental in the current Node runtime. The experimental warning is expected for this v0.1 local workflow.
+- PocketBase migrations already run, with `0001_initial_schema.js` recorded in `_migrations`.
+- PocketBase stopped while the loader writes to `pocketbase/pb_data/data.db`; the loader opens SQLite directly.
 
 ## Workflow
 
@@ -22,11 +22,21 @@ From the repo root:
 node seed/load.js
 ```
 
+Expected output is one line per fixture file plus a final total, for example:
+
+```text
+loaded: 00_workspaces.json -> workspaces (1)
+...
+loaded: 167 total rows
+```
+
 To validate without writing rows:
 
 ```sh
 node seed/load.js --dry-run
 ```
+
+`--dry-run` still opens the target database, checks that the migration has been applied, validates table columns, and validates fixture references. Expected output uses `validated:` instead of `loaded:`.
 
 To load a specific database, for example a temporary verification copy:
 
@@ -43,4 +53,4 @@ node seed/load.js --db /tmp/vita-pocketbase/pb_data/data.db
 - Upserts fixture rows by primary key in filename order.
 - Wraps writes in one transaction.
 
-The loader does not delete rows. If a fixture row changes, rerunning the loader updates that row. If a fixture row is removed from the JSON, any previously loaded row remains until a reset workflow is explicitly added.
+Reruns are idempotent for rows that still exist in `seed/fixtures`: if a fixture row changes, rerunning the loader updates that row by its conflict key. The loader does not delete rows. If a fixture row is removed from the JSON, any previously loaded row remains until a reset workflow is explicitly added.

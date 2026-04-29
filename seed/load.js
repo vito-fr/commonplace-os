@@ -3,9 +3,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const process = require("node:process");
-const { DatabaseSync } = require("node:sqlite");
 
 const repoRoot = path.resolve(__dirname, "..");
+const minNodeMajor = 24;
 
 const fixturePlan = [
   { file: "00_workspaces.json", table: "workspaces", conflict: ["id"] },
@@ -31,12 +31,15 @@ const fixturePlan = [
 function usage() {
   console.log(`Usage: node seed/load.js [options]
 
+Runtime:
+  Requires Node.js ${minNodeMajor}+; uses experimental node:sqlite.
+
 Options:
   --db <path>        PocketBase data.db path
                      default: pocketbase/pb_data/data.db
   --fixtures <path>  Fixture directory
                      default: seed/fixtures
-  --dry-run          Validate fixtures and target database without writing rows
+  --dry-run          Validate fixtures and migrated target database without writing rows
   --help             Show this help
 `);
 }
@@ -83,6 +86,23 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function assertNodeRuntime() {
+  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
+  if (!Number.isInteger(nodeMajor) || nodeMajor < minNodeMajor) {
+    throw new Error(
+      `Node.js ${minNodeMajor} or newer is required because seed/load.js uses experimental node:sqlite; current Node.js is ${process.version}`,
+    );
+  }
+}
+
+function loadDatabaseSync() {
+  try {
+    return require("node:sqlite").DatabaseSync;
+  } catch (error) {
+    throw new Error(`unable to load experimental node:sqlite from ${process.version}: ${error.message}`);
+  }
 }
 
 function readFixtures(fixturesDir) {
@@ -309,6 +329,8 @@ function upsertFixture(db, fixture) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  assertNodeRuntime();
+  const DatabaseSync = loadDatabaseSync();
   const fixtures = readFixtures(options.fixturesDir);
   validateFixtureIntegrity(fixtures);
 
@@ -358,6 +380,14 @@ function report(fixtures, action) {
 try {
   main();
 } catch (error) {
-  console.error(`seed load failed: ${error.message}`);
+  console.error(`seed load failed: ${formatError(error)}`);
   process.exit(1);
+}
+
+function formatError(error) {
+  if (/database is locked|SQLITE_BUSY/i.test(error.message)) {
+    return `${error.message}\nStop PocketBase before running the loader against pocketbase/pb_data/data.db.`;
+  }
+
+  return error.message;
 }
