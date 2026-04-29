@@ -5,17 +5,9 @@ import linksFixture from "../../seed/fixtures/07_items_link.json";
 import notesFixture from "../../seed/fixtures/06_items_note.json";
 import relationshipsFixture from "../../seed/fixtures/13_relationships.json";
 import sourcesFixture from "../../seed/fixtures/02_sources.json";
-import type { ItemCardProps, RightsStatus } from "../components/items";
+import type { RightsStatus } from "../components/items";
 import type { ItemStatus, ItemType } from "../components/atoms";
-
-export type ItemCardQuery = {
-  workspaceId: string;
-  itemIds?: string[];
-};
-
-export type ItemCardReader = {
-  listItemCards(query: ItemCardQuery): Promise<ItemCardProps[]>;
-};
+import type { ItemCardQuery, ItemCardReader } from "./itemCardReader";
 
 type FixtureItem = {
   id: string;

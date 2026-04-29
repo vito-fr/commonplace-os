@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
 import { MasonryGrid } from "./components/items";
-import { seedFixtureItemCardReader, type ItemCardReader } from "./data/seedItemCards";
 import type { ItemCardProps } from "./components/items";
+import type { ItemCardReader } from "./data/itemCardReader";
+import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
+import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
-const itemCardReader: ItemCardReader = seedFixtureItemCardReader;
+const itemCardReader: ItemCardReader =
+  import.meta.env.VITE_ITEM_CARD_READER === "pocketbase"
+    ? createPocketBaseItemCardReader({
+        baseUrl: import.meta.env.VITE_POCKETBASE_URL ?? "http://127.0.0.1:8090",
+      })
+    : seedFixtureItemCardReader;
 
 export function App() {
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [readError, setReadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -17,6 +25,14 @@ export function App() {
       .then((nextItems) => {
         if (isCurrent) {
           setItems(nextItems);
+          setReadError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          console.error(error);
+          setItems([]);
+          setReadError("Unable to load item cards.");
         }
       })
       .finally(() => {
@@ -43,7 +59,7 @@ export function App() {
           items={items}
           density="comfortable"
           loading={isLoading}
-          emptyState={<p className="proof-empty">No seeded proof items.</p>}
+          emptyState={<p className="proof-empty">{readError ?? "No seeded proof items."}</p>}
           ariaLabel="seeded proof items grid"
         />
       </section>
