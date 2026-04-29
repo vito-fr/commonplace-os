@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-const fs = require("node:fs");
-const path = require("node:path");
-const process = require("node:process");
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const minNodeMajor = 24;
 
@@ -97,9 +99,10 @@ function assertNodeRuntime() {
   }
 }
 
-function loadDatabaseSync() {
+async function loadDatabaseSync() {
   try {
-    return require("node:sqlite").DatabaseSync;
+    const sqlite = await import("node:sqlite");
+    return sqlite.DatabaseSync;
   } catch (error) {
     throw new Error(`unable to load experimental node:sqlite from ${process.version}: ${error.message}`);
   }
@@ -327,10 +330,10 @@ function upsertFixture(db, fixture) {
   return fixture.rows.length;
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
   assertNodeRuntime();
-  const DatabaseSync = loadDatabaseSync();
+  const DatabaseSync = await loadDatabaseSync();
   const fixtures = readFixtures(options.fixturesDir);
   validateFixtureIntegrity(fixtures);
 
@@ -377,12 +380,10 @@ function report(fixtures, action) {
   console.log(`${action}: ${total} total rows`);
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   console.error(`seed load failed: ${formatError(error)}`);
   process.exit(1);
-}
+});
 
 function formatError(error) {
   if (/database is locked|SQLITE_BUSY/i.test(error.message)) {
