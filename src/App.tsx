@@ -135,7 +135,7 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setItems([]);
-          setReadError("Unable to load item cards.");
+          setReadError("Unable to load archive items.");
         }
       })
       .finally(() => {
@@ -177,7 +177,7 @@ export function App() {
       setDetail(null);
       setCampaignOptions([]);
       setCollectionOptions([]);
-      setDetailError("Item detail proof requires PocketBase reader mode.");
+      setDetailError("Item detail requires live archive mode.");
       setIsDetailLoading(false);
       setCampaignWriteError(null);
       setIsCampaignAttaching(false);
@@ -555,7 +555,7 @@ export function App() {
         onNavigate: openItemDetail,
       }))
     : items;
-  const archiveModeLabel = isPocketBaseMode ? "live pocketbase" : "seed fixtures";
+  const archiveModeLabel = isPocketBaseMode ? "live archive" : "seed fixtures";
 
   return (
     <main className="app-shell" aria-label="Vita archive">
@@ -587,6 +587,12 @@ export function App() {
           onTypeChange={updateTypeFilter}
         />
         {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
+        <ArchiveResultHeader
+          filters={itemCardFilters}
+          itemCount={items.length}
+          loading={isLoading}
+          readError={readError}
+        />
         <MasonryGrid
           items={renderedItems}
           density="comfortable"
@@ -598,10 +604,39 @@ export function App() {
               onClearFilters={clearArchiveFilters}
             />
           }
-          ariaLabel="filtered archive items grid"
+          ariaLabel="archive items"
         />
       </section>
     </main>
+  );
+}
+
+function ArchiveResultHeader({
+  filters,
+  itemCount,
+  loading,
+  readError,
+}: {
+  filters: ItemCardFilters;
+  itemCount: number;
+  loading: boolean;
+  readError: string | null;
+}) {
+  const hasFilters = hasActiveFilters(filters);
+  const resultLabel = readError
+    ? "current view unavailable"
+    : loading
+      ? "loading current view"
+      : `${formatResultCount(itemCount)} in current view`;
+
+  return (
+    <div className="archive-result-header" aria-label="archive result context">
+      <div>
+        <h2>Items</h2>
+        <p>{resultLabel}</p>
+      </div>
+      <span>{hasFilters ? "filtered view" : "full view"}</span>
+    </div>
   );
 }
 
@@ -620,15 +655,15 @@ function ArchiveUsageSummary({
 }) {
   const filterSummary = formatFilterSummary(filters);
   const resultLabel = readError
-    ? "read error"
+    ? "load error"
     : loading
-      ? "loading rows"
+      ? "loading items"
       : formatResultCount(itemCount);
 
   return (
     <dl className="archive-overview" aria-label="archive overview">
       <div className="archive-overview__item">
-        <dt>mode</dt>
+        <dt>data source</dt>
         <dd>{modeLabel}</dd>
       </div>
       <div className="archive-overview__item">
@@ -636,8 +671,8 @@ function ArchiveUsageSummary({
         <dd>{resultLabel}</dd>
       </div>
       <div className="archive-overview__item">
-        <dt>scope</dt>
-        <dd>{filterSummary || "all archive rows"}</dd>
+        <dt>view</dt>
+        <dd>{filterSummary || "all archive items"}</dd>
       </div>
     </dl>
   );
@@ -650,7 +685,7 @@ function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
     <div className="archive-state archive-state--loading" role="status" aria-live="polite">
       <span className="archive-state__kicker">loading</span>
       <p className="archive-state__copy">
-        {filterSummary ? `Loading archive rows for ${filterSummary}.` : "Loading archive rows."}
+        {filterSummary ? `Loading archive items for ${filterSummary}.` : "Loading archive items."}
       </p>
     </div>
   );
@@ -671,8 +706,8 @@ function ArchiveEmptyState({
   if (readError) {
     return (
       <div className="archive-state archive-state--error" role="alert">
-        <span className="archive-state__kicker">read error</span>
-        <h2 className="archive-state__title">Archive read failed.</h2>
+        <span className="archive-state__kicker">load error</span>
+        <h2 className="archive-state__title">Archive could not be loaded.</h2>
         <p className="archive-state__copy">{readError}</p>
       </div>
     );
@@ -694,8 +729,8 @@ function ArchiveEmptyState({
   return (
     <div className="archive-state">
       <span className="archive-state__kicker">empty archive</span>
-      <h2 className="archive-state__title">No item-card rows returned.</h2>
-      <p className="archive-state__copy">This workspace has no archive rows available to render.</p>
+      <h2 className="archive-state__title">Archive is empty.</h2>
+      <p className="archive-state__copy">This workspace has no archive items available.</p>
     </div>
   );
 }
@@ -751,7 +786,7 @@ function ArchiveFilterControls({
           }`}
         >
           <span className="archive-filter-field__label">
-            <span>query</span>
+            <span>search text</span>
             {filters.text?.trim() ? (
               <span className="archive-filter-field__state">active</span>
             ) : null}
@@ -977,11 +1012,11 @@ function getFilterSummaryParts(filters: ItemCardFilters) {
   const parts: string[] = [];
 
   if (filters.status) {
-    parts.push(`status: ${filters.status}`);
+    parts.push(`lifecycle: ${filters.status}`);
   }
 
   if (filters.type) {
-    parts.push(`type: ${filters.type}`);
+    parts.push(`item type: ${filters.type}`);
   }
 
   if (filters.source) {
@@ -989,7 +1024,7 @@ function getFilterSummaryParts(filters: ItemCardFilters) {
   }
 
   if (filters.text?.trim()) {
-    parts.push(`text: "${filters.text.trim()}"`);
+    parts.push(`search: "${filters.text.trim()}"`);
   }
 
   return parts;

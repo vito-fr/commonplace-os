@@ -99,10 +99,8 @@ export function ItemDetailView({
   if (loading) {
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
-        <button className="text-button" type="button" onClick={onBack}>
-          Back to archive proof
-        </button>
-        <div className="item-detail__loading">Loading item detail.</div>
+        <DetailTopBar onBack={onBack} />
+        <div className="item-detail__loading">Loading item.</div>
       </section>
     );
   }
@@ -110,32 +108,28 @@ export function ItemDetailView({
   if (error || !item) {
     return (
       <section className="item-detail">
-        <button className="text-button" type="button" onClick={onBack}>
-          Back to archive proof
-        </button>
-        <p className="proof-empty">{error ?? "Item detail is unavailable."}</p>
+        <DetailTopBar onBack={onBack} />
+        <p className="proof-empty">{error ?? "Item could not be loaded."}</p>
       </section>
     );
   }
 
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
-      <button className="text-button" type="button" onClick={onBack}>
-        Back to archive proof
-      </button>
+      <DetailTopBar onBack={onBack} />
 
       <div className="item-detail__layout">
         <div className="item-detail__main">
-          <section className="item-detail__hero" aria-label="item hero">
+          <section className="item-detail__hero" aria-label="item preview">
             {renderHero(item)}
           </section>
 
           <Section title="Description">
-            <ReadableBlock value={item.description} fallback="No canonical description recorded." />
+            <ReadableBlock value={item.description} fallback="No description yet." />
           </Section>
 
           <Section title="Summary">
-            <ReadableBlock value={item.summary} fallback="No canonical summary recorded." />
+            <ReadableBlock value={item.summary} fallback="No summary yet." />
           </Section>
 
           <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
@@ -149,12 +143,12 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No tags recorded." />
+              <DetailEmptyState label="No tags yet." />
             )}
           </Section>
 
           <Section title="Relationships" meta={formatCount(item.relationships.length, "relationship", "relationships")}>
-            <DetailActionGroup title="relationship action" meta="directed reference">
+            <DetailActionGroup title="Add relationship" meta="reference another item">
               <RelationshipCreateForm
                 currentItemId={item.id}
                 error={relationshipActionError}
@@ -174,12 +168,12 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No relationships recorded." />
+              <DetailEmptyState label="No relationships yet." />
             )}
           </Section>
 
           <Section title="Collections" meta={formatCount(item.collections.length, "membership", "memberships")}>
-            <DetailActionGroup title="collection action" meta="membership">
+            <DetailActionGroup title="Add to collection" meta="organize this item">
               <CollectionAttachForm
                 error={collectionActionError}
                 onAttachCollection={onAttachCollection}
@@ -196,12 +190,12 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No collection memberships." />
+              <DetailEmptyState label="Not in any collections yet." />
             )}
           </Section>
 
           <Section title="Campaign attachments" meta={formatCount(item.campaignAttachments.length, "attachment", "attachments")}>
-            <DetailActionGroup title="campaign action" meta="campaign usage">
+            <DetailActionGroup title="Attach to campaign" meta="campaign memory">
               <CampaignAttachForm
                 error={campaignActionError}
                 onAttachCampaign={onAttachCampaign}
@@ -214,14 +208,14 @@ export function ItemDetailView({
               <div className="detail-list">
                 {item.campaignAttachments.map((attachment) => (
                   <div className="detail-list__row" key={attachment.id}>
-                    <span className="detail-list__label">{attachment.role ?? "used_in"}</span>
+                    <span className="detail-list__label">{attachment.role ?? "attached"}</span>
                     <span>{attachment.campaignTitle ?? attachment.campaignId}</span>
                     {attachment.phase ? <span className="detail-muted">{attachment.phase}</span> : null}
                   </div>
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No campaign attachments." />
+              <DetailEmptyState label="Not attached to any campaigns yet." />
             )}
           </Section>
 
@@ -239,7 +233,7 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No AI annotations recorded." />
+              <DetailEmptyState label="No AI annotations yet." />
             )}
           </Section>
 
@@ -255,13 +249,13 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No events recorded." />
+              <DetailEmptyState label="No event history yet." />
             )}
           </Section>
         </div>
 
-        <aside className="item-detail__metadata" aria-label="item metadata">
-          <p className="proof-kicker">item detail</p>
+        <aside className="item-detail__metadata" aria-label="item facts">
+          <p className="proof-kicker">item</p>
           <h1 id="item-detail-title">{item.title ?? `${item.type} item`}</h1>
           <div className="item-detail__signal-row">
             <TypeIndicator type={item.type} />
@@ -270,9 +264,10 @@ export function ItemDetailView({
             <span aria-hidden="true">·</span>
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
+          <DetailSectionMap item={item} />
           {hasLifecycleActions(item.status, statusActionError, retirementActionError) ? (
             <div className="item-detail__action-stack">
-              <DetailActionGroup title="lifecycle" meta="status and retirement">
+              <DetailActionGroup title="Lifecycle" meta="status changes">
                 <LifecycleControls
                   currentStatus={item.status}
                   pending={statusActionPending}
@@ -302,6 +297,66 @@ export function ItemDetailView({
         </aside>
       </div>
     </article>
+  );
+}
+
+function DetailTopBar({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="item-detail__topbar" aria-label="item detail context">
+      <button className="text-button" type="button" onClick={onBack}>
+        Back to archive
+      </button>
+      <span>item detail</span>
+    </div>
+  );
+}
+
+function DetailSectionMap({ item }: { item: ItemDetail }) {
+  const sections = [
+    {
+      href: "#detail-description",
+      label: "description",
+      meta: item.description ? "set" : "empty",
+    },
+    {
+      href: "#detail-summary",
+      label: "summary",
+      meta: item.summary ? "set" : "empty",
+    },
+    {
+      href: "#detail-relationships",
+      label: "relationships",
+      meta: String(item.relationships.length),
+    },
+    {
+      href: "#detail-collections",
+      label: "collections",
+      meta: String(item.collections.length),
+    },
+    {
+      href: "#detail-campaign-attachments",
+      label: "campaigns",
+      meta: String(item.campaignAttachments.length),
+    },
+    {
+      href: "#detail-event-timeline",
+      label: "history",
+      meta: String(item.events.length),
+    },
+  ];
+
+  return (
+    <nav className="item-detail__section-map" aria-label="item detail sections">
+      <span className="item-detail__section-map-title">sections</span>
+      <div className="item-detail__section-map-links">
+        {sections.map((section) => (
+          <a href={section.href} key={section.href}>
+            <span>{section.label}</span>
+            <span>{section.meta}</span>
+          </a>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -380,7 +435,7 @@ function RetireWithReplacementForm({
     }
 
     if (!onRetireWithReplacement) {
-      setLocalError("Retirement linkage requires PocketBase reader mode.");
+      setLocalError("Retiring with replacement requires live archive mode.");
       return;
     }
 
@@ -403,7 +458,7 @@ function RetireWithReplacementForm({
           onChange={(event) => setReplacementId(event.target.value)}
           value={replacementId}
         >
-          <option value="">select replacement</option>
+          <option value="">choose replacement</option>
           {availableOptions.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
@@ -419,7 +474,7 @@ function RetireWithReplacementForm({
         {pending ? "Retiring" : "Retire with replacement"}
       </button>
       {availableOptions.length === 0 ? (
-        <p className="detail-muted">No available replacements.</p>
+        <p className="detail-muted">No replacement candidates available.</p>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -467,7 +522,7 @@ function CampaignAttachForm({
     }
 
     if (!onAttachCampaign) {
-      setLocalError("Campaign attachment requires PocketBase reader mode.");
+      setLocalError("Campaign attachment requires live archive mode.");
       return;
     }
 
@@ -497,7 +552,7 @@ function CampaignAttachForm({
             onChange={(event) => setCampaignId(event.target.value)}
             value={campaignId}
           >
-            <option value="">select campaign</option>
+            <option value="">choose campaign</option>
             {availableOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
@@ -539,7 +594,7 @@ function CampaignAttachForm({
         {pending ? "Attaching" : "Attach to campaign"}
       </button>
       {availableOptions.length === 0 ? (
-        <p className="detail-muted">No available campaigns.</p>
+        <p className="detail-muted">No campaigns available to attach.</p>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -571,7 +626,7 @@ function CollectionAttachForm({
     }
 
     if (!onAttachCollection) {
-      setLocalError("Collection attachment requires PocketBase reader mode.");
+      setLocalError("Collection attachment requires live archive mode.");
       return;
     }
 
@@ -595,7 +650,7 @@ function CollectionAttachForm({
             onChange={(event) => setCollectionId(event.target.value)}
             value={collectionId}
           >
-            <option value="">select collection</option>
+            <option value="">choose collection</option>
             {availableOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
@@ -612,7 +667,7 @@ function CollectionAttachForm({
         {pending ? "Attaching" : "Attach to collection"}
       </button>
       {availableOptions.length === 0 ? (
-        <p className="detail-muted">No available collections.</p>
+        <p className="detail-muted">No collections available to attach.</p>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -795,7 +850,7 @@ function RelationshipCreateForm({
     const normalizedToId = toId.trim();
 
     if (!normalizedToId) {
-      setLocalError("Target item ID is required.");
+      setLocalError("Related item ID is required.");
       return;
     }
 
@@ -805,7 +860,7 @@ function RelationshipCreateForm({
     }
 
     if (!onCreateRelationship) {
-      setLocalError("Relationship creation requires PocketBase reader mode.");
+      setLocalError("Relationship creation requires live archive mode.");
       return;
     }
 
@@ -824,16 +879,16 @@ function RelationshipCreateForm({
   };
 
   return (
-    <form className="relationship-create" aria-label="add reference relationship" onSubmit={submit}>
+    <form className="relationship-create" aria-label="add relationship" onSubmit={submit}>
       <div className="relationship-create__fields">
         <label>
-          <span>references</span>
+          <span>related item</span>
           <input
             autoComplete="off"
             disabled={pending}
             list={targetOptions.length > 0 ? dataListId : undefined}
             onChange={(event) => setToId(event.target.value)}
-            placeholder="target item id"
+            placeholder="item id"
             type="text"
             value={toId}
           />
@@ -859,7 +914,7 @@ function RelationshipCreateForm({
         </label>
       </div>
       <button className="status-action" disabled={pending} type="submit">
-        {pending ? "Adding" : "Add reference"}
+        {pending ? "Adding" : "Add relationship"}
       </button>
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>

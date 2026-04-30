@@ -238,6 +238,39 @@ select {
   border-top: 0;
 }
 
+.archive-result-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-rule);
+  padding: 16px 0 12px;
+}
+
+.archive-result-header h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.archive-result-header p {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.archive-result-header > span {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
 .archive-state {
   display: grid;
   gap: 8px;
@@ -547,6 +580,23 @@ select {
   margin: 0 auto;
 }
 
+.item-detail__topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 18px;
+}
+
+.item-detail__topbar span {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
 .item-detail__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -628,6 +678,56 @@ select {
   display: grid;
   gap: 14px;
   margin-top: 18px;
+}
+
+.item-detail__section-map {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 12px;
+}
+
+.item-detail__section-map-title {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.item-detail__section-map-links {
+  display: grid;
+}
+
+.item-detail__section-map a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-rule);
+  padding: 7px 0;
+  color: var(--color-ink);
+  font-size: 13px;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.item-detail__section-map a:first-child {
+  border-top: 0;
+}
+
+.item-detail__section-map a:hover,
+.item-detail__section-map a:focus-visible {
+  color: var(--color-accent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.item-detail__section-map a span:last-child {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .item-detail__status-actions {
