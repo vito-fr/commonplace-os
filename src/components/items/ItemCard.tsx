@@ -103,7 +103,7 @@ export function ItemCard({
           <StatusIndicator status={status} />
           {showRightsMark ? (
             <span className="item-card__rights-mark" aria-label={`rights: ${rightsStatus}`}>
-              !
+              rights
             </span>
           ) : null}
         </span>

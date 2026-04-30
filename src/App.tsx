@@ -631,14 +631,16 @@ function ArchiveResultHeader({
     : loading
       ? "loading current view"
       : `${formatResultCount(itemCount)} in current view`;
+  const viewLabel = hasFilters ? "filtered archive" : "full archive";
 
   return (
     <div className="archive-result-header" aria-label="archive result context">
-      <div>
-        <h2>Items</h2>
+      <div className="archive-result-header__body">
+        <h2>Current view</h2>
         <p>{resultLabel}</p>
+        <ArchiveFilterChips filters={filters} emptyLabel="all archive items" />
       </div>
-      <span>{hasFilters ? "filtered view" : "full view"}</span>
+      <span>{viewLabel}</span>
     </div>
   );
 }
@@ -681,7 +683,7 @@ function ArchiveUsageSummary({
       </div>
       <div className="archive-overview__item">
         <dt>detail work</dt>
-        <dd>status · connect · collections · campaigns</dd>
+        <dd>status · relationships · collections · campaigns</dd>
       </div>
       <div className="archive-overview__item">
         <dt>view</dt>
@@ -766,7 +768,6 @@ function ArchiveFilterControls({
   onTypeChange: (type: ArchiveTypeFilter) => void;
 }) {
   const hasFilters = hasActiveFilters(filters);
-  const filterSummary = formatFilterSummary(filters);
 
   return (
     <form
@@ -777,9 +778,7 @@ function ArchiveFilterControls({
       <div className="archive-filters__header">
         <div>
           <span className="archive-filters__kicker">filters</span>
-          <p className="archive-filters__summary">
-            {hasFilters ? filterSummary : "No filters active."}
-          </p>
+          <ArchiveFilterChips filters={filters} emptyLabel="all archive items" />
         </div>
         {hasFilters ? (
           <button
@@ -882,6 +881,35 @@ function ArchiveFilterControls({
         </label>
       </div>
     </form>
+  );
+}
+
+function ArchiveFilterChips({
+  filters,
+  emptyLabel,
+}: {
+  filters: ItemCardFilters;
+  emptyLabel: string;
+}) {
+  const filterItems = getFilterSummaryItems(filters);
+
+  if (filterItems.length === 0) {
+    return (
+      <div className="archive-filter-chips" aria-label="active archive filters">
+        <span className="archive-filter-chip archive-filter-chip--empty">{emptyLabel}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="archive-filter-chips" aria-label="active archive filters">
+      {filterItems.map((filter) => (
+        <span className="archive-filter-chip" key={filter.label}>
+          <span>{filter.label}</span>
+          {filter.value}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -1030,22 +1058,26 @@ function formatResultCount(itemCount: number) {
 }
 
 function getFilterSummaryParts(filters: ItemCardFilters) {
-  const parts: string[] = [];
+  return getFilterSummaryItems(filters).map((filter) => `${filter.label}: ${filter.value}`);
+}
+
+function getFilterSummaryItems(filters: ItemCardFilters) {
+  const parts: Array<{ label: string; value: string }> = [];
 
   if (filters.status) {
-    parts.push(`lifecycle: ${filters.status}`);
+    parts.push({ label: "lifecycle", value: filters.status });
   }
 
   if (filters.type) {
-    parts.push(`item type: ${filters.type}`);
+    parts.push({ label: "item type", value: filters.type });
   }
 
   if (filters.source) {
-    parts.push(`source: ${filters.source.replace("_", " ")}`);
+    parts.push({ label: "source", value: filters.source.replace("_", " ") });
   }
 
   if (filters.text?.trim()) {
-    parts.push(`search: "${filters.text.trim()}"`);
+    parts.push({ label: "search", value: `"${filters.text.trim()}"` });
   }
 
   return parts;

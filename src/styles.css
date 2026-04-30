@@ -198,15 +198,40 @@ select {
   text-transform: lowercase;
 }
 
-.archive-filters__summary {
-  margin: 5px 0 0;
-  color: var(--color-muted);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
 .archive-filters__clear {
   flex: 0 0 auto;
+}
+
+.archive-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.archive-filter-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 6px;
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  color: var(--color-ink);
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: lowercase;
+  overflow-wrap: anywhere;
+}
+
+.archive-filter-chip span {
+  color: var(--color-muted);
+}
+
+.archive-filter-chip--empty {
+  border-style: dashed;
+  color: var(--color-muted);
 }
 
 .archive-filters__controls {
@@ -272,6 +297,12 @@ select {
   padding: 16px 0 12px;
 }
 
+.archive-result-header__body {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
 .archive-result-header h2 {
   margin: 0;
   color: var(--color-ink);
@@ -282,10 +313,14 @@ select {
 }
 
 .archive-result-header p {
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--color-muted);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.archive-result-header .archive-filter-chips {
+  margin-top: 0;
 }
 
 .archive-result-header > span {
@@ -487,8 +522,13 @@ select {
 }
 
 .item-card__rights-mark {
+  border-left: 1px solid var(--color-rule);
   color: var(--color-ai-pending);
   font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding-left: 4px;
+  text-transform: lowercase;
 }
 
 .masonry-grid {
