@@ -506,6 +506,7 @@ export function App() {
           loading={isDetailLoading}
           error={detailError}
           onBack={closeItemDetail}
+          onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
           statusActionPending={isStatusUpdating || isRetiringWithReplacement}
           statusActionError={statusWriteError}

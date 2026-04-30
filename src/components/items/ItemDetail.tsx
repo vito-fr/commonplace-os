@@ -41,11 +41,14 @@ type CampaignAttachInput = {
   rightsOverrideNote: string | null;
 };
 
+type ItemDetailRelationship = ItemDetail["relationships"][number];
+
 export type ItemDetailViewProps = {
   item: ItemDetail | null;
   loading: boolean;
   error: string | null;
   onBack: () => void;
+  onOpenRelatedItem?: (itemId: string) => void;
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
   statusActionError?: string | null;
@@ -72,6 +75,7 @@ export function ItemDetailView({
   loading,
   error,
   onBack,
+  onOpenRelatedItem,
   onChangeStatus,
   statusActionPending = false,
   statusActionError = null,
@@ -160,15 +164,11 @@ export function ItemDetailView({
             {item.relationships.length > 0 ? (
               <div className="detail-list">
                 {item.relationships.map((relationship) => (
-                  <div className="detail-list__row" key={relationship.id}>
-                    <span className="detail-list__label">{relationship.type}</span>
-                    <span>
-                      {relationship.direction === "outgoing" ? "to" : "from"}{" "}
-                      {relationship.otherItemTitle ?? relationship.otherItemId}
-                    </span>
-                    <span className="detail-muted">{relationship.assertedBy}</span>
-                    {relationship.note ? <p>{relationship.note}</p> : null}
-                  </div>
+                  <RelationshipRow
+                    key={relationship.id}
+                    relationship={relationship}
+                    onOpenRelatedItem={onOpenRelatedItem}
+                  />
                 ))}
               </div>
             ) : (
@@ -290,6 +290,43 @@ export function ItemDetailView({
         </aside>
       </div>
     </article>
+  );
+}
+
+function RelationshipRow({
+  relationship,
+  onOpenRelatedItem,
+}: {
+  relationship: ItemDetailRelationship;
+  onOpenRelatedItem?: (itemId: string) => void;
+}) {
+  const directionLabel = relationship.direction === "outgoing" ? "to" : "from";
+  const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} item`;
+  const targetMeta = [
+    relationship.otherItemType,
+    relationship.otherItemStatus,
+    relationship.otherItemId,
+  ].join(" · ");
+
+  return (
+    <div className="detail-list__row relationship-row">
+      <span className="detail-list__label">{relationship.type}</span>
+      <div className="relationship-row__target">
+        <button
+          className="relationship-target"
+          disabled={!onOpenRelatedItem}
+          type="button"
+          onClick={() => onOpenRelatedItem?.(relationship.otherItemId)}
+        >
+          <span>{directionLabel}</span>
+          {targetLabel}
+        </button>
+        <span className="detail-muted">{targetMeta}</span>
+      </div>
+      <span className="detail-muted">{relationship.assertedBy}</span>
+      {relationship.typeDescription ? <p>{relationship.typeDescription}</p> : null}
+      {relationship.note ? <p>{relationship.note}</p> : null}
+    </div>
   );
 }
 
