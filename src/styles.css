@@ -899,24 +899,91 @@ select {
 }
 
 .item-detail__action-map-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
 }
 
 .item-detail__action-map a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
   border: 1px solid var(--color-rule);
   border-radius: 2px;
   color: var(--color-ink);
-  padding: 6px 8px;
+  padding: 7px 8px;
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.2;
   text-decoration: none;
+}
+
+.item-detail__action-map a span:last-child {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: lowercase;
+  white-space: nowrap;
 }
 
 .item-detail__action-map a:hover,
 .item-detail__action-map a:focus-visible {
   border-color: var(--color-accent);
+  color: var(--color-accent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.item-detail__session-focus {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 12px;
+}
+
+.item-detail__session-focus-title {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.item-detail__session-focus-links {
+  display: grid;
+  gap: 6px;
+}
+
+.item-detail__session-link {
+  display: grid;
+  gap: 4px;
+  border-left: 2px solid var(--color-rule);
+  color: var(--color-ink);
+  padding: 6px 0 6px 9px;
+  font-size: 13px;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.item-detail__session-link span:first-child {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: lowercase;
+}
+
+.item-detail__session-link--warning,
+.item-detail__session-link--blocked {
+  border-left-color: var(--color-ai-pending);
+}
+
+.item-detail__session-link--warning span:last-child,
+.item-detail__session-link--blocked span:last-child {
+  color: var(--color-ai-pending);
+}
+
+.item-detail__session-link:hover,
+.item-detail__session-link:focus-visible {
+  border-left-color: var(--color-accent);
   color: var(--color-accent);
   outline: 1px solid var(--color-accent);
   outline-offset: 2px;

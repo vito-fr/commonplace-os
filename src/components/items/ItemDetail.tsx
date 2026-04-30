@@ -279,6 +279,7 @@ export function ItemDetailView({
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
           <ItemWorkSummary item={item} />
+          <DetailSessionFocus item={item} showLifecycle={showsLifecycleActions} />
           <DetailActionMap showLifecycle={showsLifecycleActions} />
           {showsLifecycleActions ? (
             <div className="item-detail__action-stack">
@@ -344,22 +345,26 @@ function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
     showLifecycle
       ? {
           href: "#detail-action-lifecycle",
-          label: "lifecycle",
+          label: "change status",
+          meta: "lifecycle",
         }
       : null,
     {
       href: "#detail-action-relationship",
-      label: "relationship",
+      label: "add relationship",
+      meta: "connect",
     },
     {
       href: "#detail-action-collection",
-      label: "collection",
+      label: "add collection",
+      meta: "organize",
     },
     {
       href: "#detail-action-campaign",
-      label: "campaign",
+      label: "attach campaign",
+      meta: "reuse",
     },
-  ].filter((action): action is { href: string; label: string } => action !== null);
+  ].filter((action): action is { href: string; label: string; meta: string } => action !== null);
 
   return (
     <nav className="item-detail__action-map" aria-label="item actions">
@@ -367,7 +372,53 @@ function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
       <div className="item-detail__action-map-links">
         {actions.map((action) => (
           <a href={action.href} key={action.href}>
-            {action.label}
+            <span>{action.label}</span>
+            <span>{action.meta}</span>
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function DetailSessionFocus({
+  item,
+  showLifecycle,
+}: {
+  item: ItemDetail;
+  showLifecycle: boolean;
+}) {
+  const focusItems = [
+    {
+      href: showLifecycle ? "#detail-action-lifecycle" : "#detail-event-timeline",
+      label: "lifecycle",
+      value: getLifecycleSessionValue(item.status),
+    },
+    {
+      href: "#detail-action-campaign",
+      label: "campaign use",
+      tone: getRightsSessionTone(item.rightsStatus),
+      value: getRightsSessionValue(item.rightsStatus),
+    },
+    {
+      href: getConnectionSessionHref(item),
+      label: "connections",
+      value: getConnectionSessionValue(item),
+    },
+  ];
+
+  return (
+    <nav className="item-detail__session-focus" aria-label="session focus">
+      <span className="item-detail__session-focus-title">session focus</span>
+      <div className="item-detail__session-focus-links">
+        {focusItems.map((focus) => (
+          <a
+            className={focus.tone ? `item-detail__session-link item-detail__session-link--${focus.tone}` : "item-detail__session-link"}
+            href={focus.href}
+            key={focus.label}
+          >
+            <span>{focus.label}</span>
+            <span>{focus.value}</span>
           </a>
         ))}
       </div>
@@ -1098,6 +1149,86 @@ function hasLifecycleActions(
     canRetireWithReplacement(status) ||
     Boolean(statusError || retirementError)
   );
+}
+
+function getLifecycleSessionValue(status: ItemStatus) {
+  if (status === "inbox") {
+    return "triage or retire";
+  }
+
+  if (status === "triaged") {
+    return "promote or retire";
+  }
+
+  if (status === "active") {
+    return "connect or reuse";
+  }
+
+  if (status === "archived") {
+    return "review or retire";
+  }
+
+  return "history only";
+}
+
+function getRightsSessionValue(rightsStatus: ItemDetail["rightsStatus"]) {
+  if (rightsStatus === "restricted" || rightsStatus === "expired") {
+    return "campaign blocked";
+  }
+
+  if (rightsStatus === "unknown") {
+    return "campaign needs note";
+  }
+
+  if (rightsStatus === "reference_only") {
+    return "public roles need note";
+  }
+
+  return "campaign ready";
+}
+
+function getRightsSessionTone(rightsStatus: ItemDetail["rightsStatus"]) {
+  if (rightsStatus === "restricted" || rightsStatus === "expired") {
+    return "blocked";
+  }
+
+  if (rightsStatus === "unknown" || rightsStatus === "reference_only") {
+    return "warning";
+  }
+
+  return null;
+}
+
+function getConnectionSessionValue(item: ItemDetail) {
+  if (item.relationships.length === 0) {
+    return "add relationship";
+  }
+
+  if (item.collections.length === 0) {
+    return "add collection";
+  }
+
+  if (item.campaignAttachments.length === 0) {
+    return "attach campaign";
+  }
+
+  return "connected";
+}
+
+function getConnectionSessionHref(item: ItemDetail) {
+  if (item.relationships.length === 0) {
+    return "#detail-action-relationship";
+  }
+
+  if (item.collections.length === 0) {
+    return "#detail-action-collection";
+  }
+
+  if (item.campaignAttachments.length === 0) {
+    return "#detail-action-campaign";
+  }
+
+  return "#detail-relationships";
 }
 
 function formatCount(count: number, singular: string, plural: string) {
