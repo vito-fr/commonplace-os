@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+import type { MouseEvent } from "react";
 import {
   SourceMark,
   StatusIndicator,
@@ -57,7 +57,7 @@ export function ItemCard({
 }: ItemCardProps) {
   const isRetired = status === "retired";
   const showRightsMark = rightsStatus === "restricted" || rightsStatus === "expired";
-  const ariaLabel = title ? title : `${type} item`;
+  const ariaLabel = title ? `Open ${title}` : `Open ${type} item ${id}`;
   const cardClassName = [
     "item-card",
     isRetired ? "item-card--retired" : "",
@@ -66,31 +66,31 @@ export function ItemCard({
     .filter(Boolean)
     .join(" ");
 
-  const navigate = () => {
-    if (onNavigate) {
-      onNavigate(id);
+  const itemHref = `/items/${encodeURIComponent(id)}`;
+
+  const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (
+      !onNavigate ||
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey
+    ) {
       return;
     }
 
-    window.location.assign(`/items/${encodeURIComponent(id)}`);
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      navigate();
-    }
+    event.preventDefault();
+    onNavigate(id);
   };
 
   return (
-    <article
+    <a
       className={cardClassName}
-      role="article"
+      href={itemHref}
       aria-label={ariaLabel}
-      aria-pressed={isSelected ? "true" : undefined}
-      tabIndex={0}
       onClick={navigate}
-      onKeyDown={handleKeyDown}
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
       <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle, campaignCoverUrl)}</div>
@@ -109,7 +109,7 @@ export function ItemCard({
         <SourceMark source={source} />
         <UsageBadge count={usageCount} />
       </div>
-    </article>
+    </a>
   );
 }
 
