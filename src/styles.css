@@ -82,7 +82,7 @@ select {
 
 .archive-overview {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 14px;
   margin: 22px 0 0;
   border-top: 1px solid var(--color-rule);
@@ -614,11 +614,24 @@ select {
   padding-top: 18px;
 }
 
-.item-detail__topbar span {
+.item-detail__topbar-context {
+  display: grid;
+  gap: 4px;
+  max-width: min(100%, 520px);
+  text-align: right;
+}
+
+.item-detail__topbar-context span {
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.35;
   text-transform: lowercase;
+  overflow-wrap: anywhere;
+}
+
+.item-detail__topbar-context span:first-child {
+  color: var(--color-ink);
 }
 
 .item-detail__layout {

@@ -492,6 +492,7 @@ export function App() {
 
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
+    const archiveContextLabel = formatArchiveContext(itemCardFilters);
     const relationshipTargetOptions = items
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
@@ -522,6 +523,7 @@ export function App() {
           item={detail}
           loading={isDetailLoading}
           error={detailError}
+          archiveContext={archiveContextLabel}
           onBack={closeItemDetail}
           onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
@@ -678,8 +680,12 @@ function ArchiveUsageSummary({
         <dd>{captureEnabled ? "manual note" : "seed view"}</dd>
       </div>
       <div className="archive-overview__item">
+        <dt>detail work</dt>
+        <dd>status · connect · collections · campaigns</dd>
+      </div>
+      <div className="archive-overview__item">
         <dt>view</dt>
-        <dd>{filterSummary || "all archive items"}</dd>
+        <dd>{filterSummary || formatArchiveContext(filters)}</dd>
       </div>
     </dl>
   );
@@ -1013,6 +1019,10 @@ function hasActiveFilters(filters: ItemCardFilters) {
 
 function formatFilterSummary(filters: ItemCardFilters) {
   return getFilterSummaryParts(filters).join(" · ");
+}
+
+function formatArchiveContext(filters: ItemCardFilters) {
+  return formatFilterSummary(filters) || "all archive items";
 }
 
 function formatResultCount(itemCount: number) {

@@ -47,6 +47,7 @@ export type ItemDetailViewProps = {
   item: ItemDetail | null;
   loading: boolean;
   error: string | null;
+  archiveContext: string;
   onBack: () => void;
   onOpenRelatedItem?: (itemId: string) => void;
   onChangeStatus?: (nextStatus: ItemStatus) => void;
@@ -74,6 +75,7 @@ export function ItemDetailView({
   item,
   loading,
   error,
+  archiveContext,
   onBack,
   onOpenRelatedItem,
   onChangeStatus,
@@ -99,7 +101,7 @@ export function ItemDetailView({
   if (loading) {
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
-        <DetailTopBar onBack={onBack} />
+        <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
         <div className="item-detail__loading">Loading item.</div>
       </section>
     );
@@ -108,7 +110,7 @@ export function ItemDetailView({
   if (error || !item) {
     return (
       <section className="item-detail">
-        <DetailTopBar onBack={onBack} />
+        <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
         <p className="proof-empty">{error ?? "Item could not be loaded."}</p>
       </section>
     );
@@ -122,7 +124,7 @@ export function ItemDetailView({
 
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
-      <DetailTopBar onBack={onBack} />
+      <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
 
       <div className="item-detail__layout">
         <div className="item-detail__main">
@@ -373,13 +375,22 @@ function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
   );
 }
 
-function DetailTopBar({ onBack }: { onBack: () => void }) {
+function DetailTopBar({
+  archiveContext,
+  onBack,
+}: {
+  archiveContext: string;
+  onBack: () => void;
+}) {
   return (
     <div className="item-detail__topbar" aria-label="item detail context">
       <button className="text-button" type="button" onClick={onBack}>
         Back to archive
       </button>
-      <span>item detail</span>
+      <div className="item-detail__topbar-context">
+        <span>item detail</span>
+        <span>{archiveContext}</span>
+      </div>
     </div>
   );
 }
