@@ -576,6 +576,7 @@ export function App() {
         <ArchiveFilterControls
           filters={itemCardFilters}
           loading={isLoading}
+          onClearFilters={clearArchiveFilters}
           onSourceChange={updateSourceFilter}
           onStatusChange={updateStatusFilter}
           onTextChange={updateTextFilter}
@@ -660,6 +661,7 @@ function ArchiveEmptyState({
 function ArchiveFilterControls({
   filters,
   loading,
+  onClearFilters,
   onSourceChange,
   onStatusChange,
   onTextChange,
@@ -667,66 +669,128 @@ function ArchiveFilterControls({
 }: {
   filters: ItemCardFilters;
   loading: boolean;
+  onClearFilters: () => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTextChange: (text: string) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
 }) {
+  const hasFilters = hasActiveFilters(filters);
+  const filterSummary = formatFilterSummary(filters);
+
   return (
-    <form className="archive-filters" aria-label="archive filters">
-      <label className="archive-filters__text">
-        <span>text</span>
-        <input
-          autoComplete="off"
-          disabled={loading}
-          onChange={(event) => onTextChange(event.target.value)}
-          placeholder="query text"
-          type="search"
-          value={filters.text ?? ""}
-        />
-      </label>
-      <label>
-        <span>status</span>
-        <select
-          disabled={loading}
-          onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
-          value={filters.status ?? "all"}
+    <form
+      className="archive-filters"
+      aria-label="archive filters"
+      onSubmit={(event) => event.preventDefault()}
+    >
+      <div className="archive-filters__header">
+        <div>
+          <span className="archive-filters__kicker">filters</span>
+          <p className="archive-filters__summary">
+            {hasFilters ? filterSummary : "No filters active."}
+          </p>
+        </div>
+        {hasFilters ? (
+          <button
+            className="text-button archive-filters__clear"
+            disabled={loading}
+            onClick={onClearFilters}
+            type="button"
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+      <div className="archive-filters__controls">
+        <label
+          className={`archive-filter-field archive-filter-field--text${
+            filters.text?.trim() ? " archive-filter-field--active" : ""
+          }`}
         >
-          {statusFilterOptions.map((status) => (
-            <option key={status} value={status}>
-              {status === "all" ? "all statuses" : status}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>type</span>
-        <select
-          disabled={loading}
-          onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
-          value={filters.type ?? "all"}
+          <span className="archive-filter-field__label">
+            <span>query</span>
+            {filters.text?.trim() ? (
+              <span className="archive-filter-field__state">active</span>
+            ) : null}
+          </span>
+          <input
+            autoComplete="off"
+            disabled={loading}
+            onChange={(event) => onTextChange(event.target.value)}
+            placeholder="search archive"
+            type="search"
+            value={filters.text ?? ""}
+          />
+        </label>
+        <label
+          className={`archive-filter-field${
+            filters.status ? " archive-filter-field--active" : ""
+          }`}
         >
-          {typeFilterOptions.map((type) => (
-            <option key={type} value={type}>
-              {type === "all" ? "all types" : type}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>source</span>
-        <select
-          disabled={loading}
-          onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
-          value={filters.source ?? "all"}
+          <span className="archive-filter-field__label">
+            <span>lifecycle</span>
+            {filters.status ? (
+              <span className="archive-filter-field__state">active</span>
+            ) : null}
+          </span>
+          <select
+            disabled={loading}
+            onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
+            value={filters.status ?? "all"}
+          >
+            {statusFilterOptions.map((status) => (
+              <option key={status} value={status}>
+                {status === "all" ? "all statuses" : status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label
+          className={`archive-filter-field${filters.type ? " archive-filter-field--active" : ""}`}
         >
-          {sourceFilterOptions.map((source) => (
-            <option key={source} value={source}>
-              {source === "all" ? "all sources" : source.replace("_", " ")}
-            </option>
-          ))}
-        </select>
-      </label>
+          <span className="archive-filter-field__label">
+            <span>item type</span>
+            {filters.type ? (
+              <span className="archive-filter-field__state">active</span>
+            ) : null}
+          </span>
+          <select
+            disabled={loading}
+            onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
+            value={filters.type ?? "all"}
+          >
+            {typeFilterOptions.map((type) => (
+              <option key={type} value={type}>
+                {type === "all" ? "all types" : type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label
+          className={`archive-filter-field${
+            filters.source ? " archive-filter-field--active" : ""
+          }`}
+        >
+          <span className="archive-filter-field__label">
+            <span>source</span>
+            {filters.source ? (
+              <span className="archive-filter-field__state">active</span>
+            ) : null}
+          </span>
+          <select
+            disabled={loading}
+            onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
+            value={filters.source ?? "all"}
+          >
+            {sourceFilterOptions.map((source) => (
+              <option key={source} value={source}>
+                {source === "all" ? "all sources" : source.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
     </form>
   );
 }
