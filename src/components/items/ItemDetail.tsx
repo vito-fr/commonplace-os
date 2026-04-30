@@ -114,6 +114,12 @@ export function ItemDetailView({
     );
   }
 
+  const showsLifecycleActions = hasLifecycleActions(
+    item.status,
+    statusActionError,
+    retirementActionError,
+  );
+
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
       <DetailTopBar onBack={onBack} />
@@ -124,6 +130,7 @@ export function ItemDetailView({
             {renderHero(item)}
           </section>
 
+          <DetailSectionGroup title="Content" meta="description, summary, tags">
           <Section title="Description">
             <ReadableBlock value={item.description} fallback="No description yet." />
           </Section>
@@ -146,9 +153,11 @@ export function ItemDetailView({
               <DetailEmptyState label="No tags yet." />
             )}
           </Section>
+          </DetailSectionGroup>
 
+          <DetailSectionGroup title="Connections" meta="relationships, collections, campaigns">
           <Section title="Relationships" meta={formatCount(item.relationships.length, "relationship", "relationships")}>
-            <DetailActionGroup title="Add relationship" meta="reference another item">
+            <DetailActionGroup id="detail-action-relationship" title="Add relationship" meta="reference another item">
               <RelationshipCreateForm
                 currentItemId={item.id}
                 error={relationshipActionError}
@@ -173,7 +182,7 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Collections" meta={formatCount(item.collections.length, "membership", "memberships")}>
-            <DetailActionGroup title="Add to collection" meta="organize this item">
+            <DetailActionGroup id="detail-action-collection" title="Add to collection" meta="organize this item">
               <CollectionAttachForm
                 error={collectionActionError}
                 onAttachCollection={onAttachCollection}
@@ -195,7 +204,7 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Campaign attachments" meta={formatCount(item.campaignAttachments.length, "attachment", "attachments")}>
-            <DetailActionGroup title="Attach to campaign" meta="campaign memory">
+            <DetailActionGroup id="detail-action-campaign" title="Attach to campaign" meta="campaign memory">
               <CampaignAttachForm
                 error={campaignActionError}
                 onAttachCampaign={onAttachCampaign}
@@ -218,7 +227,9 @@ export function ItemDetailView({
               <DetailEmptyState label="Not attached to any campaigns yet." />
             )}
           </Section>
+          </DetailSectionGroup>
 
+          <DetailSectionGroup title="History" meta="annotations and events">
           <Section title="AI annotations" meta={formatCount(item.aiAnnotations.length, "annotation", "annotations")}>
             {item.aiAnnotations.length > 0 ? (
               <div className="annotation-list">
@@ -252,6 +263,7 @@ export function ItemDetailView({
               <DetailEmptyState label="No event history yet." />
             )}
           </Section>
+          </DetailSectionGroup>
         </div>
 
         <aside className="item-detail__metadata" aria-label="item facts">
@@ -265,9 +277,10 @@ export function ItemDetailView({
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
           <ItemWorkSummary item={item} />
-          {hasLifecycleActions(item.status, statusActionError, retirementActionError) ? (
+          <DetailActionMap showLifecycle={showsLifecycleActions} />
+          {showsLifecycleActions ? (
             <div className="item-detail__action-stack">
-              <DetailActionGroup title="Lifecycle" meta="status changes">
+              <DetailActionGroup id="detail-action-lifecycle" title="Lifecycle" meta="status changes">
                 <LifecycleControls
                   currentStatus={item.status}
                   pending={statusActionPending}
@@ -321,6 +334,42 @@ function ItemWorkSummary({ item }: { item: ItemDetail }) {
         <dd>{formatCount(item.relationships.length, "relationship", "relationships")}</dd>
       </div>
     </dl>
+  );
+}
+
+function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
+  const actions = [
+    showLifecycle
+      ? {
+          href: "#detail-action-lifecycle",
+          label: "lifecycle",
+        }
+      : null,
+    {
+      href: "#detail-action-relationship",
+      label: "relationship",
+    },
+    {
+      href: "#detail-action-collection",
+      label: "collection",
+    },
+    {
+      href: "#detail-action-campaign",
+      label: "campaign",
+    },
+  ].filter((action): action is { href: string; label: string } => action !== null);
+
+  return (
+    <nav className="item-detail__action-map" aria-label="item actions">
+      <span className="item-detail__action-map-title">actions</span>
+      <div className="item-detail__action-map-links">
+        {actions.map((action) => (
+          <a href={action.href} key={action.href}>
+            {action.label}
+          </a>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -779,6 +828,26 @@ function renderHero(item: ItemDetail) {
   return <div className="item-detail__media-placeholder">image pending</div>;
 }
 
+function DetailSectionGroup({
+  title,
+  meta,
+  children,
+}: {
+  title: string;
+  meta: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="detail-section-group">
+      <div className="detail-section-group__header">
+        <h2>{title}</h2>
+        <span>{meta}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function Section({
   title,
   meta,
@@ -812,16 +881,18 @@ function DetailEmptyState({ label }: { label: string }) {
 }
 
 function DetailActionGroup({
+  id,
   title,
   meta,
   children,
 }: {
+  id?: string;
   title: string;
   meta: string;
   children: ReactNode;
 }) {
   return (
-    <div className="detail-action-group">
+    <div className="detail-action-group" id={id}>
       <div className="detail-action-group__header">
         <span className="detail-action-group__title">{title}</span>
         <span className="detail-action-group__meta">{meta}</span>
