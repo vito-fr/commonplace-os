@@ -15,6 +15,8 @@ type FixtureItem = {
   type: ItemType;
   status: ItemStatus;
   title: string | null;
+  description: string | null;
+  summary: string | null;
   source_id: string | null;
   rights_status: RightsStatus;
 };
@@ -102,6 +104,21 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
     const link = links.find((row) => row.item_id === item.id);
     const ogMetadata = parseOgMetadata(link?.og_metadata ?? null);
 
+    if (
+      filters?.text &&
+      !matchesTextQuery(filters.text, [
+        item.title,
+        item.description,
+        item.summary,
+        caption?.body,
+        note?.body,
+        link?.url,
+        link?.og_metadata,
+      ])
+    ) {
+      return [];
+    }
+
     return {
       id: item.id,
       type: item.type,
@@ -123,6 +140,15 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       onNavigate: () => undefined,
     };
   });
+}
+
+function matchesTextQuery(query: string, values: Array<string | null | undefined>) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
 }
 
 function requireFixture<T>(value: T | undefined, label: string) {

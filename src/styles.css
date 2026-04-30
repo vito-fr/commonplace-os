@@ -142,6 +142,11 @@ select {
   text-transform: lowercase;
 }
 
+.archive-filters__text {
+  min-width: min(100%, 240px);
+}
+
+.archive-filters input,
 .archive-filters select {
   border: 1px solid var(--color-rule);
   border-radius: 2px;

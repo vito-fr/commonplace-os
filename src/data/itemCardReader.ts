@@ -13,6 +13,7 @@ export type ItemCardFilters = {
   status?: ItemStatus;
   type?: ItemType;
   source?: ItemSourceFilter;
+  text?: string;
 };
 
 export type ItemCardQuery = {

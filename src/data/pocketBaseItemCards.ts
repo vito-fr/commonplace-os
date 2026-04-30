@@ -51,6 +51,10 @@ function buildItemCardsUrl(baseUrl: string, endpointPath: string, query: ItemCar
     url.searchParams.set("source", query.filters.source);
   }
 
+  if (query.filters?.text) {
+    url.searchParams.set("q", query.filters.text);
+  }
+
   return url;
 }
 

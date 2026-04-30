@@ -466,6 +466,13 @@ export function App() {
     }));
   };
 
+  const updateTextFilter = (text: string) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      text: text === "" ? undefined : text,
+    }));
+  };
+
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
     const relationshipTargetOptions = items
@@ -549,6 +556,7 @@ export function App() {
           loading={isLoading}
           onSourceChange={updateSourceFilter}
           onStatusChange={updateStatusFilter}
+          onTextChange={updateTextFilter}
           onTypeChange={updateTypeFilter}
         />
         <MasonryGrid
@@ -572,16 +580,29 @@ function ArchiveFilterControls({
   loading,
   onSourceChange,
   onStatusChange,
+  onTextChange,
   onTypeChange,
 }: {
   filters: ItemCardFilters;
   loading: boolean;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
+  onTextChange: (text: string) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
 }) {
   return (
     <form className="archive-filters" aria-label="archive filters">
+      <label className="archive-filters__text">
+        <span>text</span>
+        <input
+          autoComplete="off"
+          disabled={loading}
+          onChange={(event) => onTextChange(event.target.value)}
+          placeholder="query text"
+          type="search"
+          value={filters.text ?? ""}
+        />
+      </label>
       <label>
         <span>status</span>
         <select

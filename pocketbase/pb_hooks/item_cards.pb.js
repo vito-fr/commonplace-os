@@ -11,6 +11,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   const status = normalizedFilter(query.get("status"));
   const type = normalizedFilter(query.get("type"));
   const source = normalizedFilter(query.get("source"));
+  const textQuery = normalizedTextQuery(query.get("q"));
   const rawItemIds = query.get("item_ids");
   const itemIds = rawItemIds
     ? rawItemIds
@@ -23,7 +24,12 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   let statusFilter = "";
   let typeFilter = "";
   let sourceFilter = "";
+  let textQueryFilter = "";
   let orderBy = "ORDER BY i.updated_at DESC, i.id ASC";
+
+  if (textQuery.length > 120) {
+    throw new BadRequestError("q is too long");
+  }
 
   if (status) {
     if (!isKnownStatus(status)) {
@@ -52,6 +58,21 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     sourceFilter = "AND COALESCE(s.kind, 'manual') = {:source}";
   }
 
+  if (textQuery) {
+    params.textQueryPattern = `%${escapeLike(textQuery.toLowerCase())}%`;
+    textQueryFilter = `
+      AND LOWER(
+        COALESCE(i.title, '') || ' ' ||
+        COALESCE(i.description, '') || ' ' ||
+        COALESCE(i.summary, '') || ' ' ||
+        COALESCE(caption.body, '') || ' ' ||
+        COALESCE(note.body, '') || ' ' ||
+        COALESCE(link.url, '') || ' ' ||
+        COALESCE(link.og_metadata, '')
+      ) LIKE {:textQueryPattern} ESCAPE char(92)
+    `;
+  }
+
   if (itemIds.length > 0) {
     const placeholders = [];
     itemIds.forEach((id, index) => {
@@ -72,6 +93,18 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
     const normalized = value.trim();
     return normalized === "all" ? "" : normalized;
+  }
+
+  function normalizedTextQuery(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim().replace(/\s+/g, " ");
+  }
+
+  function escapeLike(value) {
+    return value.replace(/[\\%_]/g, (character) => `\\${character}`);
   }
 
   function isKnownStatus(value) {
@@ -153,6 +186,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ${statusFilter}
           ${typeFilter}
           ${sourceFilter}
+          ${textQueryFilter}
         ${orderBy}
       `,
     )
