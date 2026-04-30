@@ -1,0 +1,253 @@
+import type { ReactNode } from "react";
+import { SourceMark, StatusIndicator, TypeIndicator } from "../atoms";
+import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
+
+export type ItemDetailViewProps = {
+  item: ItemDetail | null;
+  loading: boolean;
+  error: string | null;
+  onBack: () => void;
+};
+
+export function ItemDetailView({ item, loading, error, onBack }: ItemDetailViewProps) {
+  if (loading) {
+    return (
+      <section className="item-detail item-detail--loading" aria-busy="true">
+        <button className="text-button" type="button" onClick={onBack}>
+          Back to archive proof
+        </button>
+        <div className="item-detail__loading">Loading item detail.</div>
+      </section>
+    );
+  }
+
+  if (error || !item) {
+    return (
+      <section className="item-detail">
+        <button className="text-button" type="button" onClick={onBack}>
+          Back to archive proof
+        </button>
+        <p className="proof-empty">{error ?? "Item detail is unavailable."}</p>
+      </section>
+    );
+  }
+
+  return (
+    <article className="item-detail" aria-labelledby="item-detail-title">
+      <button className="text-button" type="button" onClick={onBack}>
+        Back to archive proof
+      </button>
+
+      <div className="item-detail__layout">
+        <div className="item-detail__main">
+          <section className="item-detail__hero" aria-label="item hero">
+            {renderHero(item)}
+          </section>
+
+          <Section title="Description">
+            <ReadableBlock value={item.description} fallback="No canonical description." />
+          </Section>
+
+          <Section title="Summary">
+            <ReadableBlock value={item.summary} fallback="No canonical summary." />
+          </Section>
+
+          <Section title="Tags">
+            {item.tags.length > 0 ? (
+              <div className="tag-row">
+                {item.tags.map((tag) => (
+                  <span className={`tag-chip tag-chip--${tag.status}`} key={tag.id}>
+                    {tag.name}
+                    {tag.status === "pending" ? <span>pending</span> : null}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No tags.</p>
+            )}
+          </Section>
+
+          <Section title="Relationships">
+            {item.relationships.length > 0 ? (
+              <div className="detail-list">
+                {item.relationships.map((relationship) => (
+                  <div className="detail-list__row" key={relationship.id}>
+                    <span className="detail-list__label">{relationship.type}</span>
+                    <span>
+                      {relationship.direction === "outgoing" ? "to" : "from"}{" "}
+                      {relationship.otherItemTitle ?? relationship.otherItemId}
+                    </span>
+                    <span className="detail-muted">{relationship.assertedBy}</span>
+                    {relationship.note ? <p>{relationship.note}</p> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No relationships.</p>
+            )}
+          </Section>
+
+          <Section title="Collections">
+            {item.collections.length > 0 ? (
+              <div className="tag-row">
+                {item.collections.map((collection) => (
+                  <span className="tag-chip" key={collection.id}>
+                    {collection.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No collection memberships.</p>
+            )}
+          </Section>
+
+          <Section title="Campaign attachments">
+            {item.campaignAttachments.length > 0 ? (
+              <div className="detail-list">
+                {item.campaignAttachments.map((attachment) => (
+                  <div className="detail-list__row" key={attachment.id}>
+                    <span className="detail-list__label">{attachment.role ?? "used_in"}</span>
+                    <span>{attachment.campaignTitle ?? attachment.campaignId}</span>
+                    {attachment.phase ? <span className="detail-muted">{attachment.phase}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No campaign attachments.</p>
+            )}
+          </Section>
+
+          <Section title="AI annotations">
+            {item.aiAnnotations.length > 0 ? (
+              <div className="annotation-list">
+                {item.aiAnnotations.map((annotation) => (
+                  <article className={`annotation-row annotation-row--${annotation.reviewStatus}`} key={annotation.id}>
+                    <div className="annotation-row__header">
+                      <span>{annotation.fieldName}</span>
+                      <ProvenanceMark annotation={annotation} />
+                    </div>
+                    <pre>{formatPayload(annotation.payload)}</pre>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No AI annotations.</p>
+            )}
+          </Section>
+
+          <Section title="Event timeline">
+            {item.events.length > 0 ? (
+              <div className="detail-list">
+                {item.events.map((event) => (
+                  <div className="detail-list__row" key={event.id}>
+                    <span className="detail-list__label">{event.eventType}</span>
+                    <span>{event.actor}</span>
+                    <span className="detail-muted">{event.createdAt}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="detail-muted">No events.</p>
+            )}
+          </Section>
+        </div>
+
+        <aside className="item-detail__metadata" aria-label="item metadata">
+          <p className="proof-kicker">item detail</p>
+          <h1 id="item-detail-title">{item.title ?? `${item.type} item`}</h1>
+          <div className="item-detail__signal-row">
+            <TypeIndicator type={item.type} />
+            <span aria-hidden="true">·</span>
+            <StatusIndicator status={item.status} />
+            <span aria-hidden="true">·</span>
+            <SourceMark source={item.source?.kind ?? "manual"} />
+          </div>
+          <dl>
+            <Metadata label="ID" value={item.id} />
+            <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
+            <Metadata label="Created" value={item.createdAt} />
+            <Metadata label="Updated" value={item.updatedAt} />
+            <Metadata label="Privacy" value={item.privacyLevel ?? "inherited"} />
+            <Metadata label="Rights" value={item.rightsStatus} />
+            <Metadata label="Rights reviewed" value={item.rightsReviewedAt ?? "not reviewed"} />
+          </dl>
+        </aside>
+      </div>
+    </article>
+  );
+}
+
+function renderHero(item: ItemDetail) {
+  if (item.type === "caption") {
+    return <p className="item-detail__text-hero">{item.content.caption?.body ?? "Caption body unavailable."}</p>;
+  }
+
+  if (item.type === "note") {
+    return <p className="item-detail__text-hero">{item.content.note?.body ?? "Note body unavailable."}</p>;
+  }
+
+  if (item.type === "link") {
+    return (
+      <div className="item-detail__link-hero">
+        <span className="detail-muted">link</span>
+        <p>{item.content.link?.url ?? "Link URL unavailable."}</p>
+      </div>
+    );
+  }
+
+  if (item.type === "campaign") {
+    return (
+      <div className="item-detail__campaign-hero">
+        <span>{item.content.campaign?.phase ?? "campaign"}</span>
+        <p>{item.title ?? "Untitled campaign"}</p>
+      </div>
+    );
+  }
+
+  return <div className="item-detail__media-placeholder">image pending</div>;
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="detail-section" aria-labelledby={`detail-${slug(title)}`}>
+      <h2 id={`detail-${slug(title)}`}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function ReadableBlock({ value, fallback }: { value: string | null; fallback: string }) {
+  return <p className={value ? "detail-readable" : "detail-muted"}>{value ?? fallback}</p>;
+}
+
+function Metadata({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function ProvenanceMark({ annotation }: { annotation: ItemDetailAIAnnotation }) {
+  const parts = [
+    annotation.modelName,
+    annotation.modelVersion,
+    annotation.confidence === null ? null : annotation.confidence.toFixed(2),
+    annotation.reviewStatus,
+  ].filter(Boolean);
+
+  return <span className="provenance-mark">{parts.join(" · ")}</span>;
+}
+
+function formatPayload(payload: string) {
+  try {
+    return JSON.stringify(JSON.parse(payload), null, 2);
+  } catch {
+    return payload;
+  }
+}
+
+function slug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}

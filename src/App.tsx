@@ -1,27 +1,52 @@
 import { useEffect, useState } from "react";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
+import { ItemDetailView } from "./components/items/ItemDetail";
 import type { ItemCardReader } from "./data/itemCardReader";
+import type { ItemDetail } from "./data/pocketBaseItemDetail";
+import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
+type AppRoute = { kind: "grid" } | { kind: "item"; itemId: string };
+
+const workspaceId = "seed:ws001";
+const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
+const pocketBaseUrl = import.meta.env.VITE_POCKETBASE_URL ?? "http://127.0.0.1:8090";
+const isPocketBaseMode = readerMode === "pocketbase";
 const itemCardReader: ItemCardReader =
-  import.meta.env.VITE_ITEM_CARD_READER === "pocketbase"
+  isPocketBaseMode
     ? createPocketBaseItemCardReader({
-        baseUrl: import.meta.env.VITE_POCKETBASE_URL ?? "http://127.0.0.1:8090",
+        baseUrl: pocketBaseUrl,
       })
     : seedFixtureItemCardReader;
+const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 
 export function App() {
+  const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncRoute = () => {
+      setRoute(getRouteFromLocation());
+    };
+
+    window.addEventListener("popstate", syncRoute);
+    return () => {
+      window.removeEventListener("popstate", syncRoute);
+    };
+  }, []);
 
   useEffect(() => {
     let isCurrent = true;
 
     itemCardReader
-      .listItemCards({ workspaceId: "seed:ws001" })
+      .listItemCards({ workspaceId })
       .then((nextItems) => {
         if (isCurrent) {
           setItems(nextItems);
@@ -46,6 +71,82 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    if (route.kind !== "item") {
+      setDetail(null);
+      setDetailError(null);
+      setIsDetailLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    if (!isPocketBaseMode) {
+      setDetail(null);
+      setDetailError("Item detail proof requires PocketBase reader mode.");
+      setIsDetailLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsDetailLoading(true);
+    setDetailError(null);
+
+    itemDetailReader
+      .getItemDetail({ workspaceId, itemId: route.itemId })
+      .then((nextDetail) => {
+        if (isCurrent) {
+          setDetail(nextDetail);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          console.error(error);
+          setDetail(null);
+          setDetailError("Unable to load item detail.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsDetailLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [route]);
+
+  const openItemDetail = (itemId: string) => {
+    window.history.pushState(null, "", `/items/${encodeURIComponent(itemId)}`);
+    setRoute({ kind: "item", itemId });
+  };
+
+  const closeItemDetail = () => {
+    window.history.pushState(null, "", "/");
+    setRoute({ kind: "grid" });
+  };
+
+  if (route.kind === "item") {
+    return (
+      <main className="app-shell" aria-label="Vita archive">
+        <ItemDetailView
+          item={detail}
+          loading={isDetailLoading}
+          error={detailError}
+          onBack={closeItemDetail}
+        />
+      </main>
+    );
+  }
+
+  const renderedItems = isPocketBaseMode
+    ? items.map((item) => ({ ...item, onNavigate: openItemDetail }))
+    : items;
+
   return (
     <main className="app-shell" aria-label="Vita archive">
       <section className="proof-panel" aria-labelledby="proof-title">
@@ -56,7 +157,7 @@ export function App() {
           route, persistence, or drag layer.
         </p>
         <MasonryGrid
-          items={items}
+          items={renderedItems}
           density="comfortable"
           loading={isLoading}
           emptyState={<p className="proof-empty">{readError ?? "No seeded proof items."}</p>}
@@ -65,4 +166,14 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function getRouteFromLocation(): AppRoute {
+  const match = window.location.pathname.match(/^\/items\/([^/]+)\/?$/);
+
+  if (!match) {
+    return { kind: "grid" };
+  }
+
+  return { kind: "item", itemId: decodeURIComponent(match[1]) };
 }
