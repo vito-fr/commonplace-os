@@ -8,6 +8,8 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     throw new BadRequestError("workspace_id is required");
   }
 
+  const status = normalizedFilter(query.get("status"));
+  const type = normalizedFilter(query.get("type"));
   const rawItemIds = query.get("item_ids");
   const itemIds = rawItemIds
     ? rawItemIds
@@ -17,7 +19,27 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     : [];
   const params = { workspaceId };
   let itemIdFilter = "";
+  let statusFilter = "";
+  let typeFilter = "";
   let orderBy = "ORDER BY i.updated_at DESC, i.id ASC";
+
+  if (status) {
+    if (!isKnownStatus(status)) {
+      throw new BadRequestError("status filter is invalid");
+    }
+
+    params.status = status;
+    statusFilter = "AND i.status = {:status}";
+  }
+
+  if (type) {
+    if (!isKnownType(type)) {
+      throw new BadRequestError("type filter is invalid");
+    }
+
+    params.type = type;
+    typeFilter = "AND i.type = {:type}";
+  }
 
   if (itemIds.length > 0) {
     const placeholders = [];
@@ -30,6 +52,23 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     itemIdFilter = `AND i.id IN (${placeholders.join(", ")})`;
     params.itemIdsOrder = `,${itemIds.join(",")},`;
     orderBy = "ORDER BY instr({:itemIdsOrder}, ',' || i.id || ',')";
+  }
+
+  function normalizedFilter(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    const normalized = value.trim();
+    return normalized === "all" ? "" : normalized;
+  }
+
+  function isKnownStatus(value) {
+    return ["inbox", "triaged", "active", "archived", "retired"].includes(value);
+  }
+
+  function isKnownType(value) {
+    return ["image", "caption", "note", "link", "campaign"].includes(value);
   }
 
   const rows = arrayOf(
@@ -96,6 +135,8 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ON link.item_id = i.id
         WHERE i.workspace_id = {:workspaceId}
           ${itemIdFilter}
+          ${statusFilter}
+          ${typeFilter}
         ${orderBy}
       `,
     )

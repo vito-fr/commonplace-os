@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
+import type { ItemStatus, ItemType } from "./components/atoms";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
 import { ItemDetailView } from "./components/items/ItemDetail";
-import type { ItemCardReader } from "./data/itemCardReader";
+import type { ItemCardFilters, ItemCardReader } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
   createPocketBaseItemCampaignClient,
@@ -21,6 +22,25 @@ import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
 type AppRoute = { kind: "grid" } | { kind: "item"; itemId: string };
+type ArchiveStatusFilter = ItemStatus | "all";
+type ArchiveTypeFilter = ItemType | "all";
+
+const statusFilterOptions: ArchiveStatusFilter[] = [
+  "all",
+  "inbox",
+  "triaged",
+  "active",
+  "archived",
+  "retired",
+];
+const typeFilterOptions: ArchiveTypeFilter[] = [
+  "all",
+  "image",
+  "caption",
+  "note",
+  "link",
+  "campaign",
+];
 
 const workspaceId = "seed:ws001";
 const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
@@ -43,6 +63,7 @@ const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseU
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
+  const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>({});
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -78,8 +99,9 @@ export function App() {
   useEffect(() => {
     let isCurrent = true;
 
+    setIsLoading(true);
     itemCardReader
-      .listItemCards({ workspaceId })
+      .listItemCards({ workspaceId, filters: itemCardFilters })
       .then((nextItems) => {
         if (isCurrent) {
           setItems(nextItems);
@@ -102,7 +124,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [itemCardFilters]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -235,13 +257,12 @@ export function App() {
         actor: "system",
       });
 
-      const nextDetail = await itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id });
+      const [nextDetail, nextItems] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
+      ]);
       setDetail(nextDetail);
-      setItems((currentItems) =>
-        currentItems.map((item) =>
-          item.id === nextDetail.id ? { ...item, status: nextDetail.status } : item,
-        ),
-      );
+      setItems(nextItems);
     } catch (error: unknown) {
       console.error(error);
       setStatusWriteError("Unable to change item status.");
@@ -268,7 +289,7 @@ export function App() {
 
       const [nextDetail, nextItems] = await Promise.all([
         itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
-        itemCardReader.listItemCards({ workspaceId }),
+        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
       ]);
       setDetail(nextDetail);
       setItems(nextItems);
@@ -370,7 +391,7 @@ export function App() {
       const [nextDetail, nextCampaignOptions, nextItems] = await Promise.all([
         itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
         itemCampaignClient.listCampaignOptions({ workspaceId, itemId: detail.id }),
-        itemCardReader.listItemCards({ workspaceId }),
+        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
       ]);
       setDetail(nextDetail);
       setCampaignOptions(nextCampaignOptions);
@@ -401,7 +422,7 @@ export function App() {
         sourceExternalId: captureSourceExternalId(),
         actor: "system",
       });
-      const nextItems = await itemCardReader.listItemCards({ workspaceId });
+      const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
       setItems(nextItems);
       setReadError(null);
       setCaptureNotice("Captured to inbox.");
@@ -412,6 +433,20 @@ export function App() {
     } finally {
       setIsCapturing(false);
     }
+  };
+
+  const updateStatusFilter = (status: ArchiveStatusFilter) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      status: status === "all" ? undefined : status,
+    }));
+  };
+
+  const updateTypeFilter = (type: ArchiveTypeFilter) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      type: type === "all" ? undefined : type,
+    }));
   };
 
   if (route.kind === "item") {
@@ -492,15 +527,70 @@ export function App() {
             pending={isCapturing}
           />
         ) : null}
+        <ArchiveFilterControls
+          filters={itemCardFilters}
+          loading={isLoading}
+          onStatusChange={updateStatusFilter}
+          onTypeChange={updateTypeFilter}
+        />
         <MasonryGrid
           items={renderedItems}
           density="comfortable"
           loading={isLoading}
-          emptyState={<p className="proof-empty">{readError ?? "No seeded proof items."}</p>}
-          ariaLabel="seeded proof items grid"
+          emptyState={
+            <p className="proof-empty">
+              {readError ?? "No items match the current archive filters."}
+            </p>
+          }
+          ariaLabel="filtered archive items grid"
         />
       </section>
     </main>
+  );
+}
+
+function ArchiveFilterControls({
+  filters,
+  loading,
+  onStatusChange,
+  onTypeChange,
+}: {
+  filters: ItemCardFilters;
+  loading: boolean;
+  onStatusChange: (status: ArchiveStatusFilter) => void;
+  onTypeChange: (type: ArchiveTypeFilter) => void;
+}) {
+  return (
+    <form className="archive-filters" aria-label="archive filters">
+      <label>
+        <span>status</span>
+        <select
+          disabled={loading}
+          onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
+          value={filters.status ?? "all"}
+        >
+          {statusFilterOptions.map((status) => (
+            <option key={status} value={status}>
+              {status === "all" ? "all statuses" : status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>type</span>
+        <select
+          disabled={loading}
+          onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
+          value={filters.type ?? "all"}
+        >
+          {typeFilterOptions.map((type) => (
+            <option key={type} value={type}>
+              {type === "all" ? "all types" : type}
+            </option>
+          ))}
+        </select>
+      </label>
+    </form>
   );
 }
 

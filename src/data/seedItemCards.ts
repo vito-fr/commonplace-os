@@ -75,11 +75,19 @@ export const seedFixtureItemCardReader: ItemCardReader = {
   },
 };
 
-function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds }: ItemCardQuery) {
-  return itemIds.map((id) => {
+function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, filters }: ItemCardQuery) {
+  return itemIds.flatMap((id) => {
     const item = requireFixture(items.find((row) => row.id === id), `item ${id}`);
     if (item.workspace_id !== workspaceId) {
       throw new Error(`Seed fixture item ${id} is outside workspace ${workspaceId}`);
+    }
+
+    if (filters?.status && item.status !== filters.status) {
+      return [];
+    }
+
+    if (filters?.type && item.type !== filters.type) {
+      return [];
     }
 
     const source = sources.find((row) => row.id === item.source_id);

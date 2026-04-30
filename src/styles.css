@@ -123,6 +123,36 @@ select {
   font-size: 12px;
 }
 
+.archive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  border-top: 1px solid var(--color-rule);
+  padding: 18px 0 22px;
+}
+
+.archive-filters label {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.archive-filters select {
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-ink);
+  padding: 8px 9px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .item-card {
   position: relative;
   display: flex;
