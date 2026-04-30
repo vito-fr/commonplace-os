@@ -33,6 +33,7 @@ export interface ItemCardProps {
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
+  detailHref?: string;
   onNavigate?: (id: string) => void;
 }
 
@@ -53,6 +54,7 @@ export function ItemCard({
   hasPendingAIAnnotations = false,
   rightsStatus = null,
   isSelected = false,
+  detailHref,
   onNavigate,
 }: ItemCardProps) {
   const isRetired = status === "retired";
@@ -66,7 +68,7 @@ export function ItemCard({
     .filter(Boolean)
     .join(" ");
 
-  const itemHref = `/items/${encodeURIComponent(id)}`;
+  const itemHref = detailHref ?? `/items/${encodeURIComponent(id)}`;
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (

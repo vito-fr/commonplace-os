@@ -73,7 +73,7 @@ const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseU
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
-  const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>({});
+  const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -98,6 +98,7 @@ export function App() {
   useEffect(() => {
     const syncRoute = () => {
       setRoute(getRouteFromLocation());
+      setItemCardFilters(getFiltersFromLocation());
     };
 
     window.addEventListener("popstate", syncRoute);
@@ -105,6 +106,18 @@ export function App() {
       window.removeEventListener("popstate", syncRoute);
     };
   }, []);
+
+  useEffect(() => {
+    const nextUrl =
+      route.kind === "item"
+        ? buildItemDetailUrl(route.itemId, itemCardFilters)
+        : buildArchiveUrl(itemCardFilters);
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (currentUrl !== nextUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [itemCardFilters, route]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -242,12 +255,12 @@ export function App() {
   }, [route]);
 
   const openItemDetail = (itemId: string) => {
-    window.history.pushState(null, "", `/items/${encodeURIComponent(itemId)}`);
+    window.history.pushState(null, "", buildItemDetailUrl(itemId, itemCardFilters));
     setRoute({ kind: "item", itemId });
   };
 
   const closeItemDetail = () => {
-    window.history.pushState(null, "", "/");
+    window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
     setRoute({ kind: "grid" });
   };
 
@@ -532,7 +545,11 @@ export function App() {
   }
 
   const renderedItems = isPocketBaseMode
-    ? items.map((item) => ({ ...item, onNavigate: openItemDetail }))
+    ? items.map((item) => ({
+        ...item,
+        detailHref: buildItemDetailUrl(item.id, itemCardFilters),
+        onNavigate: openItemDetail,
+      }))
     : items;
 
   return (
@@ -714,6 +731,76 @@ function getRouteFromLocation(): AppRoute {
   }
 
   return { kind: "item", itemId: decodeURIComponent(match[1]) };
+}
+
+function getFiltersFromLocation(): ItemCardFilters {
+  const searchParams = new URLSearchParams(window.location.search);
+  const filters: ItemCardFilters = {};
+  const status = searchParams.get("status");
+  const type = searchParams.get("type");
+  const source = searchParams.get("source");
+  const text = searchParams.get("q")?.trim();
+
+  if (isStatusFilter(status)) {
+    filters.status = status;
+  }
+
+  if (isTypeFilter(type)) {
+    filters.type = type;
+  }
+
+  if (isSourceFilter(source)) {
+    filters.source = source;
+  }
+
+  if (text) {
+    filters.text = text;
+  }
+
+  return filters;
+}
+
+function buildArchiveUrl(filters: ItemCardFilters) {
+  return `/${buildFilterSearch(filters)}`;
+}
+
+function buildItemDetailUrl(itemId: string, filters: ItemCardFilters) {
+  return `/items/${encodeURIComponent(itemId)}${buildFilterSearch(filters)}`;
+}
+
+function buildFilterSearch(filters: ItemCardFilters) {
+  const searchParams = new URLSearchParams();
+
+  if (filters.status) {
+    searchParams.set("status", filters.status);
+  }
+
+  if (filters.type) {
+    searchParams.set("type", filters.type);
+  }
+
+  if (filters.source) {
+    searchParams.set("source", filters.source);
+  }
+
+  if (filters.text?.trim()) {
+    searchParams.set("q", filters.text.trim());
+  }
+
+  const search = searchParams.toString();
+  return search ? `?${search}` : "";
+}
+
+function isStatusFilter(value: string | null): value is ItemStatus {
+  return value !== null && value !== "all" && statusFilterOptions.includes(value as ArchiveStatusFilter);
+}
+
+function isTypeFilter(value: string | null): value is ItemType {
+  return value !== null && value !== "all" && typeFilterOptions.includes(value as ArchiveTypeFilter);
+}
+
+function isSourceFilter(value: string | null): value is ItemSourceFilter {
+  return value !== null && value !== "all" && sourceFilterOptions.includes(value as ArchiveSourceFilter);
 }
 
 function captureSourceExternalId() {
