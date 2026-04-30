@@ -563,6 +563,7 @@ export function App() {
         <p className="proof-kicker">archive</p>
         <h1 id="proof-title">Archive</h1>
         <ArchiveUsageSummary
+          captureEnabled={isPocketBaseMode}
           filters={itemCardFilters}
           itemCount={items.length}
           loading={isLoading}
@@ -641,12 +642,14 @@ function ArchiveResultHeader({
 }
 
 function ArchiveUsageSummary({
+  captureEnabled,
   filters,
   itemCount,
   loading,
   modeLabel,
   readError,
 }: {
+  captureEnabled: boolean;
   filters: ItemCardFilters;
   itemCount: number;
   loading: boolean;
@@ -669,6 +672,10 @@ function ArchiveUsageSummary({
       <div className="archive-overview__item">
         <dt>results</dt>
         <dd>{resultLabel}</dd>
+      </div>
+      <div className="archive-overview__item">
+        <dt>capture</dt>
+        <dd>{captureEnabled ? "manual note" : "seed view"}</dd>
       </div>
       <div className="archive-overview__item">
         <dt>view</dt>
@@ -907,8 +914,12 @@ function CaptureNoteForm({
 
   return (
     <form className="capture-note" aria-label="capture note" onSubmit={submit}>
+      <div className="capture-note__header">
+        <span>capture</span>
+        <p>manual note · inbox</p>
+      </div>
       <label>
-        <span>Capture note</span>
+        <span>body</span>
         <textarea
           disabled={pending}
           onChange={(event) => setBody(event.target.value)}

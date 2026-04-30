@@ -264,7 +264,7 @@ export function ItemDetailView({
             <span aria-hidden="true">·</span>
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
-          <DetailSectionMap item={item} />
+          <ItemWorkSummary item={item} />
           {hasLifecycleActions(item.status, statusActionError, retirementActionError) ? (
             <div className="item-detail__action-stack">
               <DetailActionGroup title="Lifecycle" meta="status changes">
@@ -285,6 +285,7 @@ export function ItemDetailView({
               </DetailActionGroup>
             </div>
           ) : null}
+          <DetailSectionMap item={item} />
           <dl>
             <Metadata label="ID" value={item.id} />
             <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
@@ -297,6 +298,29 @@ export function ItemDetailView({
         </aside>
       </div>
     </article>
+  );
+}
+
+function ItemWorkSummary({ item }: { item: ItemDetail }) {
+  return (
+    <dl className="item-detail__work-summary" aria-label="item work state">
+      <div>
+        <dt>lifecycle</dt>
+        <dd>{item.status}</dd>
+      </div>
+      <div>
+        <dt>rights</dt>
+        <dd>{item.rightsStatus}</dd>
+      </div>
+      <div>
+        <dt>campaigns</dt>
+        <dd>{formatCount(item.campaignAttachments.length, "attachment", "attachments")}</dd>
+      </div>
+      <div>
+        <dt>relationships</dt>
+        <dd>{formatCount(item.relationships.length, "relationship", "relationships")}</dd>
+      </div>
+    </dl>
   );
 }
 

@@ -117,6 +117,30 @@ select {
   padding: 18px 0 24px;
 }
 
+.capture-note__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capture-note__header span {
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.capture-note__header p {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+  text-transform: lowercase;
+}
+
 .capture-note label {
   display: grid;
   gap: 7px;
@@ -783,6 +807,27 @@ select {
   font-size: 13px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.item-detail__metadata .item-detail__work-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 0;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 12px;
+}
+
+.item-detail__work-summary div {
+  min-width: 0;
+}
+
+.item-detail__work-summary dt {
+  margin: 0 0 4px;
+}
+
+.item-detail__work-summary dd {
+  margin: 0;
 }
 
 .detail-section {
