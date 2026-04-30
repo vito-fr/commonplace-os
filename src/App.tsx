@@ -4,6 +4,10 @@ import type { ItemCardProps } from "./components/items";
 import { ItemDetailView } from "./components/items/ItemDetail";
 import type { ItemCardReader } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
+import {
+  createPocketBaseItemCollectionClient,
+  type CollectionOption,
+} from "./data/pocketBaseItemCollection";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
@@ -24,6 +28,7 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
+const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
@@ -37,8 +42,11 @@ export function App() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [isCollectionAttaching, setIsCollectionAttaching] = useState(false);
+  const [collectionWriteError, setCollectionWriteError] = useState<string | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
   const [isRelationshipCreating, setIsRelationshipCreating] = useState(false);
@@ -89,8 +97,11 @@ export function App() {
 
     if (route.kind !== "item") {
       setDetail(null);
+      setCollectionOptions([]);
       setDetailError(null);
       setIsDetailLoading(false);
+      setCollectionWriteError(null);
+      setIsCollectionAttaching(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
@@ -102,8 +113,11 @@ export function App() {
 
     if (!isPocketBaseMode) {
       setDetail(null);
+      setCollectionOptions([]);
       setDetailError("Item detail proof requires PocketBase reader mode.");
       setIsDetailLoading(false);
+      setCollectionWriteError(null);
+      setIsCollectionAttaching(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
@@ -115,20 +129,38 @@ export function App() {
 
     setIsDetailLoading(true);
     setDetailError(null);
+    setCollectionWriteError(null);
     setStatusWriteError(null);
     setRelationshipWriteError(null);
 
     itemDetailReader
       .getItemDetail({ workspaceId, itemId: route.itemId })
-      .then((nextDetail) => {
+      .then(async (nextDetail) => {
         if (isCurrent) {
           setDetail(nextDetail);
+        }
+
+        try {
+          const nextCollectionOptions = await itemCollectionClient.listCollectionOptions({
+            workspaceId,
+            itemId: route.itemId,
+          });
+          if (isCurrent) {
+            setCollectionOptions(nextCollectionOptions);
+          }
+        } catch (error: unknown) {
+          if (isCurrent) {
+            console.error(error);
+            setCollectionOptions([]);
+            setCollectionWriteError("Unable to load collection options.");
+          }
         }
       })
       .catch((error: unknown) => {
         if (isCurrent) {
           console.error(error);
           setDetail(null);
+          setCollectionOptions([]);
           setDetailError("Unable to load item detail.");
         }
       })
@@ -213,6 +245,37 @@ export function App() {
     }
   };
 
+  const attachItemToCollection = async ({ collectionId }: { collectionId: string }) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsCollectionAttaching(true);
+    setCollectionWriteError(null);
+
+    try {
+      await itemCollectionClient.attachCollection({
+        workspaceId,
+        itemId: detail.id,
+        collectionId,
+        actor: "system",
+      });
+
+      const [nextDetail, nextCollectionOptions] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCollectionClient.listCollectionOptions({ workspaceId, itemId: detail.id }),
+      ]);
+      setDetail(nextDetail);
+      setCollectionOptions(nextCollectionOptions);
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionWriteError("Unable to attach collection.");
+      throw error;
+    } finally {
+      setIsCollectionAttaching(false);
+    }
+  };
+
   const captureNote = async (body: string) => {
     if (!isPocketBaseMode) {
       return;
@@ -250,6 +313,11 @@ export function App() {
         id: item.id,
         label: item.title ?? `${item.type} item`,
       }));
+    const collectionTargetOptions = collectionOptions.map((collection) => ({
+      id: collection.id,
+      label: collection.name,
+      alreadyAttached: collection.alreadyAttached,
+    }));
 
     return (
       <main className="app-shell" aria-label="Vita archive">
@@ -265,6 +333,10 @@ export function App() {
           relationshipActionPending={isRelationshipCreating}
           relationshipActionError={relationshipWriteError}
           relationshipTargetOptions={relationshipTargetOptions}
+          onAttachCollection={attachItemToCollection}
+          collectionActionPending={isCollectionAttaching}
+          collectionActionError={collectionWriteError}
+          collectionOptions={collectionTargetOptions}
         />
       </main>
     );

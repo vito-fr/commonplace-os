@@ -7,9 +7,19 @@ type RelationshipTargetOption = {
   label: string;
 };
 
+type CollectionOption = {
+  id: string;
+  label: string;
+  alreadyAttached: boolean;
+};
+
 type RelationshipCreateInput = {
   toId: string;
   note: string | null;
+};
+
+type CollectionAttachInput = {
+  collectionId: string;
 };
 
 export type ItemDetailViewProps = {
@@ -24,6 +34,10 @@ export type ItemDetailViewProps = {
   relationshipActionPending?: boolean;
   relationshipActionError?: string | null;
   relationshipTargetOptions?: RelationshipTargetOption[];
+  onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
+  collectionActionPending?: boolean;
+  collectionActionError?: string | null;
+  collectionOptions?: CollectionOption[];
 };
 
 export function ItemDetailView({
@@ -38,6 +52,10 @@ export function ItemDetailView({
   relationshipActionPending = false,
   relationshipActionError = null,
   relationshipTargetOptions = [],
+  onAttachCollection,
+  collectionActionPending = false,
+  collectionActionError = null,
+  collectionOptions = [],
 }: ItemDetailViewProps) {
   if (loading) {
     return (
@@ -124,6 +142,12 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Collections">
+            <CollectionAttachForm
+              error={collectionActionError}
+              onAttachCollection={onAttachCollection}
+              options={collectionOptions}
+              pending={collectionActionPending}
+            />
             {item.collections.length > 0 ? (
               <div className="tag-row">
                 {item.collections.map((collection) => (
@@ -216,6 +240,79 @@ export function ItemDetailView({
         </aside>
       </div>
     </article>
+  );
+}
+
+function CollectionAttachForm({
+  error,
+  onAttachCollection,
+  options,
+  pending,
+}: {
+  error: string | null;
+  onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
+  options: CollectionOption[];
+  pending: boolean;
+}) {
+  const [collectionId, setCollectionId] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const availableOptions = options.filter((option) => !option.alreadyAttached);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedCollectionId = collectionId.trim();
+
+    if (!normalizedCollectionId) {
+      setLocalError("Collection is required.");
+      return;
+    }
+
+    if (!onAttachCollection) {
+      setLocalError("Collection attachment requires PocketBase reader mode.");
+      return;
+    }
+
+    setLocalError(null);
+
+    try {
+      await onAttachCollection({ collectionId: normalizedCollectionId });
+      setCollectionId("");
+    } catch {
+      // The parent owns the persisted write error message.
+    }
+  };
+
+  return (
+    <form className="collection-attach" aria-label="attach to collection" onSubmit={submit}>
+      <div className="collection-attach__fields">
+        <label>
+          <span>collection</span>
+          <select
+            disabled={pending || availableOptions.length === 0}
+            onChange={(event) => setCollectionId(event.target.value)}
+            value={collectionId}
+          >
+            <option value="">select collection</option>
+            {availableOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button
+        className="status-action"
+        disabled={pending || availableOptions.length === 0}
+        type="submit"
+      >
+        {pending ? "Attaching" : "Attach to collection"}
+      </button>
+      {availableOptions.length === 0 ? (
+        <p className="detail-muted">No available collections.</p>
+      ) : null}
+      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
+    </form>
   );
 }
 

@@ -588,19 +588,22 @@ select {
   gap: 10px;
 }
 
-.relationship-create {
+.relationship-create,
+.collection-attach {
   display: grid;
   gap: 10px;
   border-top: 1px solid var(--color-rule);
   padding: 0 0 18px;
 }
 
-.relationship-create__fields {
+.relationship-create__fields,
+.collection-attach__fields {
   display: grid;
   gap: 10px;
 }
 
-.relationship-create label {
+.relationship-create label,
+.collection-attach label {
   display: grid;
   gap: 5px;
   color: var(--color-muted);
@@ -610,7 +613,8 @@ select {
 }
 
 .relationship-create input,
-.relationship-create textarea {
+.relationship-create textarea,
+.collection-attach select {
   width: 100%;
   border: 1px solid var(--color-rule);
   border-radius: 2px;
