@@ -5,6 +5,10 @@ import { ItemDetailView } from "./components/items/ItemDetail";
 import type { ItemCardReader } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
+  createPocketBaseItemCampaignClient,
+  type CampaignOption,
+} from "./data/pocketBaseItemCampaign";
+import {
   createPocketBaseItemCollectionClient,
   type CollectionOption,
 } from "./data/pocketBaseItemCollection";
@@ -28,6 +32,7 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
+const itemCampaignClient = createPocketBaseItemCampaignClient({ baseUrl: pocketBaseUrl });
 const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
@@ -42,9 +47,12 @@ export function App() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [isCampaignAttaching, setIsCampaignAttaching] = useState(false);
+  const [campaignWriteError, setCampaignWriteError] = useState<string | null>(null);
   const [isCollectionAttaching, setIsCollectionAttaching] = useState(false);
   const [collectionWriteError, setCollectionWriteError] = useState<string | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
@@ -97,9 +105,12 @@ export function App() {
 
     if (route.kind !== "item") {
       setDetail(null);
+      setCampaignOptions([]);
       setCollectionOptions([]);
       setDetailError(null);
       setIsDetailLoading(false);
+      setCampaignWriteError(null);
+      setIsCampaignAttaching(false);
       setCollectionWriteError(null);
       setIsCollectionAttaching(false);
       setStatusWriteError(null);
@@ -113,9 +124,12 @@ export function App() {
 
     if (!isPocketBaseMode) {
       setDetail(null);
+      setCampaignOptions([]);
       setCollectionOptions([]);
       setDetailError("Item detail proof requires PocketBase reader mode.");
       setIsDetailLoading(false);
+      setCampaignWriteError(null);
+      setIsCampaignAttaching(false);
       setCollectionWriteError(null);
       setIsCollectionAttaching(false);
       setStatusWriteError(null);
@@ -129,6 +143,7 @@ export function App() {
 
     setIsDetailLoading(true);
     setDetailError(null);
+    setCampaignWriteError(null);
     setCollectionWriteError(null);
     setStatusWriteError(null);
     setRelationshipWriteError(null);
@@ -141,17 +156,26 @@ export function App() {
         }
 
         try {
-          const nextCollectionOptions = await itemCollectionClient.listCollectionOptions({
-            workspaceId,
-            itemId: route.itemId,
-          });
+          const [nextCollectionOptions, nextCampaignOptions] = await Promise.all([
+            itemCollectionClient.listCollectionOptions({
+              workspaceId,
+              itemId: route.itemId,
+            }),
+            itemCampaignClient.listCampaignOptions({
+              workspaceId,
+              itemId: route.itemId,
+            }),
+          ]);
           if (isCurrent) {
             setCollectionOptions(nextCollectionOptions);
+            setCampaignOptions(nextCampaignOptions);
           }
         } catch (error: unknown) {
           if (isCurrent) {
             console.error(error);
+            setCampaignOptions([]);
             setCollectionOptions([]);
+            setCampaignWriteError("Unable to load campaign options.");
             setCollectionWriteError("Unable to load collection options.");
           }
         }
@@ -160,6 +184,7 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setDetail(null);
+          setCampaignOptions([]);
           setCollectionOptions([]);
           setDetailError("Unable to load item detail.");
         }
@@ -276,6 +301,49 @@ export function App() {
     }
   };
 
+  const attachItemToCampaign = async ({
+    campaignId,
+    role,
+    rightsOverrideNote,
+  }: {
+    campaignId: string;
+    role: "primary" | "supporting" | "reference";
+    rightsOverrideNote: string | null;
+  }) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsCampaignAttaching(true);
+    setCampaignWriteError(null);
+
+    try {
+      await itemCampaignClient.attachCampaign({
+        workspaceId,
+        itemId: detail.id,
+        campaignId,
+        role,
+        rightsOverrideNote: rightsOverrideNote ?? undefined,
+        actor: "system",
+      });
+
+      const [nextDetail, nextCampaignOptions, nextItems] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCampaignClient.listCampaignOptions({ workspaceId, itemId: detail.id }),
+        itemCardReader.listItemCards({ workspaceId }),
+      ]);
+      setDetail(nextDetail);
+      setCampaignOptions(nextCampaignOptions);
+      setItems(nextItems);
+    } catch (error: unknown) {
+      console.error(error);
+      setCampaignWriteError("Unable to attach campaign.");
+      throw error;
+    } finally {
+      setIsCampaignAttaching(false);
+    }
+  };
+
   const captureNote = async (body: string) => {
     if (!isPocketBaseMode) {
       return;
@@ -318,6 +386,12 @@ export function App() {
       label: collection.name,
       alreadyAttached: collection.alreadyAttached,
     }));
+    const campaignTargetOptions = campaignOptions.map((campaign) => ({
+      id: campaign.id,
+      label: campaign.title ?? `${campaign.phase ?? campaign.status} campaign`,
+      phase: campaign.phase,
+      alreadyAttached: campaign.alreadyAttached,
+    }));
 
     return (
       <main className="app-shell" aria-label="Vita archive">
@@ -337,6 +411,10 @@ export function App() {
           collectionActionPending={isCollectionAttaching}
           collectionActionError={collectionWriteError}
           collectionOptions={collectionTargetOptions}
+          onAttachCampaign={attachItemToCampaign}
+          campaignActionPending={isCampaignAttaching}
+          campaignActionError={campaignWriteError}
+          campaignOptions={campaignTargetOptions}
         />
       </main>
     );

@@ -13,6 +13,13 @@ type CollectionOption = {
   alreadyAttached: boolean;
 };
 
+type CampaignOption = {
+  id: string;
+  label: string;
+  phase: string | null;
+  alreadyAttached: boolean;
+};
+
 type RelationshipCreateInput = {
   toId: string;
   note: string | null;
@@ -20,6 +27,14 @@ type RelationshipCreateInput = {
 
 type CollectionAttachInput = {
   collectionId: string;
+};
+
+type CampaignRole = "primary" | "supporting" | "reference";
+
+type CampaignAttachInput = {
+  campaignId: string;
+  role: CampaignRole;
+  rightsOverrideNote: string | null;
 };
 
 export type ItemDetailViewProps = {
@@ -38,6 +53,10 @@ export type ItemDetailViewProps = {
   collectionActionPending?: boolean;
   collectionActionError?: string | null;
   collectionOptions?: CollectionOption[];
+  onAttachCampaign?: (input: CampaignAttachInput) => Promise<void> | void;
+  campaignActionPending?: boolean;
+  campaignActionError?: string | null;
+  campaignOptions?: CampaignOption[];
 };
 
 export function ItemDetailView({
@@ -56,6 +75,10 @@ export function ItemDetailView({
   collectionActionPending = false,
   collectionActionError = null,
   collectionOptions = [],
+  onAttachCampaign,
+  campaignActionPending = false,
+  campaignActionError = null,
+  campaignOptions = [],
 }: ItemDetailViewProps) {
   if (loading) {
     return (
@@ -162,6 +185,13 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Campaign attachments">
+            <CampaignAttachForm
+              error={campaignActionError}
+              onAttachCampaign={onAttachCampaign}
+              options={campaignOptions}
+              pending={campaignActionPending}
+              rightsStatus={item.rightsStatus}
+            />
             {item.campaignAttachments.length > 0 ? (
               <div className="detail-list">
                 {item.campaignAttachments.map((attachment) => (
@@ -243,6 +273,126 @@ export function ItemDetailView({
   );
 }
 
+function CampaignAttachForm({
+  error,
+  onAttachCampaign,
+  options,
+  pending,
+  rightsStatus,
+}: {
+  error: string | null;
+  onAttachCampaign?: (input: CampaignAttachInput) => Promise<void> | void;
+  options: CampaignOption[];
+  pending: boolean;
+  rightsStatus: ItemDetail["rightsStatus"];
+}) {
+  const [campaignId, setCampaignId] = useState("");
+  const [role, setRole] = useState<CampaignRole>("supporting");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const availableOptions = options.filter((option) => !option.alreadyAttached);
+  const warningState = getRightsWarningState(rightsStatus, role);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedCampaignId = campaignId.trim();
+    const normalizedOverrideNote = overrideNote.trim();
+
+    if (!normalizedCampaignId) {
+      setLocalError("Campaign is required.");
+      return;
+    }
+
+    if (warningState === "blocking") {
+      setLocalError("This rights status blocks campaign attachment.");
+      return;
+    }
+
+    if (warningState === "advisory" && !normalizedOverrideNote) {
+      setLocalError("Rights override note is required.");
+      return;
+    }
+
+    if (!onAttachCampaign) {
+      setLocalError("Campaign attachment requires PocketBase reader mode.");
+      return;
+    }
+
+    setLocalError(null);
+
+    try {
+      await onAttachCampaign({
+        campaignId: normalizedCampaignId,
+        role,
+        rightsOverrideNote: warningState === "advisory" ? normalizedOverrideNote : null,
+      });
+      setCampaignId("");
+      setRole("supporting");
+      setOverrideNote("");
+    } catch {
+      // The parent owns the persisted write error message.
+    }
+  };
+
+  return (
+    <form className="campaign-attach" aria-label="attach to campaign" onSubmit={submit}>
+      <div className="campaign-attach__fields">
+        <label>
+          <span>campaign</span>
+          <select
+            disabled={pending || availableOptions.length === 0}
+            onChange={(event) => setCampaignId(event.target.value)}
+            value={campaignId}
+          >
+            <option value="">select campaign</option>
+            {availableOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>role</span>
+          <select
+            disabled={pending || availableOptions.length === 0}
+            onChange={(event) => setRole(event.target.value as CampaignRole)}
+            value={role}
+          >
+            <option value="supporting">supporting</option>
+            <option value="primary">primary</option>
+            <option value="reference">reference</option>
+          </select>
+        </label>
+        {warningState === "advisory" ? (
+          <label>
+            <span>rights override note</span>
+            <textarea
+              disabled={pending}
+              onChange={(event) => setOverrideNote(event.target.value)}
+              placeholder="required"
+              rows={2}
+              value={overrideNote}
+            />
+          </label>
+        ) : null}
+      </div>
+      <RightsWarning rightsStatus={rightsStatus} role={role} state={warningState} />
+      <button
+        className="status-action"
+        disabled={pending || availableOptions.length === 0 || warningState === "blocking"}
+        type="submit"
+      >
+        {pending ? "Attaching" : "Attach to campaign"}
+      </button>
+      {availableOptions.length === 0 ? (
+        <p className="detail-muted">No available campaigns.</p>
+      ) : null}
+      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
+    </form>
+  );
+}
+
 function CollectionAttachForm({
   error,
   onAttachCollection,
@@ -314,6 +464,57 @@ function CollectionAttachForm({
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
   );
+}
+
+function RightsWarning({
+  rightsStatus,
+  role,
+  state,
+}: {
+  rightsStatus: ItemDetail["rightsStatus"];
+  role: CampaignRole;
+  state: "none" | "advisory" | "blocking";
+}) {
+  if (state === "none") {
+    return null;
+  }
+
+  if (state === "blocking") {
+    return (
+      <div className="rights-warning rights-warning--blocking" role="alert">
+        <span className="rights-warning__title">Rights block</span>
+        <p>{rightsStatus} items cannot be attached to campaigns.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rights-warning rights-warning--advisory">
+      <span className="rights-warning__title">Rights warning</span>
+      <p>
+        {rightsStatus} requires an override note before attaching as {role}.
+      </p>
+    </div>
+  );
+}
+
+function getRightsWarningState(
+  rightsStatus: ItemDetail["rightsStatus"],
+  role: CampaignRole,
+): "none" | "advisory" | "blocking" {
+  if (rightsStatus === "restricted" || rightsStatus === "expired") {
+    return "blocking";
+  }
+
+  if (rightsStatus === "unknown") {
+    return "advisory";
+  }
+
+  if (rightsStatus === "reference_only" && (role === "primary" || role === "supporting")) {
+    return "advisory";
+  }
+
+  return "none";
 }
 
 function renderHero(item: ItemDetail) {
