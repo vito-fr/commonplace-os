@@ -16,6 +16,7 @@ import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
 import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRelationship";
+import { createPocketBaseItemRetirementWriter } from "./data/pocketBaseItemRetirement";
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
@@ -36,6 +37,7 @@ const itemCampaignClient = createPocketBaseItemCampaignClient({ baseUrl: pocketB
 const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
+const itemRetirementWriter = createPocketBaseItemRetirementWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
 export function App() {
@@ -59,6 +61,8 @@ export function App() {
   const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
   const [isRelationshipCreating, setIsRelationshipCreating] = useState(false);
   const [relationshipWriteError, setRelationshipWriteError] = useState<string | null>(null);
+  const [isRetiringWithReplacement, setIsRetiringWithReplacement] = useState(false);
+  const [retirementWriteError, setRetirementWriteError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -117,6 +121,8 @@ export function App() {
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
       setIsRelationshipCreating(false);
+      setRetirementWriteError(null);
+      setIsRetiringWithReplacement(false);
       return () => {
         isCurrent = false;
       };
@@ -136,6 +142,8 @@ export function App() {
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
       setIsRelationshipCreating(false);
+      setRetirementWriteError(null);
+      setIsRetiringWithReplacement(false);
       return () => {
         isCurrent = false;
       };
@@ -147,6 +155,7 @@ export function App() {
     setCollectionWriteError(null);
     setStatusWriteError(null);
     setRelationshipWriteError(null);
+    setRetirementWriteError(null);
 
     itemDetailReader
       .getItemDetail({ workspaceId, itemId: route.itemId })
@@ -238,6 +247,37 @@ export function App() {
       setStatusWriteError("Unable to change item status.");
     } finally {
       setIsStatusUpdating(false);
+    }
+  };
+
+  const retireItemWithReplacement = async ({ replacementId }: { replacementId: string }) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsRetiringWithReplacement(true);
+    setRetirementWriteError(null);
+
+    try {
+      await itemRetirementWriter.retireWithReplacement({
+        workspaceId,
+        itemId: detail.id,
+        replacementId,
+        actor: "system",
+      });
+
+      const [nextDetail, nextItems] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCardReader.listItemCards({ workspaceId }),
+      ]);
+      setDetail(nextDetail);
+      setItems(nextItems);
+    } catch (error: unknown) {
+      console.error(error);
+      setRetirementWriteError("Unable to retire with replacement.");
+      throw error;
+    } finally {
+      setIsRetiringWithReplacement(false);
     }
   };
 
@@ -375,8 +415,15 @@ export function App() {
   };
 
   if (route.kind === "item") {
+    const currentItemId = detail?.id ?? route.itemId;
     const relationshipTargetOptions = items
-      .filter((item) => item.id !== detail?.id)
+      .filter((item) => item.id !== currentItemId)
+      .map((item) => ({
+        id: item.id,
+        label: item.title ?? `${item.type} item`,
+      }));
+    const replacementTargetOptions = items
+      .filter((item) => item.id !== currentItemId && item.status !== "retired")
       .map((item) => ({
         id: item.id,
         label: item.title ?? `${item.type} item`,
@@ -401,8 +448,12 @@ export function App() {
           error={detailError}
           onBack={closeItemDetail}
           onChangeStatus={changeItemStatus}
-          statusActionPending={isStatusUpdating}
+          statusActionPending={isStatusUpdating || isRetiringWithReplacement}
           statusActionError={statusWriteError}
+          onRetireWithReplacement={retireItemWithReplacement}
+          retirementActionPending={isRetiringWithReplacement || isStatusUpdating}
+          retirementActionError={retirementWriteError}
+          retirementTargetOptions={replacementTargetOptions}
           onCreateRelationship={createItemRelationship}
           relationshipActionPending={isRelationshipCreating}
           relationshipActionError={relationshipWriteError}

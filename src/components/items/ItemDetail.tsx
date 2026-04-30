@@ -25,6 +25,10 @@ type RelationshipCreateInput = {
   note: string | null;
 };
 
+type RetirementInput = {
+  replacementId: string;
+};
+
 type CollectionAttachInput = {
   collectionId: string;
 };
@@ -45,6 +49,10 @@ export type ItemDetailViewProps = {
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
   statusActionError?: string | null;
+  onRetireWithReplacement?: (input: RetirementInput) => Promise<void> | void;
+  retirementActionPending?: boolean;
+  retirementActionError?: string | null;
+  retirementTargetOptions?: RelationshipTargetOption[];
   onCreateRelationship?: (input: RelationshipCreateInput) => Promise<void> | void;
   relationshipActionPending?: boolean;
   relationshipActionError?: string | null;
@@ -67,6 +75,10 @@ export function ItemDetailView({
   onChangeStatus,
   statusActionPending = false,
   statusActionError = null,
+  onRetireWithReplacement,
+  retirementActionPending = false,
+  retirementActionError = null,
+  retirementTargetOptions = [],
   onCreateRelationship,
   relationshipActionPending = false,
   relationshipActionError = null,
@@ -258,6 +270,14 @@ export function ItemDetailView({
             error={statusActionError}
             onChangeStatus={onChangeStatus}
           />
+          <RetireWithReplacementForm
+            currentItemId={item.id}
+            currentStatus={item.status}
+            error={retirementActionError}
+            onRetireWithReplacement={onRetireWithReplacement}
+            pending={retirementActionPending}
+            targetOptions={retirementTargetOptions}
+          />
           <dl>
             <Metadata label="ID" value={item.id} />
             <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
@@ -270,6 +290,90 @@ export function ItemDetailView({
         </aside>
       </div>
     </article>
+  );
+}
+
+function RetireWithReplacementForm({
+  currentItemId,
+  currentStatus,
+  error,
+  onRetireWithReplacement,
+  pending,
+  targetOptions,
+}: {
+  currentItemId: string;
+  currentStatus: ItemStatus;
+  error: string | null;
+  onRetireWithReplacement?: (input: RetirementInput) => Promise<void> | void;
+  pending: boolean;
+  targetOptions: RelationshipTargetOption[];
+}) {
+  const [replacementId, setReplacementId] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const availableOptions = targetOptions.filter((option) => option.id !== currentItemId);
+
+  if (!canRetireWithReplacement(currentStatus)) {
+    return null;
+  }
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedReplacementId = replacementId.trim();
+
+    if (!normalizedReplacementId) {
+      setLocalError("Replacement item is required.");
+      return;
+    }
+
+    if (normalizedReplacementId === currentItemId) {
+      setLocalError("Choose a different item.");
+      return;
+    }
+
+    if (!onRetireWithReplacement) {
+      setLocalError("Retirement linkage requires PocketBase reader mode.");
+      return;
+    }
+
+    setLocalError(null);
+
+    try {
+      await onRetireWithReplacement({ replacementId: normalizedReplacementId });
+      setReplacementId("");
+    } catch {
+      // The parent owns the persisted write error message.
+    }
+  };
+
+  return (
+    <form className="retirement-link" aria-label="retire with replacement" onSubmit={submit}>
+      <label>
+        <span>replacement</span>
+        <select
+          disabled={pending || availableOptions.length === 0}
+          onChange={(event) => setReplacementId(event.target.value)}
+          value={replacementId}
+        >
+          <option value="">select replacement</option>
+          {availableOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        className="status-action status-action--retire"
+        disabled={pending || availableOptions.length === 0}
+        type="submit"
+      >
+        {pending ? "Retiring" : "Retire with replacement"}
+      </button>
+      {availableOptions.length === 0 ? (
+        <p className="detail-muted">No available replacements.</p>
+      ) : null}
+      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
+    </form>
   );
 }
 
@@ -729,6 +833,10 @@ function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label
   }
 
   return [];
+}
+
+function canRetireWithReplacement(status: ItemStatus) {
+  return status === "inbox" || status === "triaged" || status === "active" || status === "archived";
 }
 
 function formatPayload(payload: string) {

@@ -589,12 +589,18 @@ select {
 }
 
 .relationship-create,
+.retirement-link,
 .collection-attach,
 .campaign-attach {
   display: grid;
   gap: 10px;
   border-top: 1px solid var(--color-rule);
   padding: 0 0 18px;
+}
+
+.retirement-link {
+  margin-top: 14px;
+  padding-top: 14px;
 }
 
 .relationship-create__fields,
@@ -605,6 +611,7 @@ select {
 }
 
 .relationship-create label,
+.retirement-link label,
 .collection-attach label,
 .campaign-attach label {
   display: grid;
@@ -617,6 +624,7 @@ select {
 
 .relationship-create input,
 .relationship-create textarea,
+.retirement-link select,
 .collection-attach select,
 .campaign-attach select,
 .campaign-attach textarea {
