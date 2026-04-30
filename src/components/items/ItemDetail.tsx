@@ -43,12 +43,27 @@ type CampaignAttachInput = {
 
 type ItemDetailRelationship = ItemDetail["relationships"][number];
 
+export type DetailArchiveNeighbor = {
+  id: string;
+  label: string;
+  meta: string;
+};
+
+export type DetailArchiveFlow = {
+  index: number;
+  total: number;
+  previous: DetailArchiveNeighbor | null;
+  next: DetailArchiveNeighbor | null;
+};
+
 export type ItemDetailViewProps = {
   item: ItemDetail | null;
   loading: boolean;
   error: string | null;
   archiveContext: string;
+  archiveFlow?: DetailArchiveFlow | null;
   onBack: () => void;
+  onOpenArchiveItem?: (itemId: string) => void;
   onOpenRelatedItem?: (itemId: string) => void;
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
@@ -76,7 +91,9 @@ export function ItemDetailView({
   loading,
   error,
   archiveContext,
+  archiveFlow = null,
   onBack,
+  onOpenArchiveItem,
   onOpenRelatedItem,
   onChangeStatus,
   statusActionPending = false,
@@ -279,6 +296,10 @@ export function ItemDetailView({
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
           <ItemWorkSummary item={item} />
+          <DetailArchiveFlowPanel
+            archiveFlow={archiveFlow}
+            onOpenArchiveItem={onOpenArchiveItem}
+          />
           <DetailSessionFocus item={item} showLifecycle={showsLifecycleActions} />
           <DetailActionMap showLifecycle={showsLifecycleActions} />
           {showsLifecycleActions ? (
@@ -337,6 +358,68 @@ function ItemWorkSummary({ item }: { item: ItemDetail }) {
         <dd>{formatCount(item.relationships.length, "relationship", "relationships")}</dd>
       </div>
     </dl>
+  );
+}
+
+function DetailArchiveFlowPanel({
+  archiveFlow,
+  onOpenArchiveItem,
+}: {
+  archiveFlow: DetailArchiveFlow | null;
+  onOpenArchiveItem?: (itemId: string) => void;
+}) {
+  if (!archiveFlow) {
+    return null;
+  }
+
+  return (
+    <nav className="item-detail__archive-flow" aria-label="archive sequence">
+      <div className="item-detail__archive-flow-header">
+        <span>archive sequence</span>
+        <span>
+          {archiveFlow.index} / {archiveFlow.total}
+        </span>
+      </div>
+      <div className="item-detail__archive-flow-actions">
+        <ArchiveFlowStep
+          direction="previous"
+          neighbor={archiveFlow.previous}
+          onOpenArchiveItem={onOpenArchiveItem}
+        />
+        <ArchiveFlowStep
+          direction="next"
+          neighbor={archiveFlow.next}
+          onOpenArchiveItem={onOpenArchiveItem}
+        />
+      </div>
+    </nav>
+  );
+}
+
+function ArchiveFlowStep({
+  direction,
+  neighbor,
+  onOpenArchiveItem,
+}: {
+  direction: "previous" | "next";
+  neighbor: DetailArchiveNeighbor | null;
+  onOpenArchiveItem?: (itemId: string) => void;
+}) {
+  return (
+    <button
+      className="item-detail__archive-step"
+      disabled={!neighbor || !onOpenArchiveItem}
+      type="button"
+      onClick={() => {
+        if (neighbor) {
+          onOpenArchiveItem?.(neighbor.id);
+        }
+      }}
+    >
+      <span>{direction}</span>
+      <span>{neighbor?.label ?? "none"}</span>
+      {neighbor ? <span>{neighbor.meta}</span> : null}
+    </button>
   );
 }
 

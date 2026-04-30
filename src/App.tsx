@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
-import { ItemDetailView } from "./components/items/ItemDetail";
+import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemDetail";
 import type { ItemCardFilters, ItemCardReader, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
@@ -493,6 +493,7 @@ export function App() {
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
     const archiveContextLabel = formatArchiveContext(itemCardFilters);
+    const archiveFlow = getDetailArchiveFlow(items, currentItemId);
     const relationshipTargetOptions = items
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
@@ -524,7 +525,9 @@ export function App() {
           loading={isDetailLoading}
           error={detailError}
           archiveContext={archiveContextLabel}
+          archiveFlow={archiveFlow}
           onBack={closeItemDetail}
+          onOpenArchiveItem={openItemDetail}
           onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
           statusActionPending={isStatusUpdating || isRetiringWithReplacement}
@@ -1055,6 +1058,33 @@ function formatArchiveContext(filters: ItemCardFilters) {
 
 function formatResultCount(itemCount: number) {
   return `${itemCount} ${itemCount === 1 ? "result" : "results"}`;
+}
+
+function getDetailArchiveFlow(items: ItemCardProps[], currentItemId: string): DetailArchiveFlow | null {
+  const currentIndex = items.findIndex((item) => item.id === currentItemId);
+
+  if (currentIndex === -1) {
+    return null;
+  }
+
+  return {
+    index: currentIndex + 1,
+    total: items.length,
+    previous: toArchiveNeighbor(items[currentIndex - 1]),
+    next: toArchiveNeighbor(items[currentIndex + 1]),
+  };
+}
+
+function toArchiveNeighbor(item: ItemCardProps | undefined) {
+  if (!item) {
+    return null;
+  }
+
+  return {
+    id: item.id,
+    label: item.title ?? `${item.type} item`,
+    meta: `${item.type} · ${item.status}`,
+  };
 }
 
 function getFilterSummaryParts(filters: ItemCardFilters) {
