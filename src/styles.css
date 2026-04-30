@@ -599,13 +599,28 @@ select {
   padding: 24px 0;
 }
 
+.detail-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .detail-section h2 {
-  margin: 0 0 14px;
+  margin: 0;
   color: var(--color-ink);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   text-transform: lowercase;
+}
+
+.detail-section__meta {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .detail-readable {
@@ -614,6 +629,14 @@ select {
   color: var(--color-ink);
   font-family: var(--font-serif);
   font-size: 22px;
+  line-height: 1.45;
+}
+
+.detail-empty {
+  border-top: 1px dashed var(--color-rule);
+  padding-top: 10px;
+  color: var(--color-muted);
+  font-size: 13px;
   line-height: 1.45;
 }
 

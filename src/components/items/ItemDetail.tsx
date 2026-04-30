@@ -131,14 +131,14 @@ export function ItemDetailView({
           </section>
 
           <Section title="Description">
-            <ReadableBlock value={item.description} fallback="No canonical description." />
+            <ReadableBlock value={item.description} fallback="No canonical description recorded." />
           </Section>
 
           <Section title="Summary">
-            <ReadableBlock value={item.summary} fallback="No canonical summary." />
+            <ReadableBlock value={item.summary} fallback="No canonical summary recorded." />
           </Section>
 
-          <Section title="Tags">
+          <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
             {item.tags.length > 0 ? (
               <div className="tag-row">
                 {item.tags.map((tag) => (
@@ -149,11 +149,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No tags.</p>
+              <DetailEmptyState label="No tags recorded." />
             )}
           </Section>
 
-          <Section title="Relationships">
+          <Section title="Relationships" meta={formatCount(item.relationships.length, "relationship", "relationships")}>
             <RelationshipCreateForm
               currentItemId={item.id}
               error={relationshipActionError}
@@ -172,11 +172,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No relationships.</p>
+              <DetailEmptyState label="No relationships recorded." />
             )}
           </Section>
 
-          <Section title="Collections">
+          <Section title="Collections" meta={formatCount(item.collections.length, "membership", "memberships")}>
             <CollectionAttachForm
               error={collectionActionError}
               onAttachCollection={onAttachCollection}
@@ -192,11 +192,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No collection memberships.</p>
+              <DetailEmptyState label="No collection memberships." />
             )}
           </Section>
 
-          <Section title="Campaign attachments">
+          <Section title="Campaign attachments" meta={formatCount(item.campaignAttachments.length, "attachment", "attachments")}>
             <CampaignAttachForm
               error={campaignActionError}
               onAttachCampaign={onAttachCampaign}
@@ -215,11 +215,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No campaign attachments.</p>
+              <DetailEmptyState label="No campaign attachments." />
             )}
           </Section>
 
-          <Section title="AI annotations">
+          <Section title="AI annotations" meta={formatCount(item.aiAnnotations.length, "annotation", "annotations")}>
             {item.aiAnnotations.length > 0 ? (
               <div className="annotation-list">
                 {item.aiAnnotations.map((annotation) => (
@@ -233,11 +233,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No AI annotations.</p>
+              <DetailEmptyState label="No AI annotations recorded." />
             )}
           </Section>
 
-          <Section title="Event timeline">
+          <Section title="Event timeline" meta={formatCount(item.events.length, "event", "events")}>
             {item.events.length > 0 ? (
               <div className="detail-list">
                 {item.events.map((event) => (
@@ -249,7 +249,7 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <p className="detail-muted">No events.</p>
+              <DetailEmptyState label="No events recorded." />
             )}
           </Section>
         </div>
@@ -688,17 +688,36 @@ function renderHero(item: ItemDetail) {
   return <div className="item-detail__media-placeholder">image pending</div>;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  meta,
+  children,
+}: {
+  title: string;
+  meta?: string;
+  children: ReactNode;
+}) {
   return (
     <section className="detail-section" aria-labelledby={`detail-${slug(title)}`}>
-      <h2 id={`detail-${slug(title)}`}>{title}</h2>
+      <div className="detail-section__header">
+        <h2 id={`detail-${slug(title)}`}>{title}</h2>
+        {meta ? <span className="detail-section__meta">{meta}</span> : null}
+      </div>
       {children}
     </section>
   );
 }
 
 function ReadableBlock({ value, fallback }: { value: string | null; fallback: string }) {
-  return <p className={value ? "detail-readable" : "detail-muted"}>{value ?? fallback}</p>;
+  if (!value) {
+    return <DetailEmptyState label={fallback} />;
+  }
+
+  return <p className="detail-readable">{value}</p>;
+}
+
+function DetailEmptyState({ label }: { label: string }) {
+  return <div className="detail-empty">{label}</div>;
 }
 
 function Metadata({ label, value }: { label: string; value: string }) {
@@ -874,6 +893,10 @@ function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label
 
 function canRetireWithReplacement(status: ItemStatus) {
   return status === "inbox" || status === "triaged" || status === "active" || status === "archived";
+}
+
+function formatCount(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function formatPayload(payload: string) {
