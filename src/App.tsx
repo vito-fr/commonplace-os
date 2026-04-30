@@ -486,6 +486,10 @@ export function App() {
     }));
   };
 
+  const clearArchiveFilters = () => {
+    setItemCardFilters({});
+  };
+
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
     const relationshipTargetOptions = items
@@ -577,19 +581,79 @@ export function App() {
           onTextChange={updateTextFilter}
           onTypeChange={updateTypeFilter}
         />
+        {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
         <MasonryGrid
           items={renderedItems}
           density="comfortable"
           loading={isLoading}
           emptyState={
-            <p className="proof-empty">
-              {readError ?? "No items match the current archive filters."}
-            </p>
+            <ArchiveEmptyState
+              filters={itemCardFilters}
+              readError={readError}
+              onClearFilters={clearArchiveFilters}
+            />
           }
           ariaLabel="filtered archive items grid"
         />
       </section>
     </main>
+  );
+}
+
+function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
+  const filterSummary = formatFilterSummary(filters);
+
+  return (
+    <div className="archive-state archive-state--loading" role="status" aria-live="polite">
+      <span className="archive-state__kicker">loading</span>
+      <p className="archive-state__copy">
+        {filterSummary ? `Loading archive rows for ${filterSummary}.` : "Loading archive rows."}
+      </p>
+    </div>
+  );
+}
+
+function ArchiveEmptyState({
+  filters,
+  readError,
+  onClearFilters,
+}: {
+  filters: ItemCardFilters;
+  readError: string | null;
+  onClearFilters: () => void;
+}) {
+  const hasFilters = hasActiveFilters(filters);
+  const filterSummary = formatFilterSummary(filters);
+
+  if (readError) {
+    return (
+      <div className="archive-state archive-state--error" role="alert">
+        <span className="archive-state__kicker">read error</span>
+        <h2 className="archive-state__title">Archive read failed.</h2>
+        <p className="archive-state__copy">{readError}</p>
+      </div>
+    );
+  }
+
+  if (hasFilters) {
+    return (
+      <div className="archive-state">
+        <span className="archive-state__kicker">no results</span>
+        <h2 className="archive-state__title">No items match these filters.</h2>
+        <p className="archive-state__copy">{filterSummary}</p>
+        <button className="text-button" type="button" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="archive-state">
+      <span className="archive-state__kicker">empty archive</span>
+      <h2 className="archive-state__title">No item-card rows returned.</h2>
+      <p className="archive-state__copy">This workspace has no archive rows available to render.</p>
+    </div>
   );
 }
 
@@ -789,6 +853,36 @@ function buildFilterSearch(filters: ItemCardFilters) {
 
   const search = searchParams.toString();
   return search ? `?${search}` : "";
+}
+
+function hasActiveFilters(filters: ItemCardFilters) {
+  return Boolean(filters.status || filters.type || filters.source || filters.text?.trim());
+}
+
+function formatFilterSummary(filters: ItemCardFilters) {
+  return getFilterSummaryParts(filters).join(" · ");
+}
+
+function getFilterSummaryParts(filters: ItemCardFilters) {
+  const parts: string[] = [];
+
+  if (filters.status) {
+    parts.push(`status: ${filters.status}`);
+  }
+
+  if (filters.type) {
+    parts.push(`type: ${filters.type}`);
+  }
+
+  if (filters.source) {
+    parts.push(`source: ${filters.source.replace("_", " ")}`);
+  }
+
+  if (filters.text?.trim()) {
+    parts.push(`text: "${filters.text.trim()}"`);
+  }
+
+  return parts;
 }
 
 function isStatusFilter(value: string | null): value is ItemStatus {
