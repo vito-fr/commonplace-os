@@ -555,16 +555,20 @@ export function App() {
         onNavigate: openItemDetail,
       }))
     : items;
+  const archiveModeLabel = isPocketBaseMode ? "live pocketbase" : "seed fixtures";
 
   return (
     <main className="app-shell" aria-label="Vita archive">
       <section className="proof-panel" aria-labelledby="proof-title">
-        <p className="proof-kicker">v0.1 interface slice</p>
-        <h1 id="proof-title">MasonryGrid proof</h1>
-        <p className="proof-copy">
-          The MasonryGrid slice is mounted with representative rows from seed fixtures and no
-          route, persistence, or drag layer.
-        </p>
+        <p className="proof-kicker">archive</p>
+        <h1 id="proof-title">Archive</h1>
+        <ArchiveUsageSummary
+          filters={itemCardFilters}
+          itemCount={items.length}
+          loading={isLoading}
+          modeLabel={archiveModeLabel}
+          readError={readError}
+        />
         {isPocketBaseMode ? (
           <CaptureNoteForm
             error={captureError}
@@ -598,6 +602,44 @@ export function App() {
         />
       </section>
     </main>
+  );
+}
+
+function ArchiveUsageSummary({
+  filters,
+  itemCount,
+  loading,
+  modeLabel,
+  readError,
+}: {
+  filters: ItemCardFilters;
+  itemCount: number;
+  loading: boolean;
+  modeLabel: string;
+  readError: string | null;
+}) {
+  const filterSummary = formatFilterSummary(filters);
+  const resultLabel = readError
+    ? "read error"
+    : loading
+      ? "loading rows"
+      : formatResultCount(itemCount);
+
+  return (
+    <dl className="archive-overview" aria-label="archive overview">
+      <div className="archive-overview__item">
+        <dt>mode</dt>
+        <dd>{modeLabel}</dd>
+      </div>
+      <div className="archive-overview__item">
+        <dt>results</dt>
+        <dd>{resultLabel}</dd>
+      </div>
+      <div className="archive-overview__item">
+        <dt>scope</dt>
+        <dd>{filterSummary || "all archive rows"}</dd>
+      </div>
+    </dl>
   );
 }
 
@@ -925,6 +967,10 @@ function hasActiveFilters(filters: ItemCardFilters) {
 
 function formatFilterSummary(filters: ItemCardFilters) {
   return getFilterSummaryParts(filters).join(" · ");
+}
+
+function formatResultCount(itemCount: number) {
+  return `${itemCount} ${itemCount === 1 ? "result" : "results"}`;
 }
 
 function getFilterSummaryParts(filters: ItemCardFilters) {

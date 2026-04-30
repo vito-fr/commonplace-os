@@ -80,11 +80,40 @@ select {
   line-height: 1.6;
 }
 
+.archive-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin: 22px 0 0;
+  border-top: 1px solid var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+  padding: 12px 0;
+}
+
+.archive-overview__item {
+  min-width: 0;
+}
+
+.archive-overview dt {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.archive-overview dd {
+  margin: 4px 0 0;
+  color: var(--color-ink);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .capture-note {
   display: grid;
   gap: 10px;
   max-width: 620px;
-  border-top: 1px solid var(--color-rule);
   padding: 18px 0 24px;
 }
 
@@ -203,6 +232,10 @@ select {
 .archive-filter-field--active input,
 .archive-filter-field--active select {
   border-color: var(--color-accent);
+}
+
+.archive-overview + .archive-filters {
+  border-top: 0;
 }
 
 .archive-state {
