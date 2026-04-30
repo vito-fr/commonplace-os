@@ -80,6 +80,49 @@ select {
   line-height: 1.6;
 }
 
+.capture-note {
+  display: grid;
+  gap: 10px;
+  max-width: 620px;
+  border-top: 1px solid var(--color-rule);
+  padding: 18px 0 24px;
+}
+
+.capture-note label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.capture-note textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-ink);
+  padding: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.capture-note__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.capture-note__notice {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .item-card {
   position: relative;
   display: flex;

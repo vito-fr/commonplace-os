@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
 import { ItemDetailView } from "./components/items/ItemDetail";
 import type { ItemCardReader } from "./data/itemCardReader";
+import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
@@ -22,6 +23,7 @@ const itemCardReader: ItemCardReader =
         baseUrl: pocketBaseUrl,
       })
     : seedFixtureItemCardReader;
+const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
@@ -31,6 +33,9 @@ export function App() {
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -208,6 +213,36 @@ export function App() {
     }
   };
 
+  const captureNote = async (body: string) => {
+    if (!isPocketBaseMode) {
+      return;
+    }
+
+    setIsCapturing(true);
+    setCaptureError(null);
+    setCaptureNotice(null);
+
+    try {
+      await itemCaptureWriter.captureNote({
+        workspaceId,
+        type: "note",
+        body,
+        sourceExternalId: captureSourceExternalId(),
+        actor: "system",
+      });
+      const nextItems = await itemCardReader.listItemCards({ workspaceId });
+      setItems(nextItems);
+      setReadError(null);
+      setCaptureNotice("Captured to inbox.");
+    } catch (error: unknown) {
+      console.error(error);
+      setCaptureError("Unable to capture note.");
+      throw error;
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
   if (route.kind === "item") {
     const relationshipTargetOptions = items
       .filter((item) => item.id !== detail?.id)
@@ -248,6 +283,14 @@ export function App() {
           The MasonryGrid slice is mounted with representative rows from seed fixtures and no
           route, persistence, or drag layer.
         </p>
+        {isPocketBaseMode ? (
+          <CaptureNoteForm
+            error={captureError}
+            notice={captureNotice}
+            onCapture={captureNote}
+            pending={isCapturing}
+          />
+        ) : null}
         <MasonryGrid
           items={renderedItems}
           density="comfortable"
@@ -260,6 +303,62 @@ export function App() {
   );
 }
 
+function CaptureNoteForm({
+  error,
+  notice,
+  onCapture,
+  pending,
+}: {
+  error: string | null;
+  notice: string | null;
+  onCapture: (body: string) => Promise<void> | void;
+  pending: boolean;
+}) {
+  const [body, setBody] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedBody = body.trim();
+
+    if (!normalizedBody) {
+      setLocalError("Note body is required.");
+      return;
+    }
+
+    setLocalError(null);
+
+    try {
+      await onCapture(normalizedBody);
+      setBody("");
+    } catch {
+      // The parent owns the persisted write error message.
+    }
+  };
+
+  return (
+    <form className="capture-note" aria-label="capture note" onSubmit={submit}>
+      <label>
+        <span>Capture note</span>
+        <textarea
+          disabled={pending}
+          onChange={(event) => setBody(event.target.value)}
+          placeholder="note body"
+          rows={3}
+          value={body}
+        />
+      </label>
+      <div className="capture-note__actions">
+        <button className="status-action" disabled={pending} type="submit">
+          {pending ? "Capturing" : "Capture to inbox"}
+        </button>
+        {notice ? <span className="capture-note__notice">{notice}</span> : null}
+      </div>
+      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
+    </form>
+  );
+}
+
 function getRouteFromLocation(): AppRoute {
   const match = window.location.pathname.match(/^\/items\/([^/]+)\/?$/);
 
@@ -268,4 +367,12 @@ function getRouteFromLocation(): AppRoute {
   }
 
   return { kind: "item", itemId: decodeURIComponent(match[1]) };
+}
+
+function captureSourceExternalId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `manual:note:${crypto.randomUUID()}`;
+  }
+
+  return `manual:note:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 }
