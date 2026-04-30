@@ -3,7 +3,7 @@ import type { ItemStatus, ItemType } from "./components/atoms";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
 import { ItemDetailView } from "./components/items/ItemDetail";
-import type { ItemCardFilters, ItemCardReader } from "./data/itemCardReader";
+import type { ItemCardFilters, ItemCardReader, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
   createPocketBaseItemCampaignClient,
@@ -24,6 +24,7 @@ import { seedFixtureItemCardReader } from "./data/seedItemCards";
 type AppRoute = { kind: "grid" } | { kind: "item"; itemId: string };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
+type ArchiveSourceFilter = ItemSourceFilter | "all";
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
   "all",
@@ -40,6 +41,15 @@ const typeFilterOptions: ArchiveTypeFilter[] = [
   "note",
   "link",
   "campaign",
+];
+const sourceFilterOptions: ArchiveSourceFilter[] = [
+  "all",
+  "pinterest",
+  "arena",
+  "url",
+  "local",
+  "ios_capture",
+  "manual",
 ];
 
 const workspaceId = "seed:ws001";
@@ -449,6 +459,13 @@ export function App() {
     }));
   };
 
+  const updateSourceFilter = (source: ArchiveSourceFilter) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      source: source === "all" ? undefined : source,
+    }));
+  };
+
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
     const relationshipTargetOptions = items
@@ -530,6 +547,7 @@ export function App() {
         <ArchiveFilterControls
           filters={itemCardFilters}
           loading={isLoading}
+          onSourceChange={updateSourceFilter}
           onStatusChange={updateStatusFilter}
           onTypeChange={updateTypeFilter}
         />
@@ -552,11 +570,13 @@ export function App() {
 function ArchiveFilterControls({
   filters,
   loading,
+  onSourceChange,
   onStatusChange,
   onTypeChange,
 }: {
   filters: ItemCardFilters;
   loading: boolean;
+  onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
 }) {
@@ -586,6 +606,20 @@ function ArchiveFilterControls({
           {typeFilterOptions.map((type) => (
             <option key={type} value={type}>
               {type === "all" ? "all types" : type}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>source</span>
+        <select
+          disabled={loading}
+          onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
+          value={filters.source ?? "all"}
+        >
+          {sourceFilterOptions.map((source) => (
+            <option key={source} value={source}>
+              {source === "all" ? "all sources" : source.replace("_", " ")}
             </option>
           ))}
         </select>

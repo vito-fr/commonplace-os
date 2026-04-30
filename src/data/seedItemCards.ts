@@ -7,7 +7,7 @@ import relationshipsFixture from "../../seed/fixtures/13_relationships.json";
 import sourcesFixture from "../../seed/fixtures/02_sources.json";
 import type { RightsStatus } from "../components/items";
 import type { ItemStatus, ItemType } from "../components/atoms";
-import type { ItemCardQuery, ItemCardReader } from "./itemCardReader";
+import type { ItemCardQuery, ItemCardReader, ItemSourceFilter } from "./itemCardReader";
 
 type FixtureItem = {
   id: string;
@@ -21,7 +21,7 @@ type FixtureItem = {
 
 type FixtureSource = {
   id: string;
-  kind: string;
+  kind: ItemSourceFilter;
 };
 
 type FixtureCaption = {
@@ -91,6 +91,12 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
     }
 
     const source = sources.find((row) => row.id === item.source_id);
+    const sourceKind = source?.kind ?? "manual";
+
+    if (filters?.source && sourceKind !== filters.source) {
+      return [];
+    }
+
     const caption = captions.find((row) => row.item_id === item.id);
     const note = notes.find((row) => row.item_id === item.id);
     const link = links.find((row) => row.item_id === item.id);
@@ -100,7 +106,7 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       id: item.id,
       type: item.type,
       status: item.status,
-      source: source?.kind ?? "manual",
+      source: sourceKind,
       usageCount: relationships.filter(
         (relationship) => relationship.type === "used_in" && relationship.from_id === item.id,
       ).length,

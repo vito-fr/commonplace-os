@@ -10,6 +10,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
   const status = normalizedFilter(query.get("status"));
   const type = normalizedFilter(query.get("type"));
+  const source = normalizedFilter(query.get("source"));
   const rawItemIds = query.get("item_ids");
   const itemIds = rawItemIds
     ? rawItemIds
@@ -21,6 +22,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   let itemIdFilter = "";
   let statusFilter = "";
   let typeFilter = "";
+  let sourceFilter = "";
   let orderBy = "ORDER BY i.updated_at DESC, i.id ASC";
 
   if (status) {
@@ -39,6 +41,15 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
     params.type = type;
     typeFilter = "AND i.type = {:type}";
+  }
+
+  if (source) {
+    if (!isKnownSource(source)) {
+      throw new BadRequestError("source filter is invalid");
+    }
+
+    params.source = source;
+    sourceFilter = "AND COALESCE(s.kind, 'manual') = {:source}";
   }
 
   if (itemIds.length > 0) {
@@ -69,6 +80,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
   function isKnownType(value) {
     return ["image", "caption", "note", "link", "campaign"].includes(value);
+  }
+
+  function isKnownSource(value) {
+    return ["pinterest", "arena", "url", "local", "ios_capture", "manual"].includes(value);
   }
 
   const rows = arrayOf(
@@ -137,6 +152,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ${itemIdFilter}
           ${statusFilter}
           ${typeFilter}
+          ${sourceFilter}
         ${orderBy}
       `,
     )
