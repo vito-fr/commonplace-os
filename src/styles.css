@@ -539,11 +539,17 @@ select {
   font-size: 12px;
 }
 
+.item-detail__action-stack {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
 .item-detail__status-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .status-action {
@@ -640,6 +646,42 @@ select {
   line-height: 1.45;
 }
 
+.detail-action-group {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-rule);
+  padding: 12px 0 18px;
+}
+
+.detail-action-group + .detail-list,
+.detail-action-group + .tag-row,
+.detail-action-group + .detail-empty {
+  margin-top: 14px;
+}
+
+.detail-action-group__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-action-group__title,
+.detail-action-group__meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.detail-action-group__title {
+  color: var(--color-ink);
+}
+
+.detail-action-group__meta {
+  color: var(--color-muted);
+  text-align: right;
+}
+
 .detail-muted {
   margin: 0;
   color: var(--color-muted);
@@ -694,13 +736,17 @@ select {
 .campaign-attach {
   display: grid;
   gap: 10px;
-  border-top: 1px solid var(--color-rule);
-  padding: 0 0 18px;
+  border-top: 0;
+  padding: 0;
 }
 
 .retirement-link {
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 0;
+}
+
+.item-detail__action-stack .retirement-link {
+  border-top: 1px solid var(--color-rule);
+  padding-top: 12px;
 }
 
 .relationship-create__fields,

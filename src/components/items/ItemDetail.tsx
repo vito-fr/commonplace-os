@@ -154,13 +154,15 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Relationships" meta={formatCount(item.relationships.length, "relationship", "relationships")}>
-            <RelationshipCreateForm
-              currentItemId={item.id}
-              error={relationshipActionError}
-              onCreateRelationship={onCreateRelationship}
-              pending={relationshipActionPending}
-              targetOptions={relationshipTargetOptions}
-            />
+            <DetailActionGroup title="relationship action" meta="directed reference">
+              <RelationshipCreateForm
+                currentItemId={item.id}
+                error={relationshipActionError}
+                onCreateRelationship={onCreateRelationship}
+                pending={relationshipActionPending}
+                targetOptions={relationshipTargetOptions}
+              />
+            </DetailActionGroup>
             {item.relationships.length > 0 ? (
               <div className="detail-list">
                 {item.relationships.map((relationship) => (
@@ -177,12 +179,14 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Collections" meta={formatCount(item.collections.length, "membership", "memberships")}>
-            <CollectionAttachForm
-              error={collectionActionError}
-              onAttachCollection={onAttachCollection}
-              options={collectionOptions}
-              pending={collectionActionPending}
-            />
+            <DetailActionGroup title="collection action" meta="membership">
+              <CollectionAttachForm
+                error={collectionActionError}
+                onAttachCollection={onAttachCollection}
+                options={collectionOptions}
+                pending={collectionActionPending}
+              />
+            </DetailActionGroup>
             {item.collections.length > 0 ? (
               <div className="tag-row">
                 {item.collections.map((collection) => (
@@ -197,13 +201,15 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Campaign attachments" meta={formatCount(item.campaignAttachments.length, "attachment", "attachments")}>
-            <CampaignAttachForm
-              error={campaignActionError}
-              onAttachCampaign={onAttachCampaign}
-              options={campaignOptions}
-              pending={campaignActionPending}
-              rightsStatus={item.rightsStatus}
-            />
+            <DetailActionGroup title="campaign action" meta="campaign usage">
+              <CampaignAttachForm
+                error={campaignActionError}
+                onAttachCampaign={onAttachCampaign}
+                options={campaignOptions}
+                pending={campaignActionPending}
+                rightsStatus={item.rightsStatus}
+              />
+            </DetailActionGroup>
             {item.campaignAttachments.length > 0 ? (
               <div className="detail-list">
                 {item.campaignAttachments.map((attachment) => (
@@ -264,20 +270,26 @@ export function ItemDetailView({
             <span aria-hidden="true">·</span>
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
-          <LifecycleControls
-            currentStatus={item.status}
-            pending={statusActionPending}
-            error={statusActionError}
-            onChangeStatus={onChangeStatus}
-          />
-          <RetireWithReplacementForm
-            currentItemId={item.id}
-            currentStatus={item.status}
-            error={retirementActionError}
-            onRetireWithReplacement={onRetireWithReplacement}
-            pending={retirementActionPending}
-            targetOptions={retirementTargetOptions}
-          />
+          {hasLifecycleActions(item.status, statusActionError, retirementActionError) ? (
+            <div className="item-detail__action-stack">
+              <DetailActionGroup title="lifecycle" meta="status and retirement">
+                <LifecycleControls
+                  currentStatus={item.status}
+                  pending={statusActionPending}
+                  error={statusActionError}
+                  onChangeStatus={onChangeStatus}
+                />
+                <RetireWithReplacementForm
+                  currentItemId={item.id}
+                  currentStatus={item.status}
+                  error={retirementActionError}
+                  onRetireWithReplacement={onRetireWithReplacement}
+                  pending={retirementActionPending}
+                  targetOptions={retirementTargetOptions}
+                />
+              </DetailActionGroup>
+            </div>
+          ) : null}
           <dl>
             <Metadata label="ID" value={item.id} />
             <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
@@ -720,6 +732,26 @@ function DetailEmptyState({ label }: { label: string }) {
   return <div className="detail-empty">{label}</div>;
 }
 
+function DetailActionGroup({
+  title,
+  meta,
+  children,
+}: {
+  title: string;
+  meta: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="detail-action-group">
+      <div className="detail-action-group__header">
+        <span className="detail-action-group__title">{title}</span>
+        <span className="detail-action-group__meta">{meta}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function Metadata({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -893,6 +925,18 @@ function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label
 
 function canRetireWithReplacement(status: ItemStatus) {
   return status === "inbox" || status === "triaged" || status === "active" || status === "archived";
+}
+
+function hasLifecycleActions(
+  status: ItemStatus,
+  statusError: string | null,
+  retirementError: string | null,
+) {
+  return (
+    getStatusActions(status).length > 0 ||
+    canRetireWithReplacement(status) ||
+    Boolean(statusError || retirementError)
+  );
 }
 
 function formatCount(count: number, singular: string, plural: string) {
