@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { SourceMark, StatusIndicator, TypeIndicator } from "../atoms";
+import { SourceMark, StatusIndicator, TypeIndicator, type ItemStatus } from "../atoms";
 import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
 
 export type ItemDetailViewProps = {
@@ -7,9 +7,20 @@ export type ItemDetailViewProps = {
   loading: boolean;
   error: string | null;
   onBack: () => void;
+  onChangeStatus?: (nextStatus: ItemStatus) => void;
+  statusActionPending?: boolean;
+  statusActionError?: string | null;
 };
 
-export function ItemDetailView({ item, loading, error, onBack }: ItemDetailViewProps) {
+export function ItemDetailView({
+  item,
+  loading,
+  error,
+  onBack,
+  onChangeStatus,
+  statusActionPending = false,
+  statusActionError = null,
+}: ItemDetailViewProps) {
   if (loading) {
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
@@ -162,6 +173,12 @@ export function ItemDetailView({ item, loading, error, onBack }: ItemDetailViewP
             <span aria-hidden="true">·</span>
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
+          <LifecycleControls
+            currentStatus={item.status}
+            pending={statusActionPending}
+            error={statusActionError}
+            onChangeStatus={onChangeStatus}
+          />
           <dl>
             <Metadata label="ID" value={item.id} />
             <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
@@ -238,6 +255,63 @@ function ProvenanceMark({ annotation }: { annotation: ItemDetailAIAnnotation }) 
   ].filter(Boolean);
 
   return <span className="provenance-mark">{parts.join(" · ")}</span>;
+}
+
+function LifecycleControls({
+  currentStatus,
+  pending,
+  error,
+  onChangeStatus,
+}: {
+  currentStatus: ItemStatus;
+  pending: boolean;
+  error: string | null;
+  onChangeStatus?: (nextStatus: ItemStatus) => void;
+}) {
+  const actions = getStatusActions(currentStatus);
+
+  if (actions.length === 0 && !error) {
+    return null;
+  }
+
+  return (
+    <div className="item-detail__status-actions" aria-label="status actions">
+      {actions.map((action) => (
+        <button
+          className={action.tone === "retire" ? "status-action status-action--retire" : "status-action"}
+          disabled={pending || !onChangeStatus}
+          key={action.status}
+          type="button"
+          onClick={() => onChangeStatus?.(action.status)}
+        >
+          {pending ? "Updating" : action.label}
+        </button>
+      ))}
+      {error ? <p className="detail-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label: string; tone?: "retire" }> {
+  if (status === "inbox") {
+    return [
+      { status: "triaged", label: "Mark triaged" },
+      { status: "retired", label: "Retire", tone: "retire" },
+    ];
+  }
+
+  if (status === "triaged") {
+    return [
+      { status: "active", label: "Promote to active" },
+      { status: "retired", label: "Retire", tone: "retire" },
+    ];
+  }
+
+  if (status === "active" || status === "archived") {
+    return [{ status: "retired", label: "Retire", tone: "retire" }];
+  }
+
+  return [];
 }
 
 function formatPayload(payload: string) {

@@ -6,6 +6,7 @@ import type { ItemCardReader } from "./data/itemCardReader";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
+import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
 type AppRoute = { kind: "grid" } | { kind: "item"; itemId: string };
@@ -21,6 +22,7 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
+const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
@@ -30,6 +32,8 @@ export function App() {
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
+  const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -78,6 +82,8 @@ export function App() {
       setDetail(null);
       setDetailError(null);
       setIsDetailLoading(false);
+      setStatusWriteError(null);
+      setIsStatusUpdating(false);
       return () => {
         isCurrent = false;
       };
@@ -87,6 +93,8 @@ export function App() {
       setDetail(null);
       setDetailError("Item detail proof requires PocketBase reader mode.");
       setIsDetailLoading(false);
+      setStatusWriteError(null);
+      setIsStatusUpdating(false);
       return () => {
         isCurrent = false;
       };
@@ -94,6 +102,7 @@ export function App() {
 
     setIsDetailLoading(true);
     setDetailError(null);
+    setStatusWriteError(null);
 
     itemDetailReader
       .getItemDetail({ workspaceId, itemId: route.itemId })
@@ -130,6 +139,37 @@ export function App() {
     setRoute({ kind: "grid" });
   };
 
+  const changeItemStatus = async (nextStatus: ItemDetail["status"]) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsStatusUpdating(true);
+    setStatusWriteError(null);
+
+    try {
+      await itemStatusWriter.updateItemStatus({
+        workspaceId,
+        itemId: detail.id,
+        nextStatus,
+        actor: "system",
+      });
+
+      const nextDetail = await itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id });
+      setDetail(nextDetail);
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === nextDetail.id ? { ...item, status: nextDetail.status } : item,
+        ),
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      setStatusWriteError("Unable to change item status.");
+    } finally {
+      setIsStatusUpdating(false);
+    }
+  };
+
   if (route.kind === "item") {
     return (
       <main className="app-shell" aria-label="Vita archive">
@@ -138,6 +178,9 @@ export function App() {
           loading={isDetailLoading}
           error={detailError}
           onBack={closeItemDetail}
+          onChangeStatus={changeItemStatus}
+          statusActionPending={isStatusUpdating}
+          statusActionError={statusWriteError}
         />
       </main>
     );
