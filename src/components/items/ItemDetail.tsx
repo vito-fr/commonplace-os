@@ -1,6 +1,16 @@
-import type { ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { SourceMark, StatusIndicator, TypeIndicator, type ItemStatus } from "../atoms";
 import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
+
+type RelationshipTargetOption = {
+  id: string;
+  label: string;
+};
+
+type RelationshipCreateInput = {
+  toId: string;
+  note: string | null;
+};
 
 export type ItemDetailViewProps = {
   item: ItemDetail | null;
@@ -10,6 +20,10 @@ export type ItemDetailViewProps = {
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
   statusActionError?: string | null;
+  onCreateRelationship?: (input: RelationshipCreateInput) => Promise<void> | void;
+  relationshipActionPending?: boolean;
+  relationshipActionError?: string | null;
+  relationshipTargetOptions?: RelationshipTargetOption[];
 };
 
 export function ItemDetailView({
@@ -20,6 +34,10 @@ export function ItemDetailView({
   onChangeStatus,
   statusActionPending = false,
   statusActionError = null,
+  onCreateRelationship,
+  relationshipActionPending = false,
+  relationshipActionError = null,
+  relationshipTargetOptions = [],
 }: ItemDetailViewProps) {
   if (loading) {
     return (
@@ -79,6 +97,13 @@ export function ItemDetailView({
           </Section>
 
           <Section title="Relationships">
+            <RelationshipCreateForm
+              currentItemId={item.id}
+              error={relationshipActionError}
+              onCreateRelationship={onCreateRelationship}
+              pending={relationshipActionPending}
+              targetOptions={relationshipTargetOptions}
+            />
             {item.relationships.length > 0 ? (
               <div className="detail-list">
                 {item.relationships.map((relationship) => (
@@ -255,6 +280,100 @@ function ProvenanceMark({ annotation }: { annotation: ItemDetailAIAnnotation }) 
   ].filter(Boolean);
 
   return <span className="provenance-mark">{parts.join(" · ")}</span>;
+}
+
+function RelationshipCreateForm({
+  currentItemId,
+  error,
+  onCreateRelationship,
+  pending,
+  targetOptions,
+}: {
+  currentItemId: string;
+  error: string | null;
+  onCreateRelationship?: (input: RelationshipCreateInput) => Promise<void> | void;
+  pending: boolean;
+  targetOptions: RelationshipTargetOption[];
+}) {
+  const [toId, setToId] = useState("");
+  const [note, setNote] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const dataListId = `relationship-targets-${slug(currentItemId)}`;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedToId = toId.trim();
+
+    if (!normalizedToId) {
+      setLocalError("Target item ID is required.");
+      return;
+    }
+
+    if (normalizedToId === currentItemId) {
+      setLocalError("Choose a different item.");
+      return;
+    }
+
+    if (!onCreateRelationship) {
+      setLocalError("Relationship creation requires PocketBase reader mode.");
+      return;
+    }
+
+    setLocalError(null);
+
+    try {
+      await onCreateRelationship({
+        toId: normalizedToId,
+        note: note.trim() || null,
+      });
+      setToId("");
+      setNote("");
+    } catch {
+      // The parent owns the persisted write error message.
+    }
+  };
+
+  return (
+    <form className="relationship-create" aria-label="add reference relationship" onSubmit={submit}>
+      <div className="relationship-create__fields">
+        <label>
+          <span>references</span>
+          <input
+            autoComplete="off"
+            disabled={pending}
+            list={targetOptions.length > 0 ? dataListId : undefined}
+            onChange={(event) => setToId(event.target.value)}
+            placeholder="target item id"
+            type="text"
+            value={toId}
+          />
+        </label>
+        {targetOptions.length > 0 ? (
+          <datalist id={dataListId}>
+            {targetOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </datalist>
+        ) : null}
+        <label>
+          <span>note</span>
+          <textarea
+            disabled={pending}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="optional"
+            rows={2}
+            value={note}
+          />
+        </label>
+      </div>
+      <button className="status-action" disabled={pending} type="submit">
+        {pending ? "Adding" : "Add reference"}
+      </button>
+      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
+    </form>
+  );
 }
 
 function LifecycleControls({

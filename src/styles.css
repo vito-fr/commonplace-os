@@ -545,6 +545,45 @@ select {
   gap: 10px;
 }
 
+.relationship-create {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--color-rule);
+  padding: 0 0 18px;
+}
+
+.relationship-create__fields {
+  display: grid;
+  gap: 10px;
+}
+
+.relationship-create label {
+  display: grid;
+  gap: 5px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.relationship-create input,
+.relationship-create textarea {
+  width: 100%;
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-ink);
+  padding: 8px 9px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+.relationship-create textarea {
+  resize: vertical;
+}
+
 .detail-list__row,
 .annotation-row {
   border-top: 1px solid var(--color-rule);

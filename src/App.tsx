@@ -6,6 +6,7 @@ import type { ItemCardReader } from "./data/itemCardReader";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
+import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRelationship";
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
@@ -22,6 +23,7 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
+const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
 export function App() {
@@ -34,6 +36,8 @@ export function App() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
+  const [isRelationshipCreating, setIsRelationshipCreating] = useState(false);
+  const [relationshipWriteError, setRelationshipWriteError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -84,6 +88,8 @@ export function App() {
       setIsDetailLoading(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
+      setRelationshipWriteError(null);
+      setIsRelationshipCreating(false);
       return () => {
         isCurrent = false;
       };
@@ -95,6 +101,8 @@ export function App() {
       setIsDetailLoading(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
+      setRelationshipWriteError(null);
+      setIsRelationshipCreating(false);
       return () => {
         isCurrent = false;
       };
@@ -103,6 +111,7 @@ export function App() {
     setIsDetailLoading(true);
     setDetailError(null);
     setStatusWriteError(null);
+    setRelationshipWriteError(null);
 
     itemDetailReader
       .getItemDetail({ workspaceId, itemId: route.itemId })
@@ -170,7 +179,43 @@ export function App() {
     }
   };
 
+  const createItemRelationship = async ({ toId, note }: { toId: string; note: string | null }) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsRelationshipCreating(true);
+    setRelationshipWriteError(null);
+
+    try {
+      await itemRelationshipWriter.createRelationship({
+        workspaceId,
+        fromId: detail.id,
+        toId,
+        type: "references",
+        note: note ?? undefined,
+        actor: "system",
+      });
+
+      const nextDetail = await itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id });
+      setDetail(nextDetail);
+    } catch (error: unknown) {
+      console.error(error);
+      setRelationshipWriteError("Unable to add relationship.");
+      throw error;
+    } finally {
+      setIsRelationshipCreating(false);
+    }
+  };
+
   if (route.kind === "item") {
+    const relationshipTargetOptions = items
+      .filter((item) => item.id !== detail?.id)
+      .map((item) => ({
+        id: item.id,
+        label: item.title ?? `${item.type} item`,
+      }));
+
     return (
       <main className="app-shell" aria-label="Vita archive">
         <ItemDetailView
@@ -181,6 +226,10 @@ export function App() {
           onChangeStatus={changeItemStatus}
           statusActionPending={isStatusUpdating}
           statusActionError={statusWriteError}
+          onCreateRelationship={createItemRelationship}
+          relationshipActionPending={isRelationshipCreating}
+          relationshipActionError={relationshipWriteError}
+          relationshipTargetOptions={relationshipTargetOptions}
         />
       </main>
     );
