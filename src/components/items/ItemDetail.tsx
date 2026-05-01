@@ -119,7 +119,7 @@ export function ItemDetailView({
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
         <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
-        <div className="item-detail__loading">Loading item.</div>
+        <div className="item-detail__loading">Loading archive piece.</div>
       </section>
     );
   }
@@ -128,7 +128,7 @@ export function ItemDetailView({
     return (
       <section className="item-detail">
         <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
-        <p className="proof-empty">{error ?? "Item could not be loaded."}</p>
+        <p className="proof-empty">{error ?? "Archive piece could not be loaded."}</p>
       </section>
     );
   }
@@ -145,7 +145,7 @@ export function ItemDetailView({
 
       <div className="item-detail__layout">
         <div className="item-detail__main">
-          <section className="item-detail__hero" aria-label="item preview">
+          <section className="item-detail__hero" aria-label="archive piece preview">
             {renderHero(item)}
           </section>
 
@@ -174,9 +174,9 @@ export function ItemDetailView({
           </Section>
           </DetailSectionGroup>
 
-          <DetailSectionGroup title="Connections" meta="relationships, collections, campaigns">
-          <Section title="Relationships" meta={formatCount(item.relationships.length, "relationship", "relationships")}>
-            <DetailActionGroup id="detail-action-relationship" title="Add relationship" meta="reference another item">
+          <DetailSectionGroup title="Where it fits" meta="connected to, collections, campaigns">
+          <Section title="Connected to" meta={formatCount(item.relationships.length, "connection", "connections")}>
+            <DetailActionGroup id="detail-action-relationship" title="Connect to another piece" meta="show why it belongs together">
               <RelationshipCreateForm
                 currentItemId={item.id}
                 error={relationshipActionError}
@@ -196,12 +196,12 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No relationships yet." />
+              <DetailEmptyState label="Not connected to anything yet." />
             )}
           </Section>
 
-          <Section title="Collections" meta={formatCount(item.collections.length, "membership", "memberships")}>
-            <DetailActionGroup id="detail-action-collection" title="Add to collection" meta="organize this item">
+          <Section title="In collections" meta={formatCount(item.collections.length, "collection", "collections")}>
+            <DetailActionGroup id="detail-action-collection" title="Add to collection" meta="keep with related work">
               <CollectionAttachForm
                 error={collectionActionError}
                 onAttachCollection={onAttachCollection}
@@ -222,8 +222,8 @@ export function ItemDetailView({
             )}
           </Section>
 
-          <Section title="Campaign attachments" meta={formatCount(item.campaignAttachments.length, "attachment", "attachments")}>
-            <DetailActionGroup id="detail-action-campaign" title="Attach to campaign" meta="campaign memory">
+          <Section title="In campaigns" meta={formatCount(item.campaignAttachments.length, "campaign", "campaigns")}>
+            <DetailActionGroup id="detail-action-campaign" title="Attach to campaign" meta="reuse with rights check">
               <CampaignAttachForm
                 error={campaignActionError}
                 onAttachCampaign={onAttachCampaign}
@@ -243,13 +243,13 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="Not attached to any campaigns yet." />
+              <DetailEmptyState label="Not in any campaigns yet." />
             )}
           </Section>
           </DetailSectionGroup>
 
-          <DetailSectionGroup title="History" meta="annotations and events">
-          <Section title="AI annotations" meta={formatCount(item.aiAnnotations.length, "annotation", "annotations")}>
+          <DetailSectionGroup title="History" meta="AI notes and activity">
+          <Section title="AI notes" meta={formatCount(item.aiAnnotations.length, "note", "notes")}>
             {item.aiAnnotations.length > 0 ? (
               <div className="annotation-list">
                 {item.aiAnnotations.map((annotation) => (
@@ -263,11 +263,11 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No AI annotations yet." />
+              <DetailEmptyState label="No AI notes yet." />
             )}
           </Section>
 
-          <Section title="Event timeline" meta={formatCount(item.events.length, "event", "events")}>
+          <Section title="History" meta={formatCount(item.events.length, "event", "events")}>
             {item.events.length > 0 ? (
               <div className="detail-list">
                 {item.events.map((event) => (
@@ -279,15 +279,15 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="No event history yet." />
+              <DetailEmptyState label="No history yet." />
             )}
           </Section>
           </DetailSectionGroup>
         </div>
 
-        <aside className="item-detail__metadata" aria-label="item facts">
-          <p className="proof-kicker">item</p>
-          <h1 id="item-detail-title">{item.title ?? `${item.type} item`}</h1>
+        <aside className="item-detail__metadata" aria-label="archive piece context">
+          <p className="proof-kicker">archive piece</p>
+          <h1 id="item-detail-title">{item.title ?? `${item.type} piece`}</h1>
           <div className="item-detail__signal-row">
             <TypeIndicator type={item.type} />
             <span aria-hidden="true">·</span>
@@ -304,7 +304,7 @@ export function ItemDetailView({
           <DetailActionMap showLifecycle={showsLifecycleActions} />
           {showsLifecycleActions ? (
             <div className="item-detail__action-stack">
-              <DetailActionGroup id="detail-action-lifecycle" title="Lifecycle" meta="status changes">
+              <DetailActionGroup id="detail-action-lifecycle" title="Work state" meta="move through the archive">
                 <LifecycleControls
                   currentStatus={item.status}
                   pending={statusActionPending}
@@ -324,11 +324,11 @@ export function ItemDetailView({
           ) : null}
           <DetailSectionMap item={item} />
           <dl>
-            <Metadata label="ID" value={item.id} />
-            <Metadata label="Source" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
-            <Metadata label="Created" value={item.createdAt} />
-            <Metadata label="Updated" value={item.updatedAt} />
-            <Metadata label="Privacy" value={item.privacyLevel ?? "inherited"} />
+            <Metadata label="Archive ID" value={item.id} />
+            <Metadata label="From" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
+            <Metadata label="Added" value={item.createdAt} />
+            <Metadata label="Last changed" value={item.updatedAt} />
+            <Metadata label="Visibility" value={item.privacyLevel ?? "inherited"} />
             <Metadata label="Rights" value={item.rightsStatus} />
             <Metadata label="Rights reviewed" value={item.rightsReviewedAt ?? "not reviewed"} />
           </dl>
@@ -340,9 +340,9 @@ export function ItemDetailView({
 
 function ItemWorkSummary({ item }: { item: ItemDetail }) {
   return (
-    <dl className="item-detail__work-summary" aria-label="item work state">
+    <dl className="item-detail__work-summary" aria-label="archive piece work state">
       <div>
-        <dt>lifecycle</dt>
+        <dt>work state</dt>
         <dd>{item.status}</dd>
       </div>
       <div>
@@ -350,12 +350,12 @@ function ItemWorkSummary({ item }: { item: ItemDetail }) {
         <dd>{item.rightsStatus}</dd>
       </div>
       <div>
-        <dt>campaigns</dt>
+        <dt>in campaigns</dt>
         <dd>{formatCount(item.campaignAttachments.length, "attachment", "attachments")}</dd>
       </div>
       <div>
-        <dt>relationships</dt>
-        <dd>{formatCount(item.relationships.length, "relationship", "relationships")}</dd>
+        <dt>connected to</dt>
+        <dd>{formatCount(item.relationships.length, "connection", "connections")}</dd>
       </div>
     </dl>
   );
@@ -373,9 +373,9 @@ function DetailArchiveFlowPanel({
   }
 
   return (
-    <nav className="item-detail__archive-flow" aria-label="archive sequence">
+    <nav className="item-detail__archive-flow" aria-label="archive set navigation">
       <div className="item-detail__archive-flow-header">
-        <span>archive sequence</span>
+        <span>archive set</span>
         <span>
           {archiveFlow.index} / {archiveFlow.total}
         </span>
@@ -428,30 +428,30 @@ function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
     showLifecycle
       ? {
           href: "#detail-action-lifecycle",
-          label: "change status",
-          meta: "lifecycle",
+          label: "change work state",
+          meta: "state",
         }
       : null,
     {
       href: "#detail-action-relationship",
-      label: "add relationship",
-      meta: "connect",
+      label: "connect to piece",
+      meta: "connected to",
     },
     {
       href: "#detail-action-collection",
       label: "add collection",
-      meta: "organize",
+      meta: "in collections",
     },
     {
       href: "#detail-action-campaign",
       label: "attach campaign",
-      meta: "reuse",
+      meta: "in campaigns",
     },
   ].filter((action): action is { href: string; label: string; meta: string } => action !== null);
 
   return (
-    <nav className="item-detail__action-map" aria-label="item actions">
-      <span className="item-detail__action-map-title">actions</span>
+    <nav className="item-detail__action-map" aria-label="what can be done">
+      <span className="item-detail__action-map-title">do next</span>
       <div className="item-detail__action-map-links">
         {actions.map((action) => (
           <a href={action.href} key={action.href}>
@@ -474,7 +474,7 @@ function DetailSessionFocus({
   const focusItems = [
     {
       href: showLifecycle ? "#detail-action-lifecycle" : "#detail-event-timeline",
-      label: "lifecycle",
+      label: "work state",
       value: getLifecycleSessionValue(item.status),
     },
     {
@@ -485,14 +485,14 @@ function DetailSessionFocus({
     },
     {
       href: getConnectionSessionHref(item),
-      label: "connections",
+      label: "connected to",
       value: getConnectionSessionValue(item),
     },
   ];
 
   return (
-    <nav className="item-detail__session-focus" aria-label="session focus">
-      <span className="item-detail__session-focus-title">session focus</span>
+    <nav className="item-detail__session-focus" aria-label="what to check">
+      <span className="item-detail__session-focus-title">what to check</span>
       <div className="item-detail__session-focus-links">
         {focusItems.map((focus) => (
           <a
@@ -517,12 +517,12 @@ function DetailTopBar({
   onBack: () => void;
 }) {
   return (
-    <div className="item-detail__topbar" aria-label="item detail context">
+    <div className="item-detail__topbar" aria-label="archive detail context">
       <button className="text-button" type="button" onClick={onBack}>
         Back to archive
       </button>
       <div className="item-detail__topbar-context">
-        <span>item detail</span>
+        <span>archive detail</span>
         <span>{archiveContext}</span>
       </div>
     </div>
@@ -543,17 +543,17 @@ function DetailSectionMap({ item }: { item: ItemDetail }) {
     },
     {
       href: "#detail-relationships",
-      label: "relationships",
+      label: "connected to",
       meta: String(item.relationships.length),
     },
     {
       href: "#detail-collections",
-      label: "collections",
+      label: "in collections",
       meta: String(item.collections.length),
     },
     {
       href: "#detail-campaign-attachments",
-      label: "campaigns",
+      label: "in campaigns",
       meta: String(item.campaignAttachments.length),
     },
     {
@@ -564,8 +564,8 @@ function DetailSectionMap({ item }: { item: ItemDetail }) {
   ];
 
   return (
-    <nav className="item-detail__section-map" aria-label="item detail sections">
-      <span className="item-detail__section-map-title">sections</span>
+    <nav className="item-detail__section-map" aria-label="archive detail sections">
+      <span className="item-detail__section-map-title">on this page</span>
       <div className="item-detail__section-map-links">
         {sections.map((section) => (
           <a href={section.href} key={section.href}>
@@ -586,11 +586,10 @@ function RelationshipRow({
   onOpenRelatedItem?: (itemId: string) => void;
 }) {
   const directionLabel = relationship.direction === "outgoing" ? "to" : "from";
-  const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} item`;
+  const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} piece`;
   const targetMeta = [
     relationship.otherItemType,
     relationship.otherItemStatus,
-    relationship.otherItemId,
   ].join(" · ");
 
   return (
@@ -643,12 +642,12 @@ function RetireWithReplacementForm({
     const normalizedReplacementId = replacementId.trim();
 
     if (!normalizedReplacementId) {
-      setLocalError("Replacement item is required.");
+      setLocalError("Replacement piece is required.");
       return;
     }
 
     if (normalizedReplacementId === currentItemId) {
-      setLocalError("Choose a different item.");
+      setLocalError("Choose a different piece.");
       return;
     }
 
@@ -730,7 +729,7 @@ function CampaignAttachForm({
     }
 
     if (warningState === "blocking") {
-      setLocalError("This rights status blocks campaign attachment.");
+      setLocalError("Rights do not allow adding this to a campaign.");
       return;
     }
 
@@ -740,7 +739,7 @@ function CampaignAttachForm({
     }
 
     if (!onAttachCampaign) {
-      setLocalError("Campaign attachment requires live archive mode.");
+      setLocalError("Adding to a campaign requires live archive mode.");
       return;
     }
 
@@ -761,7 +760,7 @@ function CampaignAttachForm({
   };
 
   return (
-    <form className="campaign-attach" aria-label="attach to campaign" onSubmit={submit}>
+    <form className="campaign-attach" aria-label="add to campaign" onSubmit={submit}>
       <div className="campaign-attach__fields">
         <label>
           <span>campaign</span>
@@ -809,10 +808,10 @@ function CampaignAttachForm({
         disabled={pending || availableOptions.length === 0 || warningState === "blocking"}
         type="submit"
       >
-        {pending ? "Attaching" : "Attach to campaign"}
+        {pending ? "Adding" : "Add to campaign"}
       </button>
       {availableOptions.length === 0 ? (
-        <p className="detail-muted">No campaigns available to attach.</p>
+        <p className="detail-muted">No campaigns available.</p>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -844,7 +843,7 @@ function CollectionAttachForm({
     }
 
     if (!onAttachCollection) {
-      setLocalError("Collection attachment requires live archive mode.");
+      setLocalError("Adding to a collection requires live archive mode.");
       return;
     }
 
@@ -859,7 +858,7 @@ function CollectionAttachForm({
   };
 
   return (
-    <form className="collection-attach" aria-label="attach to collection" onSubmit={submit}>
+    <form className="collection-attach" aria-label="add to collection" onSubmit={submit}>
       <div className="collection-attach__fields">
         <label>
           <span>collection</span>
@@ -882,10 +881,10 @@ function CollectionAttachForm({
         disabled={pending || availableOptions.length === 0}
         type="submit"
       >
-        {pending ? "Attaching" : "Attach to collection"}
+        {pending ? "Adding" : "Add to collection"}
       </button>
       {availableOptions.length === 0 ? (
-        <p className="detail-muted">No collections available to attach.</p>
+        <p className="detail-muted">No collections available.</p>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -909,7 +908,7 @@ function RightsWarning({
     return (
       <div className="rights-warning rights-warning--blocking" role="alert">
         <span className="rights-warning__title">Rights block</span>
-        <p>{rightsStatus} items cannot be attached to campaigns.</p>
+        <p>{rightsStatus} pieces cannot be added to campaigns.</p>
       </div>
     );
   }
@@ -918,7 +917,7 @@ function RightsWarning({
     <div className="rights-warning rights-warning--advisory">
       <span className="rights-warning__title">Rights warning</span>
       <p>
-        {rightsStatus} requires an override note before attaching as {role}.
+        {rightsStatus} requires an override note before adding as {role}.
       </p>
     </div>
   );
@@ -1090,17 +1089,17 @@ function RelationshipCreateForm({
     const normalizedToId = toId.trim();
 
     if (!normalizedToId) {
-      setLocalError("Related item ID is required.");
+      setLocalError("Archive ID is required.");
       return;
     }
 
     if (normalizedToId === currentItemId) {
-      setLocalError("Choose a different item.");
+      setLocalError("Choose a different piece.");
       return;
     }
 
     if (!onCreateRelationship) {
-      setLocalError("Relationship creation requires live archive mode.");
+      setLocalError("Connecting pieces requires live archive mode.");
       return;
     }
 
@@ -1119,16 +1118,16 @@ function RelationshipCreateForm({
   };
 
   return (
-    <form className="relationship-create" aria-label="add relationship" onSubmit={submit}>
+    <form className="relationship-create" aria-label="connect piece" onSubmit={submit}>
       <div className="relationship-create__fields">
         <label>
-          <span>related item</span>
+          <span>piece to connect</span>
           <input
             autoComplete="off"
             disabled={pending}
             list={targetOptions.length > 0 ? dataListId : undefined}
             onChange={(event) => setToId(event.target.value)}
-            placeholder="item id"
+            placeholder="archive id"
             type="text"
             value={toId}
           />
@@ -1154,7 +1153,7 @@ function RelationshipCreateForm({
         </label>
       </div>
       <button className="status-action" disabled={pending} type="submit">
-        {pending ? "Adding" : "Add relationship"}
+        {pending ? "Connecting" : "Connect piece"}
       </button>
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>
@@ -1179,7 +1178,7 @@ function LifecycleControls({
   }
 
   return (
-    <div className="item-detail__status-actions" aria-label="status actions">
+    <div className="item-detail__status-actions" aria-label="work state actions">
       {actions.map((action) => (
         <button
           className={action.tone === "retire" ? "status-action status-action--retire" : "status-action"}
@@ -1199,14 +1198,14 @@ function LifecycleControls({
 function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label: string; tone?: "retire" }> {
   if (status === "inbox") {
     return [
-      { status: "triaged", label: "Mark triaged" },
+      { status: "triaged", label: "Mark reviewed" },
       { status: "retired", label: "Retire", tone: "retire" },
     ];
   }
 
   if (status === "triaged") {
     return [
-      { status: "active", label: "Promote to active" },
+      { status: "active", label: "Make active" },
       { status: "retired", label: "Retire", tone: "retire" },
     ];
   }
@@ -1284,7 +1283,7 @@ function getRightsSessionTone(rightsStatus: ItemDetail["rightsStatus"]) {
 
 function getConnectionSessionValue(item: ItemDetail) {
   if (item.relationships.length === 0) {
-    return "add relationship";
+    return "connect to piece";
   }
 
   if (item.collections.length === 0) {

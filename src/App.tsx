@@ -135,7 +135,7 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setItems([]);
-          setReadError("Unable to load archive items.");
+          setReadError("Unable to load archive.");
         }
       })
       .finally(() => {
@@ -240,7 +240,7 @@ export function App() {
           setDetail(null);
           setCampaignOptions([]);
           setCollectionOptions([]);
-          setDetailError("Unable to load item detail.");
+          setDetailError("Unable to load archive detail.");
         }
       })
       .finally(() => {
@@ -288,7 +288,7 @@ export function App() {
       setItems(nextItems);
     } catch (error: unknown) {
       console.error(error);
-      setStatusWriteError("Unable to change item status.");
+      setStatusWriteError("Unable to change work state.");
     } finally {
       setIsStatusUpdating(false);
     }
@@ -347,7 +347,7 @@ export function App() {
       setDetail(nextDetail);
     } catch (error: unknown) {
       console.error(error);
-      setRelationshipWriteError("Unable to add relationship.");
+      setRelationshipWriteError("Unable to connect piece.");
       throw error;
     } finally {
       setIsRelationshipCreating(false);
@@ -448,10 +448,10 @@ export function App() {
       const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
       setItems(nextItems);
       setReadError(null);
-      setCaptureNotice("Captured to inbox.");
+      setCaptureNotice("Added to inbox.");
     } catch (error: unknown) {
       console.error(error);
-      setCaptureError("Unable to capture note.");
+      setCaptureError("Unable to add note.");
       throw error;
     } finally {
       setIsCapturing(false);
@@ -498,13 +498,13 @@ export function App() {
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
         id: item.id,
-        label: item.title ?? `${item.type} item`,
+        label: item.title ?? `${item.type} piece`,
       }));
     const replacementTargetOptions = items
       .filter((item) => item.id !== currentItemId && item.status !== "retired")
       .map((item) => ({
         id: item.id,
-        label: item.title ?? `${item.type} item`,
+        label: item.title ?? `${item.type} piece`,
       }));
     const collectionTargetOptions = collectionOptions.map((collection) => ({
       id: collection.id,
@@ -560,7 +560,7 @@ export function App() {
         onNavigate: openItemDetail,
       }))
     : items;
-  const archiveModeLabel = isPocketBaseMode ? "live archive" : "seed fixtures";
+  const archiveModeLabel = isPocketBaseMode ? "live archive" : "fixture preview";
 
   return (
     <main className="app-shell" aria-label="Vita archive">
@@ -610,7 +610,7 @@ export function App() {
               onClearFilters={clearArchiveFilters}
             />
           }
-          ariaLabel="archive items"
+          ariaLabel="archive pieces"
         />
       </section>
     </main>
@@ -630,18 +630,18 @@ function ArchiveResultHeader({
 }) {
   const hasFilters = hasActiveFilters(filters);
   const resultLabel = readError
-    ? "current view unavailable"
+    ? "archive set unavailable"
     : loading
-      ? "loading current view"
-      : `${formatResultCount(itemCount)} in current view`;
+      ? "loading archive set"
+      : `${formatResultCount(itemCount)} shown`;
   const viewLabel = hasFilters ? "filtered archive" : "full archive";
 
   return (
     <div className="archive-result-header" aria-label="archive result context">
       <div className="archive-result-header__body">
-        <h2>Current view</h2>
+        <h2>Archive set</h2>
         <p>{resultLabel}</p>
-        <ArchiveFilterChips filters={filters} emptyLabel="all archive items" />
+        <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
       </div>
       <span>{viewLabel}</span>
     </div>
@@ -667,29 +667,29 @@ function ArchiveUsageSummary({
   const resultLabel = readError
     ? "load error"
     : loading
-      ? "loading items"
+      ? "loading pieces"
       : formatResultCount(itemCount);
 
   return (
     <dl className="archive-overview" aria-label="archive overview">
       <div className="archive-overview__item">
-        <dt>data source</dt>
+        <dt>archive mode</dt>
         <dd>{modeLabel}</dd>
       </div>
       <div className="archive-overview__item">
-        <dt>results</dt>
+        <dt>shown</dt>
         <dd>{resultLabel}</dd>
       </div>
       <div className="archive-overview__item">
-        <dt>capture</dt>
+        <dt>add</dt>
         <dd>{captureEnabled ? "manual note" : "seed view"}</dd>
       </div>
       <div className="archive-overview__item">
-        <dt>detail work</dt>
-        <dd>status · relationships · collections · campaigns</dd>
+        <dt>open pieces</dt>
+        <dd>work state · connected to · collections · campaigns</dd>
       </div>
       <div className="archive-overview__item">
-        <dt>view</dt>
+        <dt>looking at</dt>
         <dd>{filterSummary || formatArchiveContext(filters)}</dd>
       </div>
     </dl>
@@ -703,7 +703,7 @@ function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
     <div className="archive-state archive-state--loading" role="status" aria-live="polite">
       <span className="archive-state__kicker">loading</span>
       <p className="archive-state__copy">
-        {filterSummary ? `Loading archive items for ${filterSummary}.` : "Loading archive items."}
+        {filterSummary ? `Loading archive pieces for ${filterSummary}.` : "Loading archive pieces."}
       </p>
     </div>
   );
@@ -734,11 +734,11 @@ function ArchiveEmptyState({
   if (hasFilters) {
     return (
       <div className="archive-state">
-        <span className="archive-state__kicker">no results</span>
-        <h2 className="archive-state__title">No items match these filters.</h2>
+        <span className="archive-state__kicker">empty set</span>
+        <h2 className="archive-state__title">Nothing matches this archive set.</h2>
         <p className="archive-state__copy">{filterSummary}</p>
         <button className="text-button" type="button" onClick={onClearFilters}>
-          Clear filters
+          Clear narrow view
         </button>
       </div>
     );
@@ -747,8 +747,8 @@ function ArchiveEmptyState({
   return (
     <div className="archive-state">
       <span className="archive-state__kicker">empty archive</span>
-      <h2 className="archive-state__title">Archive is empty.</h2>
-      <p className="archive-state__copy">This workspace has no archive items available.</p>
+      <h2 className="archive-state__title">Archive has no pieces yet.</h2>
+      <p className="archive-state__copy">This workspace has nothing available to inspect.</p>
     </div>
   );
 }
@@ -775,13 +775,13 @@ function ArchiveFilterControls({
   return (
     <form
       className="archive-filters"
-      aria-label="archive filters"
+      aria-label="narrow archive"
       onSubmit={(event) => event.preventDefault()}
     >
       <div className="archive-filters__header">
         <div>
-          <span className="archive-filters__kicker">filters</span>
-          <ArchiveFilterChips filters={filters} emptyLabel="all archive items" />
+          <span className="archive-filters__kicker">narrow archive</span>
+          <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
         </div>
         {hasFilters ? (
           <button
@@ -790,7 +790,7 @@ function ArchiveFilterControls({
             onClick={onClearFilters}
             type="button"
           >
-            Clear filters
+            Clear narrow view
           </button>
         ) : null}
       </div>
@@ -801,7 +801,7 @@ function ArchiveFilterControls({
           }`}
         >
           <span className="archive-filter-field__label">
-            <span>search text</span>
+            <span>search</span>
             {filters.text?.trim() ? (
               <span className="archive-filter-field__state">active</span>
             ) : null}
@@ -810,7 +810,7 @@ function ArchiveFilterControls({
             autoComplete="off"
             disabled={loading}
             onChange={(event) => onTextChange(event.target.value)}
-            placeholder="search archive"
+            placeholder="words in archive"
             type="search"
             value={filters.text ?? ""}
           />
@@ -821,7 +821,7 @@ function ArchiveFilterControls({
           }`}
         >
           <span className="archive-filter-field__label">
-            <span>lifecycle</span>
+            <span>work state</span>
             {filters.status ? (
               <span className="archive-filter-field__state">active</span>
             ) : null}
@@ -833,7 +833,7 @@ function ArchiveFilterControls({
           >
             {statusFilterOptions.map((status) => (
               <option key={status} value={status}>
-                {status === "all" ? "all statuses" : status}
+                {status === "all" ? "all work states" : status}
               </option>
             ))}
           </select>
@@ -842,7 +842,7 @@ function ArchiveFilterControls({
           className={`archive-filter-field${filters.type ? " archive-filter-field--active" : ""}`}
         >
           <span className="archive-filter-field__label">
-            <span>item type</span>
+            <span>kind</span>
             {filters.type ? (
               <span className="archive-filter-field__state">active</span>
             ) : null}
@@ -854,7 +854,7 @@ function ArchiveFilterControls({
           >
             {typeFilterOptions.map((type) => (
               <option key={type} value={type}>
-                {type === "all" ? "all types" : type}
+                {type === "all" ? "all kinds" : type}
               </option>
             ))}
           </select>
@@ -865,7 +865,7 @@ function ArchiveFilterControls({
           }`}
         >
           <span className="archive-filter-field__label">
-            <span>source</span>
+            <span>from</span>
             {filters.source ? (
               <span className="archive-filter-field__state">active</span>
             ) : null}
@@ -877,7 +877,7 @@ function ArchiveFilterControls({
           >
             {sourceFilterOptions.map((source) => (
               <option key={source} value={source}>
-                {source === "all" ? "all sources" : source.replace("_", " ")}
+                {source === "all" ? "all origins" : source.replace("_", " ")}
               </option>
             ))}
           </select>
@@ -898,14 +898,14 @@ function ArchiveFilterChips({
 
   if (filterItems.length === 0) {
     return (
-      <div className="archive-filter-chips" aria-label="active archive filters">
+      <div className="archive-filter-chips" aria-label="archive scope">
         <span className="archive-filter-chip archive-filter-chip--empty">{emptyLabel}</span>
       </div>
     );
   }
 
   return (
-    <div className="archive-filter-chips" aria-label="active archive filters">
+    <div className="archive-filter-chips" aria-label="archive scope">
       {filterItems.map((filter) => (
         <span className="archive-filter-chip" key={filter.label}>
           <span>{filter.label}</span>
@@ -950,24 +950,24 @@ function CaptureNoteForm({
   };
 
   return (
-    <form className="capture-note" aria-label="capture note" onSubmit={submit}>
+    <form className="capture-note" aria-label="add note" onSubmit={submit}>
       <div className="capture-note__header">
-        <span>capture</span>
-        <p>manual note · inbox</p>
+        <span>add note</span>
+        <p>new note · starts in inbox</p>
       </div>
       <label>
-        <span>body</span>
+        <span>note</span>
         <textarea
           disabled={pending}
           onChange={(event) => setBody(event.target.value)}
-          placeholder="note body"
+          placeholder="write note"
           rows={3}
           value={body}
         />
       </label>
       <div className="capture-note__actions">
         <button className="status-action" disabled={pending} type="submit">
-          {pending ? "Capturing" : "Capture to inbox"}
+          {pending ? "Adding" : "Add note to inbox"}
         </button>
         {notice ? <span className="capture-note__notice">{notice}</span> : null}
       </div>
@@ -1053,11 +1053,11 @@ function formatFilterSummary(filters: ItemCardFilters) {
 }
 
 function formatArchiveContext(filters: ItemCardFilters) {
-  return formatFilterSummary(filters) || "all archive items";
+  return formatFilterSummary(filters) || "whole archive";
 }
 
 function formatResultCount(itemCount: number) {
-  return `${itemCount} ${itemCount === 1 ? "result" : "results"}`;
+  return `${itemCount} ${itemCount === 1 ? "piece" : "pieces"}`;
 }
 
 function getDetailArchiveFlow(items: ItemCardProps[], currentItemId: string): DetailArchiveFlow | null {
@@ -1082,7 +1082,7 @@ function toArchiveNeighbor(item: ItemCardProps | undefined) {
 
   return {
     id: item.id,
-    label: item.title ?? `${item.type} item`,
+    label: item.title ?? `${item.type} piece`,
     meta: `${item.type} · ${item.status}`,
   };
 }
@@ -1095,19 +1095,19 @@ function getFilterSummaryItems(filters: ItemCardFilters) {
   const parts: Array<{ label: string; value: string }> = [];
 
   if (filters.status) {
-    parts.push({ label: "lifecycle", value: filters.status });
+    parts.push({ label: "work state", value: filters.status });
   }
 
   if (filters.type) {
-    parts.push({ label: "item type", value: filters.type });
+    parts.push({ label: "kind", value: filters.type });
   }
 
   if (filters.source) {
-    parts.push({ label: "source", value: filters.source.replace("_", " ") });
+    parts.push({ label: "from", value: filters.source.replace("_", " ") });
   }
 
   if (filters.text?.trim()) {
-    parts.push({ label: "search", value: `"${filters.text.trim()}"` });
+    parts.push({ label: "words", value: `"${filters.text.trim()}"` });
   }
 
   return parts;
