@@ -107,23 +107,23 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.ridgeway-shell {
+.topbar-shell {
   display: grid;
   gap: 16px;
   margin-bottom: 48px;
 }
 
-.ridgeway-shell__bar {
+.topbar-shell__bar {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 28px;
   align-items: baseline;
 }
 
-.ridgeway-shell__brand,
-.ridgeway-shell__control,
-.ridgeway-text-control,
-.ridgeway-option {
+.topbar-shell__brand,
+.topbar-shell__control,
+.topbar-text-control,
+.topbar-option {
   width: fit-content;
   cursor: pointer;
   border: 0;
@@ -139,7 +139,7 @@ select:focus-visible {
   text-decoration: none;
 }
 
-.ridgeway-shell__brand {
+.topbar-shell__brand {
   display: inline-flex;
   width: 18px;
   height: 18px;
@@ -148,7 +148,7 @@ select:focus-visible {
   line-height: 1;
 }
 
-.ridgeway-live-dot {
+.topbar-live-dot {
   display: block;
   width: 8px;
   height: 8px;
@@ -169,24 +169,24 @@ select:focus-visible {
   }
 }
 
-.ridgeway-shell__nav {
+.topbar-shell__nav {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
   align-items: baseline;
 }
 
-.ridgeway-shell__control {
+.topbar-shell__control {
   color: var(--color-muted);
 }
 
-.ridgeway-shell__control--active {
+.topbar-shell__control--active {
   color: var(--color-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.ridgeway-shell__scope {
+.topbar-shell__scope {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -196,27 +196,27 @@ select:focus-visible {
   line-height: 1.25;
 }
 
-.ridgeway-shell__scope .archive-filter-chips {
+.topbar-shell__scope .archive-filter-chips {
   display: contents;
 }
 
-.ridgeway-text-control {
+.topbar-text-control {
   color: var(--color-muted);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.ridgeway-text-control:disabled {
+.topbar-text-control:disabled {
   cursor: default;
   opacity: 0.48;
 }
 
-.ridgeway-reveal {
+.topbar-reveal {
   max-width: 920px;
-  animation: ridgeway-reveal 180ms ease;
+  animation: topbar-reveal 180ms ease;
 }
 
-@keyframes ridgeway-reveal {
+@keyframes topbar-reveal {
   from {
     opacity: 0;
   }
@@ -226,45 +226,45 @@ select:focus-visible {
   }
 }
 
-.ridgeway-reveal__grid {
+.topbar-reveal__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(160px, max-content));
   gap: 52px;
   align-items: start;
 }
 
-.ridgeway-reveal__group {
+.topbar-reveal__group {
   display: grid;
   gap: 7px;
   min-width: 0;
 }
 
-.ridgeway-reveal__group--wide {
+.topbar-reveal__group--wide {
   min-width: min(520px, calc(100vw - 44px));
 }
 
-.ridgeway-reveal__label {
+.topbar-reveal__label {
   color: var(--color-ink);
   font-size: 13px;
   line-height: 1.25;
 }
 
-.ridgeway-option {
+.topbar-option {
   display: block;
   color: var(--color-muted);
 }
 
-.ridgeway-option--active {
+.topbar-option--active {
   color: var(--color-ink);
 }
 
-.ridgeway-option--muted {
+.topbar-option--muted {
   cursor: default;
   color: var(--color-subtle);
 }
 
-.ridgeway-reveal__meta,
-.ridgeway-reveal__copy {
+.topbar-reveal__meta,
+.topbar-reveal__copy {
   max-width: 48ch;
   margin: 0;
   color: var(--color-muted);
@@ -574,7 +574,7 @@ select:focus-visible {
   padding: 18vh 22px 48px;
   background: color-mix(in srgb, var(--color-paper) 60%, transparent);
   backdrop-filter: blur(18px);
-  animation: ridgeway-reveal 180ms ease;
+  animation: topbar-reveal 180ms ease;
 }
 
 .spotlight-search,

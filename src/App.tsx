@@ -760,12 +760,12 @@ function ArchiveTopShell({
   };
 
   return (
-    <header className="ridgeway-shell">
-      <div className="ridgeway-shell__bar">
-        <button className="ridgeway-shell__brand" type="button" onClick={onClearFilters} aria-label="live archive">
-          <span className="ridgeway-live-dot" aria-hidden="true" />
+    <header className="topbar-shell">
+      <div className="topbar-shell__bar">
+        <button className="topbar-shell__brand" type="button" onClick={onClearFilters} aria-label="live archive">
+          <span className="topbar-live-dot" aria-hidden="true" />
         </button>
-        <nav className="ridgeway-shell__nav" aria-label="archive controls">
+        <nav className="topbar-shell__nav" aria-label="archive controls">
           <ArchiveShellButton
             active={activePanel === "index"}
             label="Index of Work"
@@ -793,41 +793,41 @@ function ArchiveTopShell({
           />
         </nav>
       </div>
-      <div className="ridgeway-shell__scope" aria-label="archive scope">
+      <div className="topbar-shell__scope" aria-label="archive scope">
         <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
         <span>{resultLabel}</span>
         {hasFilters ? (
-          <button className="ridgeway-text-control" disabled={loading} onClick={onClearFilters} type="button">
+          <button className="topbar-text-control" disabled={loading} onClick={onClearFilters} type="button">
             Clear filters
           </button>
         ) : null}
       </div>
       {activePanel ? (
-        <div className="ridgeway-reveal" aria-live="polite">
+        <div className="topbar-reveal" aria-live="polite">
           {activePanel === "index" ? (
-            <div className="ridgeway-reveal__grid">
-              <div className="ridgeway-reveal__group">
-                <span className="ridgeway-reveal__label">Index</span>
-                <button className="ridgeway-option ridgeway-option--active" type="button" onClick={onClearFilters}>
+            <div className="topbar-reveal__grid">
+              <div className="topbar-reveal__group">
+                <span className="topbar-reveal__label">Index</span>
+                <button className="topbar-option topbar-option--active" type="button" onClick={onClearFilters}>
                   All pieces
                 </button>
-                <span className="ridgeway-option ridgeway-option--muted">Collections</span>
+                <span className="topbar-option topbar-option--muted">Collections</span>
               </div>
-              <div className="ridgeway-reveal__group">
-                <span className="ridgeway-reveal__label">Current set</span>
+              <div className="topbar-reveal__group">
+                <span className="topbar-reveal__label">Current set</span>
                 <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
-                <span className="ridgeway-reveal__meta">{resultLabel}</span>
+                <span className="topbar-reveal__meta">{resultLabel}</span>
               </div>
             </div>
           ) : null}
           {activePanel === "views" ? (
-            <div className="ridgeway-reveal__grid">
-              <div className="ridgeway-reveal__group">
-                <span className="ridgeway-reveal__label">View</span>
-                <span className="ridgeway-option ridgeway-option--active">Masonry</span>
-                <span className="ridgeway-option ridgeway-option--muted">Gallery</span>
-                <span className="ridgeway-option ridgeway-option--muted">List</span>
-                <span className="ridgeway-option ridgeway-option--muted">Graph</span>
+            <div className="topbar-reveal__grid">
+              <div className="topbar-reveal__group">
+                <span className="topbar-reveal__label">View</span>
+                <span className="topbar-option topbar-option--active">Masonry</span>
+                <span className="topbar-option topbar-option--muted">Gallery</span>
+                <span className="topbar-option topbar-option--muted">List</span>
+                <span className="topbar-option topbar-option--muted">Graph</span>
               </div>
             </div>
           ) : null}
@@ -842,9 +842,9 @@ function ArchiveTopShell({
             />
           ) : null}
           {activePanel === "import" ? (
-            <div className="ridgeway-reveal__grid">
-              <div className="ridgeway-reveal__group ridgeway-reveal__group--wide">
-                <span className="ridgeway-reveal__label">Import</span>
+            <div className="topbar-reveal__grid">
+              <div className="topbar-reveal__group topbar-reveal__group--wide">
+                <span className="topbar-reveal__label">Import</span>
                 {isPocketBaseMode ? (
                   <CaptureNoteForm
                     error={captureError}
@@ -853,19 +853,19 @@ function ArchiveTopShell({
                     pending={pendingCapture}
                   />
                 ) : (
-                  <p className="ridgeway-reveal__meta">Import requires live archive mode.</p>
+                  <p className="topbar-reveal__meta">Import requires live archive mode.</p>
                 )}
               </div>
             </div>
           ) : null}
           {activePanel === "information" ? (
-            <div className="ridgeway-reveal__grid">
-              <div className="ridgeway-reveal__group">
-                <span className="ridgeway-reveal__label">Information</span>
-                <p className="ridgeway-reveal__copy">
+            <div className="topbar-reveal__grid">
+              <div className="topbar-reveal__group">
+                <span className="topbar-reveal__label">Information</span>
+                <p className="topbar-reveal__copy">
                   A working archive for capture, inspection, connection, reuse, and removal.
                 </p>
-                <p className="ridgeway-reveal__meta">⌘K search · M color mode · Esc close</p>
+                <p className="topbar-reveal__meta">⌘K search · M color mode · Esc close</p>
               </div>
             </div>
           ) : null}
@@ -938,7 +938,7 @@ function ArchiveSearchOverlay({
         </label>
         <div className="spotlight-search__meta">
           <span>{loading ? "loading" : `${formatResultCount(resultCount)} shown`}</span>
-          <button className="ridgeway-text-control" type="button" onClick={onClose}>
+          <button className="topbar-text-control" type="button" onClick={onClose}>
             close
           </button>
         </div>
@@ -969,7 +969,7 @@ function ArchiveSettingsOverlay({
       <section className="archive-settings" aria-label="site settings">
         <div className="archive-settings__header">
           <span>Settings</span>
-          <button className="ridgeway-text-control" type="button" onClick={onClose}>
+          <button className="topbar-text-control" type="button" onClick={onClose}>
             close
           </button>
         </div>
@@ -977,14 +977,14 @@ function ArchiveSettingsOverlay({
           <span>Color mode</span>
           <div className="archive-settings__options">
             <button
-              className={`ridgeway-option${theme === "light" ? " ridgeway-option--active" : ""}`}
+              className={`topbar-option${theme === "light" ? " topbar-option--active" : ""}`}
               type="button"
               onClick={() => onThemeChange("light")}
             >
               light
             </button>
             <button
-              className={`ridgeway-option${theme === "dark" ? " ridgeway-option--active" : ""}`}
+              className={`topbar-option${theme === "dark" ? " topbar-option--active" : ""}`}
               type="button"
               onClick={() => onThemeChange("dark")}
             >
@@ -992,7 +992,7 @@ function ArchiveSettingsOverlay({
             </button>
           </div>
         </div>
-        <p className="ridgeway-reveal__meta">Press M from the archive to invert the interface.</p>
+        <p className="topbar-reveal__meta">Press M from the archive to invert the interface.</p>
       </section>
     </div>
   );
@@ -1010,7 +1010,7 @@ function ArchiveShellButton({
   return (
     <button
       aria-expanded={active}
-      className={`ridgeway-shell__control${active ? " ridgeway-shell__control--active" : ""}`}
+      className={`topbar-shell__control${active ? " topbar-shell__control--active" : ""}`}
       onClick={onClick}
       type="button"
     >
