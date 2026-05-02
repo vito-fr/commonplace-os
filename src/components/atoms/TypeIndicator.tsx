@@ -1,4 +1,4 @@
-export type ItemType = "image" | "caption" | "note" | "link" | "campaign";
+export type ItemType = "image" | "caption" | "note" | "link";
 
 export interface TypeIndicatorProps {
   type: ItemType;
@@ -9,7 +9,6 @@ const typeGlyphs: Record<ItemType, string> = {
   caption: "c",
   note: "n",
   link: "l",
-  campaign: "ç",
 };
 
 export function TypeIndicator({ type }: TypeIndicatorProps) {

@@ -13,32 +13,13 @@ type CollectionOption = {
   alreadyAttached: boolean;
 };
 
-type CampaignOption = {
-  id: string;
-  label: string;
-  phase: string | null;
-  alreadyAttached: boolean;
-};
-
 type RelationshipCreateInput = {
   toId: string;
   note: string | null;
 };
 
-type RetirementInput = {
-  replacementId: string;
-};
-
 type CollectionAttachInput = {
   collectionId: string;
-};
-
-type CampaignRole = "primary" | "supporting" | "reference";
-
-type CampaignAttachInput = {
-  campaignId: string;
-  role: CampaignRole;
-  rightsOverrideNote: string | null;
 };
 
 type ItemDetailRelationship = ItemDetail["relationships"][number];
@@ -70,10 +51,9 @@ export type ItemDetailViewProps = {
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
   statusActionError?: string | null;
-  onRetireWithReplacement?: (input: RetirementInput) => Promise<void> | void;
-  retirementActionPending?: boolean;
-  retirementActionError?: string | null;
-  retirementTargetOptions?: RelationshipTargetOption[];
+  onDelete?: () => Promise<void> | void;
+  deleteActionPending?: boolean;
+  deleteActionError?: string | null;
   onCreateRelationship?: (input: RelationshipCreateInput) => Promise<void> | void;
   relationshipActionPending?: boolean;
   relationshipActionError?: string | null;
@@ -82,10 +62,6 @@ export type ItemDetailViewProps = {
   collectionActionPending?: boolean;
   collectionActionError?: string | null;
   collectionOptions?: CollectionOption[];
-  onAttachCampaign?: (input: CampaignAttachInput) => Promise<void> | void;
-  campaignActionPending?: boolean;
-  campaignActionError?: string | null;
-  campaignOptions?: CampaignOption[];
 };
 
 export function ItemDetailView({
@@ -102,10 +78,9 @@ export function ItemDetailView({
   onChangeStatus,
   statusActionPending = false,
   statusActionError = null,
-  onRetireWithReplacement,
-  retirementActionPending = false,
-  retirementActionError = null,
-  retirementTargetOptions = [],
+  onDelete,
+  deleteActionPending = false,
+  deleteActionError = null,
   onCreateRelationship,
   relationshipActionPending = false,
   relationshipActionError = null,
@@ -114,10 +89,6 @@ export function ItemDetailView({
   collectionActionPending = false,
   collectionActionError = null,
   collectionOptions = [],
-  onAttachCampaign,
-  campaignActionPending = false,
-  campaignActionError = null,
-  campaignOptions = [],
 }: ItemDetailViewProps) {
   if (loading) {
     return (
@@ -137,17 +108,8 @@ export function ItemDetailView({
     );
   }
 
-  const showsLifecycleActions = hasLifecycleActions(
-    item.status,
-    statusActionError,
-    retirementActionError,
-  );
   const hasContent = Boolean(item.description || item.summary || item.tags.length > 0);
-  const hasFit = Boolean(
-    item.relationships.length > 0 ||
-      item.collections.length > 0 ||
-      item.campaignAttachments.length > 0,
-  );
+  const hasFit = Boolean(item.relationships.length > 0 || item.collections.length > 0);
   const sourceLabel =
     item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual";
 
@@ -162,165 +124,149 @@ export function ItemDetailView({
           </section>
 
           <DetailSectionGroup id="detail-content" title="Content">
-          {hasContent ? (
-            <>
-              <Section title="Description">
-                <ReadableBlock value={item.description} fallback="No description yet." />
-              </Section>
+            {hasContent ? (
+              <>
+                <Section title="Description">
+                  <ReadableBlock value={item.description} fallback="No description yet." />
+                </Section>
 
-              <Section title="Summary">
-                <ReadableBlock value={item.summary} fallback="No summary yet." />
-              </Section>
+                <Section title="Summary">
+                  <ReadableBlock value={item.summary} fallback="No summary yet." />
+                </Section>
 
-              <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
-                {item.tags.length > 0 ? (
-                  <div className="tag-row">
-                    {item.tags.map((tag) => (
-                      <span className={`tag-chip tag-chip--${tag.status}`} key={tag.id}>
-                        {tag.name}
-                        {tag.status === "pending" ? <span>pending</span> : null}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <DetailEmptyState label="No tags yet." />
-                )}
-              </Section>
-            </>
-          ) : (
-            <DetailEmptyState label="Empty — add description, summary, or tags" />
-          )}
+                <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
+                  {item.tags.length > 0 ? (
+                    <div className="tag-row">
+                      {item.tags.map((tag) => (
+                        <span className={`tag-chip tag-chip--${tag.status}`} key={tag.id}>
+                          {tag.name}
+                          {tag.status === "pending" ? <span>pending</span> : null}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <DetailEmptyState label="No tags yet." />
+                  )}
+                </Section>
+              </>
+            ) : (
+              <DetailEmptyState label="Empty — add description, summary, or tags" />
+            )}
           </DetailSectionGroup>
 
           <DetailSectionGroup id="detail-fit" title="Where it fits">
-          {!hasFit ? <DetailEmptyState label="Empty — connect, collect, or attach" /> : null}
-          <Section title="Connected to" meta={formatCount(item.relationships.length, "connection", "connections")}>
-            <CollapsibleAction summary="Connect">
-              <RelationshipCreateForm
-                currentItemId={item.id}
-                error={relationshipActionError}
-                onCreateRelationship={onCreateRelationship}
-                pending={relationshipActionPending}
-                targetOptions={relationshipTargetOptions}
-              />
-            </CollapsibleAction>
-            {item.relationships.length > 0 ? (
-              <div className="detail-list">
-                {item.relationships.map((relationship) => (
-                  <RelationshipRow
-                    key={relationship.id}
-                    relationship={relationship}
-                    onOpenRelatedItem={onOpenRelatedItem}
-                  />
-                ))}
-              </div>
-            ) : !hasFit ? null : (
-              <DetailEmptyState label="Not connected to anything yet." />
-            )}
-          </Section>
+            {!hasFit ? <DetailEmptyState label="Empty — connect or collect" /> : null}
+            <Section
+              title="Connected to"
+              meta={formatCount(item.relationships.length, "connection", "connections")}
+            >
+              <CollapsibleAction summary="Connect">
+                <RelationshipCreateForm
+                  currentItemId={item.id}
+                  error={relationshipActionError}
+                  onCreateRelationship={onCreateRelationship}
+                  pending={relationshipActionPending}
+                  targetOptions={relationshipTargetOptions}
+                />
+              </CollapsibleAction>
+              {item.relationships.length > 0 ? (
+                <div className="detail-list">
+                  {item.relationships.map((relationship) => (
+                    <RelationshipRow
+                      key={relationship.id}
+                      relationship={relationship}
+                      onOpenRelatedItem={onOpenRelatedItem}
+                    />
+                  ))}
+                </div>
+              ) : !hasFit ? null : (
+                <DetailEmptyState label="Not connected to anything yet." />
+              )}
+            </Section>
 
-          <Section title="In collections" meta={formatCount(item.collections.length, "collection", "collections")}>
-            <CollapsibleAction summary="Collect">
-              <CollectionAttachForm
-                error={collectionActionError}
-                onAttachCollection={onAttachCollection}
-                options={collectionOptions}
-                pending={collectionActionPending}
-              />
-            </CollapsibleAction>
-            {item.collections.length > 0 ? (
-              <div className="tag-row">
-                {item.collections.map((collection) => (
-                  <a
-                    className="tag-chip tag-chip--link"
-                    href={`/collections/${encodeURIComponent(collection.id)}`}
-                    key={collection.id}
-                    onClick={(event) => {
-                      if (
-                        !onOpenCollection ||
-                        event.defaultPrevented ||
-                        event.button !== 0 ||
-                        event.metaKey ||
-                        event.altKey ||
-                        event.ctrlKey ||
-                        event.shiftKey
-                      ) {
-                        return;
-                      }
+            <Section
+              title="In collections"
+              meta={formatCount(item.collections.length, "collection", "collections")}
+            >
+              <CollapsibleAction summary="Collect">
+                <CollectionAttachForm
+                  error={collectionActionError}
+                  onAttachCollection={onAttachCollection}
+                  options={collectionOptions}
+                  pending={collectionActionPending}
+                />
+              </CollapsibleAction>
+              {item.collections.length > 0 ? (
+                <div className="tag-row">
+                  {item.collections.map((collection) => (
+                    <a
+                      className="tag-chip tag-chip--link"
+                      href={`/collections/${encodeURIComponent(collection.id)}`}
+                      key={collection.id}
+                      onClick={(event) => {
+                        if (
+                          !onOpenCollection ||
+                          event.defaultPrevented ||
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.altKey ||
+                          event.ctrlKey ||
+                          event.shiftKey
+                        ) {
+                          return;
+                        }
 
-                      event.preventDefault();
-                      onOpenCollection(collection.id);
-                    }}
-                  >
-                    {collection.name}
-                  </a>
-                ))}
-              </div>
-            ) : !hasFit ? null : (
-              <DetailEmptyState label="Not in any collections yet." />
-            )}
-          </Section>
-
-          <Section title="In campaigns" meta={formatCount(item.campaignAttachments.length, "campaign", "campaigns")}>
-            <CollapsibleAction summary="Attach">
-              <CampaignAttachForm
-                error={campaignActionError}
-                onAttachCampaign={onAttachCampaign}
-                options={campaignOptions}
-                pending={campaignActionPending}
-                rightsStatus={item.rightsStatus}
-              />
-            </CollapsibleAction>
-            {item.campaignAttachments.length > 0 ? (
-              <div className="detail-list">
-                {item.campaignAttachments.map((attachment) => (
-                  <div className="detail-list__row" key={attachment.id}>
-                    <span className="detail-list__label">{attachment.role ?? "attached"}</span>
-                    <span>{attachment.campaignTitle ?? attachment.campaignId}</span>
-                    {attachment.phase ? <span className="detail-muted">{attachment.phase}</span> : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              !hasFit ? null : <DetailEmptyState label="Not in any campaigns yet." />
-            )}
-          </Section>
+                        event.preventDefault();
+                        onOpenCollection(collection.id);
+                      }}
+                    >
+                      {collection.name}
+                    </a>
+                  ))}
+                </div>
+              ) : !hasFit ? null : (
+                <DetailEmptyState label="Not in any collections yet." />
+              )}
+            </Section>
           </DetailSectionGroup>
 
           <DetailSectionGroup id="detail-history-group" title="History">
-          <Section title="AI notes" meta={formatCount(item.aiAnnotations.length, "note", "notes")}>
-            {item.aiAnnotations.length > 0 ? (
-              <div className="annotation-list">
-                {item.aiAnnotations.map((annotation) => (
-                  <article className={`annotation-row annotation-row--${annotation.reviewStatus}`} key={annotation.id}>
-                    <div className="annotation-row__header">
-                      <span>{annotation.fieldName}</span>
-                      <ProvenanceMark annotation={annotation} />
-                    </div>
-                    <pre>{formatPayload(annotation.payload)}</pre>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DetailEmptyState label="No AI notes yet." />
-            )}
-          </Section>
+            <Section title="AI notes" meta={formatCount(item.aiAnnotations.length, "note", "notes")}>
+              {item.aiAnnotations.length > 0 ? (
+                <div className="annotation-list">
+                  {item.aiAnnotations.map((annotation) => (
+                    <article
+                      className={`annotation-row annotation-row--${annotation.reviewStatus}`}
+                      key={annotation.id}
+                    >
+                      <div className="annotation-row__header">
+                        <span>{annotation.fieldName}</span>
+                        <ProvenanceMark annotation={annotation} />
+                      </div>
+                      <pre>{formatPayload(annotation.payload)}</pre>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <DetailEmptyState label="No AI notes yet." />
+              )}
+            </Section>
 
-          <Section title="History" meta={formatCount(item.events.length, "event", "events")}>
-            {item.events.length > 0 ? (
-              <div className="detail-list">
-                {item.events.map((event) => (
-                  <div className="detail-list__row" key={event.id}>
-                    <span className="detail-list__label">{event.eventType}</span>
-                    <span>{event.actor}</span>
-                    <span className="detail-muted">{formatDate(event.createdAt)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <DetailEmptyState label="No history yet." />
-            )}
-          </Section>
+            <Section title="History" meta={formatCount(item.events.length, "event", "events")}>
+              {item.events.length > 0 ? (
+                <div className="detail-list">
+                  {item.events.map((event) => (
+                    <div className="detail-list__row" key={event.id}>
+                      <span className="detail-list__label">{event.eventType}</span>
+                      <span>{event.actor}</span>
+                      <span className="detail-muted">{formatDate(event.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DetailEmptyState label="No history yet." />
+              )}
+            </Section>
           </DetailSectionGroup>
         </div>
 
@@ -348,33 +294,22 @@ export function ItemDetailView({
                 />
               }
             />
-            <Metadata
-              label="Campaigns"
-              value={<CampaignMetaList attachments={item.campaignAttachments} />}
-            />
             <Metadata label="Rights" value={item.rightsStatus} />
           </dl>
 
           <div className="item-detail__action-cluster">
             <DownloadAction item={item} />
-            {showsLifecycleActions ? (
-              <DetailActionGroup id="detail-action-lifecycle" title="Work state">
-                <LifecycleControls
-                  currentStatus={item.status}
-                  pending={statusActionPending}
-                  error={statusActionError}
-                  onChangeStatus={onChangeStatus}
-                />
-                <RetireWithReplacementForm
-                  currentItemId={item.id}
-                  currentStatus={item.status}
-                  error={retirementActionError}
-                  onRetireWithReplacement={onRetireWithReplacement}
-                  pending={retirementActionPending}
-                  targetOptions={retirementTargetOptions}
-                />
-              </DetailActionGroup>
-            ) : null}
+            <ArchiveAction
+              status={item.status}
+              pending={statusActionPending}
+              error={statusActionError}
+              onChangeStatus={onChangeStatus}
+            />
+            <DeleteAction
+              pending={deleteActionPending}
+              error={deleteActionError}
+              onDelete={onDelete}
+            />
           </div>
 
           <DetailArchiveFlowPanel
@@ -385,6 +320,210 @@ export function ItemDetailView({
       </div>
     </article>
   );
+}
+
+function CollectionMetaList({
+  collections,
+  onOpenCollection,
+}: {
+  collections: ItemDetail["collections"];
+  onOpenCollection?: (collectionId: string) => void;
+}) {
+  if (collections.length === 0) {
+    return <span className="detail-muted">none</span>;
+  }
+
+  return (
+    <div className="metadata-chip-row">
+      {collections.map((collection) => (
+        <a
+          className="metadata-chip metadata-chip--link"
+          href={`/collections/${encodeURIComponent(collection.id)}`}
+          key={collection.id}
+          onClick={(event) => {
+            if (
+              !onOpenCollection ||
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.altKey ||
+              event.ctrlKey ||
+              event.shiftKey
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+            onOpenCollection(collection.id);
+          }}
+        >
+          {collection.name}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function CollapsibleAction({
+  summary,
+  children,
+}: {
+  summary: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="detail-collapsible">
+      <summary className="detail-collapsible__summary">{summary}</summary>
+      <div className="detail-collapsible__body">{children}</div>
+    </details>
+  );
+}
+
+function DownloadAction({ item }: { item: ItemDetail }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const payload = getDownloadPayload(item);
+
+  if (!payload) {
+    return null;
+  }
+
+  const handleClick = async () => {
+    try {
+      await navigator.clipboard.writeText(payload.text);
+      setError(null);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setError("Could not copy.");
+    }
+  };
+
+  return (
+    <div className="detail-download">
+      <button
+        className={`status-action${copied ? " status-action--copied" : ""}`}
+        type="button"
+        onClick={handleClick}
+      >
+        {copied ? "Copied" : payload.label}
+      </button>
+      {error ? <p className="detail-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function ArchiveAction({
+  status,
+  pending,
+  error,
+  onChangeStatus,
+}: {
+  status: ItemStatus;
+  pending: boolean;
+  error: string | null;
+  onChangeStatus?: (nextStatus: ItemStatus) => void;
+}) {
+  if (!onChangeStatus) {
+    return null;
+  }
+
+  const nextStatus: ItemStatus = status === "active" ? "archived" : "active";
+  const label = status === "active" ? "Archive" : "Move to active";
+
+  return (
+    <div className="detail-archive-action">
+      <button
+        className="status-action"
+        disabled={pending}
+        type="button"
+        onClick={() => onChangeStatus(nextStatus)}
+      >
+        {pending ? "Saving" : label}
+      </button>
+      {error ? <p className="detail-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function DeleteAction({
+  pending,
+  error,
+  onDelete,
+}: {
+  pending: boolean;
+  error: string | null;
+  onDelete?: () => Promise<void> | void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (!onDelete) {
+    return null;
+  }
+
+  if (!confirming) {
+    return (
+      <div className="detail-delete">
+        <button
+          className="status-action status-action--delete"
+          disabled={pending}
+          type="button"
+          onClick={() => setConfirming(true)}
+        >
+          Delete
+        </button>
+        {error ? <p className="detail-error">{error}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="detail-delete detail-delete--confirming">
+      <p className="detail-delete__warning">Permanent. Cascades to relationships, tags, and history.</p>
+      <div className="detail-delete__actions">
+        <button
+          className="status-action status-action--delete"
+          disabled={pending}
+          type="button"
+          onClick={async () => {
+            try {
+              await onDelete();
+            } catch {
+              // Parent owns the persisted write error message.
+            }
+          }}
+        >
+          {pending ? "Deleting" : "Confirm delete"}
+        </button>
+        <button
+          className="text-button"
+          disabled={pending}
+          type="button"
+          onClick={() => setConfirming(false)}
+        >
+          Cancel
+        </button>
+      </div>
+      {error ? <p className="detail-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function getDownloadPayload(item: ItemDetail): { label: string; text: string } | null {
+  if (item.type === "caption" && item.content.caption?.body) {
+    return { label: "Copy caption", text: item.content.caption.body };
+  }
+
+  if (item.type === "note" && item.content.note?.body) {
+    return { label: "Copy note", text: item.content.note.body };
+  }
+
+  if (item.type === "link" && item.content.link?.url) {
+    return { label: "Copy link", text: item.content.link.url };
+  }
+
+  return null;
 }
 
 function DetailArchiveFlowPanel({
@@ -480,10 +619,7 @@ function RelationshipRow({
 }) {
   const directionLabel = relationship.direction === "outgoing" ? "to" : "from";
   const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} piece`;
-  const targetMeta = [
-    relationship.otherItemType,
-    relationship.otherItemStatus,
-  ].join(" · ");
+  const targetMeta = [relationship.otherItemType, relationship.otherItemStatus].join(" · ");
 
   return (
     <div className="detail-list__row relationship-row">
@@ -504,210 +640,6 @@ function RelationshipRow({
       {relationship.typeDescription ? <p>{relationship.typeDescription}</p> : null}
       {relationship.note ? <p>{relationship.note}</p> : null}
     </div>
-  );
-}
-
-function RetireWithReplacementForm({
-  currentItemId,
-  currentStatus,
-  error,
-  onRetireWithReplacement,
-  pending,
-  targetOptions,
-}: {
-  currentItemId: string;
-  currentStatus: ItemStatus;
-  error: string | null;
-  onRetireWithReplacement?: (input: RetirementInput) => Promise<void> | void;
-  pending: boolean;
-  targetOptions: RelationshipTargetOption[];
-}) {
-  const [replacementId, setReplacementId] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const availableOptions = targetOptions.filter((option) => option.id !== currentItemId);
-
-  if (!canRetireWithReplacement(currentStatus)) {
-    return null;
-  }
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedReplacementId = replacementId.trim();
-
-    if (!normalizedReplacementId) {
-      setLocalError("Replacement piece is required.");
-      return;
-    }
-
-    if (normalizedReplacementId === currentItemId) {
-      setLocalError("Choose a different piece.");
-      return;
-    }
-
-    if (!onRetireWithReplacement) {
-      setLocalError("Retiring with replacement requires live archive mode.");
-      return;
-    }
-
-    setLocalError(null);
-
-    try {
-      await onRetireWithReplacement({ replacementId: normalizedReplacementId });
-      setReplacementId("");
-    } catch {
-      // The parent owns the persisted write error message.
-    }
-  };
-
-  return (
-    <form className="retirement-link" aria-label="retire with replacement" onSubmit={submit}>
-      <label>
-        <span>replacement</span>
-        <select
-          disabled={pending || availableOptions.length === 0}
-          onChange={(event) => setReplacementId(event.target.value)}
-          value={replacementId}
-        >
-          <option value="">choose replacement</option>
-          {availableOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        className="status-action status-action--retire"
-        disabled={pending || availableOptions.length === 0}
-        type="submit"
-      >
-        {pending ? "Retiring" : "Retire with replacement"}
-      </button>
-      {availableOptions.length === 0 ? (
-        <p className="detail-muted">No replacement candidates available.</p>
-      ) : null}
-      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
-    </form>
-  );
-}
-
-function CampaignAttachForm({
-  error,
-  onAttachCampaign,
-  options,
-  pending,
-  rightsStatus,
-}: {
-  error: string | null;
-  onAttachCampaign?: (input: CampaignAttachInput) => Promise<void> | void;
-  options: CampaignOption[];
-  pending: boolean;
-  rightsStatus: ItemDetail["rightsStatus"];
-}) {
-  const [campaignId, setCampaignId] = useState("");
-  const [role, setRole] = useState<CampaignRole>("supporting");
-  const [overrideNote, setOverrideNote] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const availableOptions = options.filter((option) => !option.alreadyAttached);
-  const warningState = getRightsWarningState(rightsStatus, role);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedCampaignId = campaignId.trim();
-    const normalizedOverrideNote = overrideNote.trim();
-
-    if (!normalizedCampaignId) {
-      setLocalError("Campaign is required.");
-      return;
-    }
-
-    if (warningState === "blocking") {
-      setLocalError("Rights do not allow adding this to a campaign.");
-      return;
-    }
-
-    if (warningState === "advisory" && !normalizedOverrideNote) {
-      setLocalError("Rights override note is required.");
-      return;
-    }
-
-    if (!onAttachCampaign) {
-      setLocalError("Adding to a campaign requires live archive mode.");
-      return;
-    }
-
-    setLocalError(null);
-
-    try {
-      await onAttachCampaign({
-        campaignId: normalizedCampaignId,
-        role,
-        rightsOverrideNote: warningState === "advisory" ? normalizedOverrideNote : null,
-      });
-      setCampaignId("");
-      setRole("supporting");
-      setOverrideNote("");
-    } catch {
-      // The parent owns the persisted write error message.
-    }
-  };
-
-  return (
-    <form className="campaign-attach" aria-label="add to campaign" onSubmit={submit}>
-      <div className="campaign-attach__fields">
-        <label>
-          <span>campaign</span>
-          <select
-            disabled={pending || availableOptions.length === 0}
-            onChange={(event) => setCampaignId(event.target.value)}
-            value={campaignId}
-          >
-            <option value="">choose campaign</option>
-            {availableOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>role</span>
-          <select
-            disabled={pending || availableOptions.length === 0}
-            onChange={(event) => setRole(event.target.value as CampaignRole)}
-            value={role}
-          >
-            <option value="supporting">supporting</option>
-            <option value="primary">primary</option>
-            <option value="reference">reference</option>
-          </select>
-        </label>
-        {warningState === "advisory" ? (
-          <label>
-            <span>rights override note</span>
-            <textarea
-              disabled={pending}
-              onChange={(event) => setOverrideNote(event.target.value)}
-              placeholder="required"
-              rows={2}
-              value={overrideNote}
-            />
-          </label>
-        ) : null}
-      </div>
-      <RightsWarning rightsStatus={rightsStatus} role={role} state={warningState} />
-      <button
-        className="status-action"
-        disabled={pending || availableOptions.length === 0 || warningState === "blocking"}
-        type="submit"
-      >
-        {pending ? "Adding" : "Add to campaign"}
-      </button>
-      {availableOptions.length === 0 ? (
-        <p className="detail-muted">No campaigns available.</p>
-      ) : null}
-      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
-    </form>
   );
 }
 
@@ -746,7 +678,7 @@ function CollectionAttachForm({
       await onAttachCollection({ collectionId: normalizedCollectionId });
       setCollectionId("");
     } catch {
-      // The parent owns the persisted write error message.
+      // Parent owns the persisted write error message.
     }
   };
 
@@ -784,57 +716,6 @@ function CollectionAttachForm({
   );
 }
 
-function RightsWarning({
-  rightsStatus,
-  role,
-  state,
-}: {
-  rightsStatus: ItemDetail["rightsStatus"];
-  role: CampaignRole;
-  state: "none" | "advisory" | "blocking";
-}) {
-  if (state === "none") {
-    return null;
-  }
-
-  if (state === "blocking") {
-    return (
-      <div className="rights-warning rights-warning--blocking" role="alert">
-        <span className="rights-warning__title">Rights block</span>
-        <p>{rightsStatus} pieces cannot be added to campaigns.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rights-warning rights-warning--advisory">
-      <span className="rights-warning__title">Rights warning</span>
-      <p>
-        {rightsStatus} requires an override note before adding as {role}.
-      </p>
-    </div>
-  );
-}
-
-function getRightsWarningState(
-  rightsStatus: ItemDetail["rightsStatus"],
-  role: CampaignRole,
-): "none" | "advisory" | "blocking" {
-  if (rightsStatus === "restricted" || rightsStatus === "expired") {
-    return "blocking";
-  }
-
-  if (rightsStatus === "unknown") {
-    return "advisory";
-  }
-
-  if (rightsStatus === "reference_only" && (role === "primary" || role === "supporting")) {
-    return "advisory";
-  }
-
-  return "none";
-}
-
 function renderHero(item: ItemDetail) {
   if (item.type === "caption") {
     return <p className="item-detail__text-hero">{item.content.caption?.body ?? "Caption body unavailable."}</p>;
@@ -849,15 +730,6 @@ function renderHero(item: ItemDetail) {
       <div className="item-detail__link-hero">
         <span className="detail-muted">link</span>
         <p>{item.content.link?.url ?? "Link URL unavailable."}</p>
-      </div>
-    );
-  }
-
-  if (item.type === "campaign") {
-    return (
-      <div className="item-detail__campaign-hero">
-        <span>{item.content.campaign?.phase ?? "campaign"}</span>
-        <p>{item.title ?? "Untitled campaign"}</p>
       </div>
     );
   }
@@ -914,25 +786,6 @@ function ReadableBlock({ value, fallback }: { value: string | null; fallback: st
 
 function DetailEmptyState({ label }: { label: string }) {
   return <div className="detail-empty">{label}</div>;
-}
-
-function DetailActionGroup({
-  id,
-  title,
-  children,
-}: {
-  id?: string;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="detail-action-group" id={id}>
-      <div className="detail-action-group__header">
-        <span className="detail-action-group__title">{title}</span>
-      </div>
-      {children}
-    </div>
-  );
 }
 
 function Metadata({ label, value }: { label: string; value: ReactNode }) {
@@ -1002,7 +855,7 @@ function RelationshipCreateForm({
       setToId("");
       setNote("");
     } catch {
-      // The parent owns the persisted write error message.
+      // Parent owns the persisted write error message.
     }
   };
 
@@ -1049,79 +902,6 @@ function RelationshipCreateForm({
   );
 }
 
-function LifecycleControls({
-  currentStatus,
-  pending,
-  error,
-  onChangeStatus,
-}: {
-  currentStatus: ItemStatus;
-  pending: boolean;
-  error: string | null;
-  onChangeStatus?: (nextStatus: ItemStatus) => void;
-}) {
-  const actions = getStatusActions(currentStatus);
-
-  if (actions.length === 0 && !error) {
-    return null;
-  }
-
-  return (
-    <div className="item-detail__status-actions" aria-label="work state actions">
-      {actions.map((action) => (
-        <button
-          className={action.tone === "retire" ? "status-action status-action--retire" : "status-action"}
-          disabled={pending || !onChangeStatus}
-          key={action.status}
-          type="button"
-          onClick={() => onChangeStatus?.(action.status)}
-        >
-          {pending ? "Updating" : action.label}
-        </button>
-      ))}
-      {error ? <p className="detail-error">{error}</p> : null}
-    </div>
-  );
-}
-
-function getStatusActions(status: ItemStatus): Array<{ status: ItemStatus; label: string; tone?: "retire" }> {
-  if (status === "inbox") {
-    return [
-      { status: "triaged", label: "Mark reviewed" },
-      { status: "retired", label: "Retire", tone: "retire" },
-    ];
-  }
-
-  if (status === "triaged") {
-    return [
-      { status: "active", label: "Make active" },
-      { status: "retired", label: "Retire", tone: "retire" },
-    ];
-  }
-
-  if (status === "active" || status === "archived") {
-    return [{ status: "retired", label: "Retire", tone: "retire" }];
-  }
-
-  return [];
-}
-
-function canRetireWithReplacement(status: ItemStatus) {
-  return status === "inbox" || status === "triaged" || status === "active" || status === "archived";
-}
-
-function hasLifecycleActions(
-  status: ItemStatus,
-  statusError: string | null,
-  retirementError: string | null,
-) {
-  return (
-    getStatusActions(status).length > 0 ||
-    canRetireWithReplacement(status) ||
-    Boolean(statusError || retirementError)
-  );
-}
-
 function formatCount(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -1150,134 +930,6 @@ function formatDate(value: string | null | undefined) {
     month: "short",
     day: "numeric",
   }).format(date);
-}
-
-function CollectionMetaList({
-  collections,
-  onOpenCollection,
-}: {
-  collections: ItemDetail["collections"];
-  onOpenCollection?: (collectionId: string) => void;
-}) {
-  if (collections.length === 0) {
-    return <span className="detail-muted">none</span>;
-  }
-
-  return (
-    <div className="metadata-chip-row">
-      {collections.map((collection) => (
-        <a
-          className="metadata-chip metadata-chip--link"
-          href={`/collections/${encodeURIComponent(collection.id)}`}
-          key={collection.id}
-          onClick={(event) => {
-            if (
-              !onOpenCollection ||
-              event.defaultPrevented ||
-              event.button !== 0 ||
-              event.metaKey ||
-              event.altKey ||
-              event.ctrlKey ||
-              event.shiftKey
-            ) {
-              return;
-            }
-
-            event.preventDefault();
-            onOpenCollection(collection.id);
-          }}
-        >
-          {collection.name}
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function CampaignMetaList({
-  attachments,
-}: {
-  attachments: ItemDetail["campaignAttachments"];
-}) {
-  if (attachments.length === 0) {
-    return <span className="detail-muted">none</span>;
-  }
-
-  return (
-    <div className="metadata-chip-row">
-      {attachments.map((attachment) => (
-        <span className="metadata-chip" key={attachment.id}>
-          {attachment.campaignTitle ?? attachment.campaignId}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function CollapsibleAction({
-  summary,
-  children,
-}: {
-  summary: string;
-  children: ReactNode;
-}) {
-  return (
-    <details className="detail-collapsible">
-      <summary className="detail-collapsible__summary">{summary}</summary>
-      <div className="detail-collapsible__body">{children}</div>
-    </details>
-  );
-}
-
-function DownloadAction({ item }: { item: ItemDetail }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const payload = getDownloadPayload(item);
-
-  if (!payload) {
-    return null;
-  }
-
-  const handleClick = async () => {
-    try {
-      await navigator.clipboard.writeText(payload.text);
-      setError(null);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setError("Could not copy.");
-    }
-  };
-
-  return (
-    <div className="detail-download">
-      <button
-        className={`status-action${copied ? " status-action--copied" : ""}`}
-        type="button"
-        onClick={handleClick}
-      >
-        {copied ? "Copied" : payload.label}
-      </button>
-      {error ? <p className="detail-error">{error}</p> : null}
-    </div>
-  );
-}
-
-function getDownloadPayload(item: ItemDetail): { label: string; text: string } | null {
-  if (item.type === "caption" && item.content.caption?.body) {
-    return { label: "Copy caption", text: item.content.caption.body };
-  }
-
-  if (item.type === "note" && item.content.note?.body) {
-    return { label: "Copy note", text: item.content.note.body };
-  }
-
-  if (item.type === "link" && item.content.link?.url) {
-    return { label: "Copy link", text: item.content.link.url };
-  }
-
-  return null;
 }
 
 function slug(value: string) {

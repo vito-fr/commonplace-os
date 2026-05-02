@@ -14,7 +14,7 @@ export type CollectionDetailQuery = {
 
 export type CollectionDetailItem = {
   id: string;
-  type: "image" | "caption" | "note" | "link" | "campaign";
+  type: "image" | "caption" | "note" | "link";
   status: string;
   title: string | null;
   description: string | null;
@@ -34,8 +34,6 @@ export type CollectionDetailItem = {
   url: string | null;
   ogImageUrl: string | null;
   ogTitle: string | null;
-  campaignPhase: string | null;
-  campaignBrief: string | null;
 };
 
 export type CollectionDetail = {

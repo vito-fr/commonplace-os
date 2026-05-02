@@ -29,7 +29,6 @@ export interface ItemCardProps {
   url?: string | null;
   ogImageUrl?: string | null;
   ogTitle?: string | null;
-  campaignCoverUrl?: string | null;
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
@@ -56,16 +55,12 @@ export function ItemCard({
   url = null,
   ogImageUrl = null,
   ogTitle = null,
-  campaignCoverUrl = null,
   hasPendingAIAnnotations = false,
-  rightsStatus = null,
   isSelected = false,
   detailHref,
   activeFilters,
   onNavigate,
 }: ItemCardProps) {
-  const isRetired = status === "retired";
-  const showRightsMark = rightsStatus === "restricted" || rightsStatus === "expired";
   const hasActiveFilters = Boolean(
     activeFilters?.status ||
       activeFilters?.type ||
@@ -78,7 +73,6 @@ export function ItemCard({
   const ariaLabel = title ? `Open ${title}` : `Open ${type} item ${id}`;
   const cardClassName = [
     "item-card",
-    isRetired ? "item-card--retired" : "",
     isSelected ? "item-card--selected" : "",
   ]
     .filter(Boolean)
@@ -91,20 +85,8 @@ export function ItemCard({
     signalItems.push({ key: "type", node: <TypeIndicator type={type} /> });
   }
 
-  if (showStatus || showRightsMark) {
-    signalItems.push({
-      key: "status",
-      node: (
-        <span className="item-card__status-cluster">
-          {showStatus ? <StatusIndicator status={status} /> : null}
-          {showRightsMark ? (
-            <span className="item-card__rights-mark" aria-label={`rights: ${rightsStatus}`}>
-              rights
-            </span>
-          ) : null}
-        </span>
-      ),
-    });
+  if (showStatus) {
+    signalItems.push({ key: "status", node: <StatusIndicator status={status} /> });
   }
 
   if (showSource) {
@@ -140,7 +122,7 @@ export function ItemCard({
       onClick={navigate}
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
-      <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle, campaignCoverUrl)}</div>
+      <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle)}</div>
       {signalItems.length > 0 ? (
         <div className="item-card__signal-row">
           {signalItems.map((item, index) => (
@@ -164,7 +146,6 @@ function renderContent(
   url: string | null,
   ogImageUrl: string | null,
   ogTitle: string | null,
-  campaignCoverUrl: string | null,
 ) {
   if (type === "image") {
     return imageUrl ? (
@@ -190,23 +171,10 @@ function renderContent(
     );
   }
 
-  if (type === "link") {
-    return (
-      <div className="item-card__link-preview">
-        {ogImageUrl ? <img className="item-card__image" src={ogImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
-        {ogTitle ? <p className="item-card__link-title">{ogTitle}</p> : <p className="item-card__link-domain">{getDomain(url)}</p>}
-      </div>
-    );
-  }
-
   return (
-    <div className="item-card__campaign">
-      {campaignCoverUrl ? (
-        <img className="item-card__image" src={campaignCoverUrl} alt={title ?? ""} />
-      ) : (
-        <Placeholder label="campaign cover" />
-      )}
-      {title ? <span className="item-card__campaign-title">{title}</span> : null}
+    <div className="item-card__link-preview">
+      {ogImageUrl ? <img className="item-card__image" src={ogImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
+      {ogTitle ? <p className="item-card__link-title">{ogTitle}</p> : <p className="item-card__link-domain">{getDomain(url)}</p>}
     </div>
   );
 }

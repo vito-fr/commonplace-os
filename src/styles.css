@@ -782,8 +782,7 @@ select:focus-visible {
   font-size: 18px;
 }
 
-.collection-piece__text--link,
-.collection-piece__text--campaign {
+.collection-piece__text--link {
   display: grid;
   gap: 10px;
 }
@@ -849,10 +848,6 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-.item-card--retired .item-card__content {
-  opacity: 0.7;
-}
-
 .item-card__pending-ai {
   position: absolute;
   top: 0;
@@ -915,8 +910,7 @@ select:focus-visible {
   -webkit-line-clamp: 4;
 }
 
-.item-card__link-preview,
-.item-card__campaign {
+.item-card__link-preview {
   position: relative;
   display: flex;
   width: 100%;
@@ -940,19 +934,6 @@ select:focus-visible {
   letter-spacing: 0.04em;
 }
 
-.item-card__campaign-title {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 10px 12px;
-  background: rgba(17, 17, 17, 0.86);
-  color: var(--color-paper);
-  font-family: var(--font-serif);
-  font-size: 18px;
-  line-height: 1.25;
-}
-
 .item-card__signal-row {
   display: flex;
   min-height: 32px;
@@ -964,27 +945,6 @@ select:focus-visible {
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
-}
-
-.item-card--retired .item-card__signal-row {
-  opacity: 0.6;
-}
-
-.item-card__status-cluster {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.item-card__rights-mark {
-  border-left: 1px solid var(--color-rule);
-  color: var(--color-ai-pending);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  padding-left: 4px;
-  text-transform: lowercase;
 }
 
 .masonry-grid {
@@ -1149,7 +1109,6 @@ select:focus-visible {
 }
 
 .item-detail__media-placeholder,
-.item-detail__campaign-hero,
 .item-detail__link-hero {
   display: flex;
   min-height: 360px;
@@ -1175,8 +1134,7 @@ select:focus-visible {
   line-height: 1.25;
 }
 
-.item-detail__link-hero p,
-.item-detail__campaign-hero p {
+.item-detail__link-hero p {
   max-width: 680px;
   margin: 0;
   color: var(--color-ink);
@@ -1229,9 +1187,9 @@ select:focus-visible {
   font-size: 13px;
 }
 
-.status-action--retire {
-  border-color: var(--color-rule);
-  color: var(--color-muted);
+.status-action--delete {
+  border-color: var(--semantic-error);
+  color: var(--semantic-error);
 }
 
 .status-action:focus-visible {
@@ -1307,9 +1265,33 @@ select:focus-visible {
   padding-top: 14px;
 }
 
-.item-detail__action-cluster .retirement-link {
+.detail-archive-action,
+.detail-delete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-delete--confirming {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   border-top: 1px solid var(--color-rule);
-  padding-top: 12px;
+  padding-top: 10px;
+}
+
+.detail-delete__warning {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.detail-delete__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .detail-download {
@@ -1613,30 +1595,21 @@ select:focus-visible {
 }
 
 .relationship-create,
-.retirement-link,
-.collection-attach,
-.campaign-attach {
+.collection-attach {
   display: grid;
   gap: 10px;
   border-top: 0;
   padding: 0;
 }
 
-.retirement-link {
-  margin-top: 0;
-}
-
 .relationship-create__fields,
-.collection-attach__fields,
-.campaign-attach__fields {
+.collection-attach__fields {
   display: grid;
   gap: 10px;
 }
 
 .relationship-create label,
-.retirement-link label,
-.collection-attach label,
-.campaign-attach label {
+.collection-attach label {
   display: grid;
   gap: 5px;
   color: var(--color-muted);
@@ -1648,10 +1621,7 @@ select:focus-visible {
 
 .relationship-create input,
 .relationship-create textarea,
-.retirement-link select,
-.collection-attach select,
-.campaign-attach select,
-.campaign-attach textarea {
+.collection-attach select {
   width: 100%;
   border: 1px solid var(--color-rule);
   border-radius: 2px;
@@ -1664,30 +1634,8 @@ select:focus-visible {
   text-transform: none;
 }
 
-.relationship-create textarea,
-.campaign-attach textarea {
+.relationship-create textarea {
   resize: vertical;
-}
-
-.rights-warning {
-  border-left: 2px solid var(--color-ai-pending);
-  padding-left: 10px;
-}
-
-.rights-warning__title {
-  display: block;
-  color: var(--color-ai-pending);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-}
-
-.rights-warning p {
-  margin: 5px 0 0;
-  color: var(--color-muted);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .detail-list__row,
@@ -1824,7 +1772,7 @@ select:focus-visible {
   }
 }
 
-.status-indicator--retired {
+.status-indicator--archived {
   opacity: 0.6;
 }
 

@@ -1,4 +1,4 @@
-export type ItemStatus = "inbox" | "triaged" | "active" | "archived" | "retired";
+export type ItemStatus = "active" | "archived";
 
 export interface StatusIndicatorProps {
   status: ItemStatus;
@@ -6,7 +6,7 @@ export interface StatusIndicatorProps {
 
 export function StatusIndicator({ status }: StatusIndicatorProps) {
   const className =
-    status === "retired" ? "status-indicator status-indicator--retired" : "status-indicator";
+    status === "archived" ? "status-indicator status-indicator--archived" : "status-indicator";
 
   return (
     <span className={className} aria-label={`status: ${status}`}>

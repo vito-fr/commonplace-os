@@ -53,14 +53,14 @@ type FixtureAnnotation = {
 };
 
 const defaultProofItemIds = [
-  "seed:img001",
   "seed:img004",
+  "seed:img005",
   "seed:img008",
   "seed:cap001",
-  "seed:cap004",
+  "seed:cap002",
   "seed:note001",
+  "seed:note003",
   "seed:link001",
-  "seed:camp001",
 ];
 
 const items = itemsFixture as FixtureItem[];

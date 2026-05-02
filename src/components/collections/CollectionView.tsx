@@ -188,20 +188,11 @@ function renderPieceContent(item: CollectionDetailItem) {
     );
   }
 
-  if (item.type === "link") {
-    return (
-      <div className="collection-piece__text collection-piece__text--link">
-        <span>link</span>
-        <p>{item.ogTitle ?? item.title ?? item.url ?? "Link unavailable."}</p>
-        {item.url ? <small>{item.url}</small> : null}
-      </div>
-    );
-  }
-
   return (
-    <div className="collection-piece__text collection-piece__text--campaign">
-      <span>{item.campaignPhase ?? "campaign"}</span>
-      <p>{item.campaignBrief ?? item.summary ?? item.title ?? "Campaign unavailable."}</p>
+    <div className="collection-piece__text collection-piece__text--link">
+      <span>link</span>
+      <p>{item.ogTitle ?? item.title ?? item.url ?? "Link unavailable."}</p>
+      {item.url ? <small>{item.url}</small> : null}
     </div>
   );
 }

@@ -36,7 +36,6 @@ export type ItemDetail = {
   tags: ItemDetailTag[];
   relationships: ItemDetailRelationship[];
   collections: ItemDetailCollection[];
-  campaignAttachments: ItemDetailCampaignAttachment[];
   aiAnnotations: ItemDetailAIAnnotation[];
   events: ItemDetailEvent[];
 };
@@ -65,14 +64,6 @@ export type ItemDetailContent = {
     ogMetadata: Record<string, unknown> | null;
     contentType: string | null;
     fetchedAt: string | null;
-  } | null;
-  campaign: {
-    phase: string | null;
-    channel: string | null;
-    startAt: string | null;
-    endAt: string | null;
-    brief: string | null;
-    kpiSummary: string | null;
   } | null;
 };
 
@@ -105,15 +96,6 @@ export type ItemDetailCollection = {
   description: string | null;
   addedAt: string;
   addedBy: string;
-};
-
-export type ItemDetailCampaignAttachment = {
-  id: string;
-  campaignId: string;
-  campaignTitle: string | null;
-  phase: string | null;
-  role: string | null;
-  createdAt: string;
 };
 
 export type ItemDetailAIAnnotation = {

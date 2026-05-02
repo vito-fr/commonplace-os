@@ -7,19 +7,15 @@ import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemD
 import type { ItemCardFilters, ItemCardReader, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
-  createPocketBaseItemCampaignClient,
-  type CampaignOption,
-} from "./data/pocketBaseItemCampaign";
-import {
   createPocketBaseItemCollectionClient,
   type CollectionDetail,
   type CollectionOption,
 } from "./data/pocketBaseItemCollection";
+import { createPocketBaseItemDeleteWriter } from "./data/pocketBaseItemDelete";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
 import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRelationship";
-import { createPocketBaseItemRetirementWriter } from "./data/pocketBaseItemRetirement";
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
@@ -35,11 +31,8 @@ type SiteTheme = "light" | "dark";
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
   "all",
-  "inbox",
-  "triaged",
   "active",
   "archived",
-  "retired",
 ];
 const typeFilterOptions: ArchiveTypeFilter[] = [
   "all",
@@ -47,7 +40,6 @@ const typeFilterOptions: ArchiveTypeFilter[] = [
   "caption",
   "note",
   "link",
-  "campaign",
 ];
 const sourceFilterOptions: ArchiveSourceFilter[] = [
   "all",
@@ -70,11 +62,10 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
-const itemCampaignClient = createPocketBaseItemCampaignClient({ baseUrl: pocketBaseUrl });
 const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
+const itemDeleteWriter = createPocketBaseItemDeleteWriter({ baseUrl: pocketBaseUrl });
 const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
-const itemRetirementWriter = createPocketBaseItemRetirementWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
 export function App() {
@@ -91,23 +82,20 @@ export function App() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
-  const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
   const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
   const [isCollectionLoading, setIsCollectionLoading] = useState(false);
   const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [isCampaignAttaching, setIsCampaignAttaching] = useState(false);
-  const [campaignWriteError, setCampaignWriteError] = useState<string | null>(null);
   const [isCollectionAttaching, setIsCollectionAttaching] = useState(false);
   const [collectionWriteError, setCollectionWriteError] = useState<string | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
   const [isRelationshipCreating, setIsRelationshipCreating] = useState(false);
   const [relationshipWriteError, setRelationshipWriteError] = useState<string | null>(null);
-  const [isRetiringWithReplacement, setIsRetiringWithReplacement] = useState(false);
-  const [retirementWriteError, setRetirementWriteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteWriteError, setDeleteWriteError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -211,20 +199,17 @@ export function App() {
 
     if (route.kind !== "item") {
       setDetail(null);
-      setCampaignOptions([]);
       setCollectionOptions([]);
       setDetailError(null);
       setIsDetailLoading(false);
-      setCampaignWriteError(null);
-      setIsCampaignAttaching(false);
       setCollectionWriteError(null);
       setIsCollectionAttaching(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
       setIsRelationshipCreating(false);
-      setRetirementWriteError(null);
-      setIsRetiringWithReplacement(false);
+      setDeleteWriteError(null);
+      setIsDeleting(false);
       return () => {
         isCurrent = false;
       };
@@ -232,20 +217,17 @@ export function App() {
 
     if (!isPocketBaseMode) {
       setDetail(null);
-      setCampaignOptions([]);
       setCollectionOptions([]);
       setDetailError("Item detail requires live archive mode.");
       setIsDetailLoading(false);
-      setCampaignWriteError(null);
-      setIsCampaignAttaching(false);
       setCollectionWriteError(null);
       setIsCollectionAttaching(false);
       setStatusWriteError(null);
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
       setIsRelationshipCreating(false);
-      setRetirementWriteError(null);
-      setIsRetiringWithReplacement(false);
+      setDeleteWriteError(null);
+      setIsDeleting(false);
       return () => {
         isCurrent = false;
       };
@@ -253,11 +235,10 @@ export function App() {
 
     setIsDetailLoading(true);
     setDetailError(null);
-    setCampaignWriteError(null);
     setCollectionWriteError(null);
     setStatusWriteError(null);
     setRelationshipWriteError(null);
-    setRetirementWriteError(null);
+    setDeleteWriteError(null);
 
     itemDetailReader
       .getItemDetail({ workspaceId, itemId: route.itemId })
@@ -267,26 +248,17 @@ export function App() {
         }
 
         try {
-          const [nextCollectionOptions, nextCampaignOptions] = await Promise.all([
-            itemCollectionClient.listCollectionOptions({
-              workspaceId,
-              itemId: route.itemId,
-            }),
-            itemCampaignClient.listCampaignOptions({
-              workspaceId,
-              itemId: route.itemId,
-            }),
-          ]);
+          const nextCollectionOptions = await itemCollectionClient.listCollectionOptions({
+            workspaceId,
+            itemId: route.itemId,
+          });
           if (isCurrent) {
             setCollectionOptions(nextCollectionOptions);
-            setCampaignOptions(nextCampaignOptions);
           }
         } catch (error: unknown) {
           if (isCurrent) {
             console.error(error);
-            setCampaignOptions([]);
             setCollectionOptions([]);
-            setCampaignWriteError("Unable to load campaign options.");
             setCollectionWriteError("Unable to load collection options.");
           }
         }
@@ -295,7 +267,6 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setDetail(null);
-          setCampaignOptions([]);
           setCollectionOptions([]);
           setDetailError("Unable to load archive detail.");
         }
@@ -424,34 +395,40 @@ export function App() {
     }
   };
 
-  const retireItemWithReplacement = async ({ replacementId }: { replacementId: string }) => {
+  const deleteItem = async () => {
     if (!detail || !isPocketBaseMode) {
       return;
     }
 
-    setIsRetiringWithReplacement(true);
-    setRetirementWriteError(null);
+    setIsDeleting(true);
+    setDeleteWriteError(null);
 
     try {
-      await itemRetirementWriter.retireWithReplacement({
+      await itemDeleteWriter.deleteItem({
         workspaceId,
         itemId: detail.id,
-        replacementId,
         actor: "system",
       });
 
-      const [nextDetail, nextItems] = await Promise.all([
-        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
-        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
-      ]);
-      setDetail(nextDetail);
+      const nextItems = await itemCardReader.listItemCards({
+        workspaceId,
+        filters: itemCardFilters,
+      });
       setItems(nextItems);
+
+      if (route.kind === "item" && route.returnCollectionId) {
+        window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
+        setRoute({ kind: "collection", collectionId: route.returnCollectionId });
+      } else {
+        window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
+        setRoute({ kind: "grid" });
+      }
     } catch (error: unknown) {
       console.error(error);
-      setRetirementWriteError("Unable to retire with replacement.");
+      setDeleteWriteError("Unable to delete piece.");
       throw error;
     } finally {
-      setIsRetiringWithReplacement(false);
+      setIsDeleting(false);
     }
   };
 
@@ -515,49 +492,6 @@ export function App() {
     }
   };
 
-  const attachItemToCampaign = async ({
-    campaignId,
-    role,
-    rightsOverrideNote,
-  }: {
-    campaignId: string;
-    role: "primary" | "supporting" | "reference";
-    rightsOverrideNote: string | null;
-  }) => {
-    if (!detail || !isPocketBaseMode) {
-      return;
-    }
-
-    setIsCampaignAttaching(true);
-    setCampaignWriteError(null);
-
-    try {
-      await itemCampaignClient.attachCampaign({
-        workspaceId,
-        itemId: detail.id,
-        campaignId,
-        role,
-        rightsOverrideNote: rightsOverrideNote ?? undefined,
-        actor: "system",
-      });
-
-      const [nextDetail, nextCampaignOptions, nextItems] = await Promise.all([
-        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
-        itemCampaignClient.listCampaignOptions({ workspaceId, itemId: detail.id }),
-        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
-      ]);
-      setDetail(nextDetail);
-      setCampaignOptions(nextCampaignOptions);
-      setItems(nextItems);
-    } catch (error: unknown) {
-      console.error(error);
-      setCampaignWriteError("Unable to attach campaign.");
-      throw error;
-    } finally {
-      setIsCampaignAttaching(false);
-    }
-  };
-
   const captureArchiveInput = async (rawInput: string) => {
     if (!isPocketBaseMode) {
       return;
@@ -591,7 +525,7 @@ export function App() {
       const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
       setItems(nextItems);
       setReadError(null);
-      setCaptureNotice(captureInput.type === "link" ? "Imported URL to inbox." : "Added note to inbox.");
+      setCaptureNotice(captureInput.type === "link" ? "Imported URL." : "Added note.");
     } catch (error: unknown) {
       console.error(error);
       setCaptureError("Unable to import.");
@@ -667,22 +601,10 @@ export function App() {
         id: item.id,
         label: item.title ?? `${item.type} piece`,
       }));
-    const replacementTargetOptions = items
-      .filter((item) => item.id !== currentItemId && item.status !== "retired")
-      .map((item) => ({
-        id: item.id,
-        label: item.title ?? `${item.type} piece`,
-      }));
     const collectionTargetOptions = collectionOptions.map((collection) => ({
       id: collection.id,
       label: collection.name,
       alreadyAttached: collection.alreadyAttached,
-    }));
-    const campaignTargetOptions = campaignOptions.map((campaign) => ({
-      id: campaign.id,
-      label: campaign.title ?? `${campaign.phase ?? campaign.status} campaign`,
-      phase: campaign.phase,
-      alreadyAttached: campaign.alreadyAttached,
     }));
 
     return (
@@ -699,12 +621,11 @@ export function App() {
           onOpenArchiveItem={openItemDetail}
           onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
-          statusActionPending={isStatusUpdating || isRetiringWithReplacement}
+          statusActionPending={isStatusUpdating}
           statusActionError={statusWriteError}
-          onRetireWithReplacement={retireItemWithReplacement}
-          retirementActionPending={isRetiringWithReplacement || isStatusUpdating}
-          retirementActionError={retirementWriteError}
-          retirementTargetOptions={replacementTargetOptions}
+          onDelete={deleteItem}
+          deleteActionPending={isDeleting}
+          deleteActionError={deleteWriteError}
           onCreateRelationship={createItemRelationship}
           relationshipActionPending={isRelationshipCreating}
           relationshipActionError={relationshipWriteError}
@@ -713,10 +634,6 @@ export function App() {
           collectionActionPending={isCollectionAttaching}
           collectionActionError={collectionWriteError}
           collectionOptions={collectionTargetOptions}
-          onAttachCampaign={attachItemToCampaign}
-          campaignActionPending={isCampaignAttaching}
-          campaignActionError={campaignWriteError}
-          campaignOptions={campaignTargetOptions}
         />
       </main>
     );
@@ -895,7 +812,6 @@ function ArchiveTopShell({
                   All pieces
                 </button>
                 <span className="ridgeway-option ridgeway-option--muted">Collections</span>
-                <span className="ridgeway-option ridgeway-option--muted">Campaigns</span>
               </div>
               <div className="ridgeway-reveal__group">
                 <span className="ridgeway-reveal__label">Current set</span>
@@ -947,7 +863,7 @@ function ArchiveTopShell({
               <div className="ridgeway-reveal__group">
                 <span className="ridgeway-reveal__label">Information</span>
                 <p className="ridgeway-reveal__copy">
-                  A working archive for capture, inspection, connection, campaign use, and retirement.
+                  A working archive for capture, inspection, connection, reuse, and removal.
                 </p>
                 <p className="ridgeway-reveal__meta">⌘K search · M color mode · Esc close</p>
               </div>
@@ -1355,7 +1271,7 @@ function CaptureNoteForm({
       />
       <div className="capture-note__actions">
         <button className="status-action" disabled={pending} type="submit">
-          {pending ? "Importing" : "Add to inbox"}
+          {pending ? "Importing" : "Add to archive"}
         </button>
         {notice ? <span className="capture-note__notice">{notice}</span> : null}
       </div>
