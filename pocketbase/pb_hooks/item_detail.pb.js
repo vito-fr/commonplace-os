@@ -90,13 +90,7 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         link.url AS linkUrl,
         link.og_metadata AS linkOgMetadata,
         link.content_type AS linkContentType,
-        link.fetched_at AS linkFetchedAt,
-        campaign.phase AS campaignPhase,
-        campaign.channel AS campaignChannel,
-        campaign.start_at AS campaignStartAt,
-        campaign.end_at AS campaignEndAt,
-        campaign.brief AS campaignBrief,
-        campaign.kpi_summary AS campaignKpiSummary
+        link.fetched_at AS linkFetchedAt
       FROM items i
       LEFT JOIN sources s
         ON s.id = i.source_id
@@ -109,8 +103,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
-      LEFT JOIN campaign_profiles campaign
-        ON campaign.item_id = i.id
       WHERE i.workspace_id = {:workspaceId}
         AND i.id = {:itemId}
       LIMIT 1
@@ -150,12 +142,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       linkOgMetadata: nullString(),
       linkContentType: nullString(),
       linkFetchedAt: nullString(),
-      campaignPhase: nullString(),
-      campaignChannel: nullString(),
-      campaignStartAt: nullString(),
-      campaignEndAt: nullString(),
-      campaignBrief: nullString(),
-      campaignKpiSummary: nullString(),
     },
     { workspaceId, itemId },
   );
@@ -260,37 +246,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
     },
     { workspaceId, itemId },
   );
-  const campaignRows = queryAll(
-    `
-      SELECT
-        r.id,
-        campaign.id AS campaignId,
-        campaign.title AS campaignTitle,
-        profile.phase,
-        r.metadata,
-        r.created_at AS createdAt
-      FROM relationships r
-      INNER JOIN items campaign
-        ON campaign.id = r.to_id
-        AND campaign.workspace_id = r.workspace_id
-        AND campaign.type = 'campaign'
-      LEFT JOIN campaign_profiles profile
-        ON profile.item_id = campaign.id
-      WHERE r.workspace_id = {:workspaceId}
-        AND r.from_id = {:itemId}
-        AND r.type = 'used_in'
-      ORDER BY r.created_at DESC, r.id ASC
-    `,
-    {
-      id: "",
-      campaignId: "",
-      campaignTitle: nullString(),
-      phase: nullString(),
-      metadata: nullString(),
-      createdAt: "",
-    },
-    { workspaceId, itemId },
-  );
   const annotationRows = queryAll(
     `
       SELECT
@@ -389,17 +344,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
             fetchedAt: nullableString(row.linkFetchedAt),
           }
         : null,
-    campaign:
-      row.type === "campaign"
-        ? {
-            phase: nullableString(row.campaignPhase),
-            channel: nullableString(row.campaignChannel),
-            startAt: nullableString(row.campaignStartAt),
-            endAt: nullableString(row.campaignEndAt),
-            brief: nullableString(row.campaignBrief),
-            kpiSummary: nullableString(row.campaignKpiSummary),
-          }
-        : null,
   };
 
   const tags = [];
@@ -442,20 +386,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       description: nullableString(collection.description),
       addedAt: collection.addedAt,
       addedBy: collection.addedBy,
-    });
-  }
-
-  const campaignAttachments = [];
-  for (let index = 0; index < campaignRows.length; index += 1) {
-    const attachment = campaignRows[index];
-    const metadata = parseJson(attachment.metadata, {});
-    campaignAttachments.push({
-      id: attachment.id,
-      campaignId: attachment.campaignId,
-      campaignTitle: nullableString(attachment.campaignTitle),
-      phase: nullableString(attachment.phase),
-      role: typeof metadata.role === "string" ? metadata.role : null,
-      createdAt: attachment.createdAt,
     });
   }
 
@@ -519,7 +449,6 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       tags,
       relationships,
       collections,
-      campaignAttachments,
       aiAnnotations,
       events,
     },

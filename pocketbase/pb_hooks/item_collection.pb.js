@@ -125,7 +125,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
   }
 
   function formatKindSummary(items) {
-    const order = ["image", "caption", "note", "link", "campaign"];
+    const order = ["image", "caption", "note", "link"];
     const counts = {};
 
     for (let index = 0; index < items.length; index += 1) {
@@ -193,9 +193,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         caption.body AS captionText,
         note.body AS noteParagraph,
         link.url AS url,
-        link.og_metadata AS ogMetadata,
-        campaign.phase AS campaignPhase,
-        campaign.brief AS campaignBrief
+        link.og_metadata AS ogMetadata
       FROM collection_items ci
       INNER JOIN collections c
         ON c.id = ci.collection_id
@@ -213,8 +211,6 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
-      LEFT JOIN campaign_profiles campaign
-        ON campaign.item_id = i.id
       WHERE c.workspace_id = {:workspaceId}
         AND c.id = {:collectionId}
       ORDER BY ci.added_at ASC, ci.item_id ASC
@@ -239,8 +235,6 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       noteParagraph: nullString(),
       url: nullString(),
       ogMetadata: nullString(),
-      campaignPhase: nullString(),
-      campaignBrief: nullString(),
     },
     { workspaceId, collectionId },
   );
@@ -283,8 +277,6 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       url: nullableString(row.url),
       ogImageUrl: openGraph.image,
       ogTitle: openGraph.title,
-      campaignPhase: nullableString(row.campaignPhase),
-      campaignBrief: nullableString(row.campaignBrief),
     });
   }
 

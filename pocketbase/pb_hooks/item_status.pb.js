@@ -35,23 +35,14 @@ routerAdd("POST", "/api/vita/item-status", (e) => {
   }
 
   function isKnownStatus(status) {
-    return ["inbox", "triaged", "active", "archived", "retired"].includes(status);
+    return ["active", "archived"].includes(status);
   }
 
   function canTransition(fromStatus, toStatus) {
-    if (fromStatus === "inbox") {
-      return toStatus === "triaged" || toStatus === "retired";
-    }
-
-    if (fromStatus === "triaged") {
-      return toStatus === "active" || toStatus === "retired";
-    }
-
-    if (fromStatus === "active" || fromStatus === "archived") {
-      return toStatus === "retired";
-    }
-
-    return false;
+    return (
+      (fromStatus === "active" && toStatus === "archived") ||
+      (fromStatus === "archived" && toStatus === "active")
+    );
   }
 
   function queryAll(app, sql, shape, params) {

@@ -108,11 +108,11 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   }
 
   function isKnownStatus(value) {
-    return ["inbox", "triaged", "active", "archived", "retired"].includes(value);
+    return ["active", "archived"].includes(value);
   }
 
   function isKnownType(value) {
-    return ["image", "caption", "note", "link", "campaign"].includes(value);
+    return ["image", "caption", "note", "link"].includes(value);
   }
 
   function isKnownSource(value) {
@@ -132,7 +132,6 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       noteParagraph: nullString(),
       url: nullString(),
       ogMetadata: nullString(),
-      campaignCoverUrl: nullString(),
       hasPendingAIAnnotations: 0,
       rightsStatus: "",
     }),
@@ -160,7 +159,6 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           note.body AS noteParagraph,
           link.url AS url,
           link.og_metadata AS ogMetadata,
-          NULL AS campaignCoverUrl,
           EXISTS (
             SELECT 1
             FROM ai_annotations annotation
@@ -241,7 +239,6 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       url: nullableString(row.url),
       ogImageUrl: openGraph.image,
       ogTitle: openGraph.title,
-      campaignCoverUrl: nullableString(row.campaignCoverUrl),
       hasPendingAIAnnotations: row.hasPendingAIAnnotations === 1,
       rightsStatus: row.rightsStatus,
     });
