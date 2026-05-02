@@ -7,6 +7,49 @@ export type CollectionOption = {
   alreadyAttached: boolean;
 };
 
+export type CollectionDetailQuery = {
+  workspaceId: string;
+  collectionId: string;
+};
+
+export type CollectionDetailItem = {
+  id: string;
+  type: "image" | "caption" | "note" | "link" | "campaign";
+  status: string;
+  title: string | null;
+  description: string | null;
+  summary: string | null;
+  createdAt: string;
+  updatedAt: string;
+  addedAt: string;
+  source: {
+    kind: string;
+    label: string;
+  };
+  imageUrl: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  captionText: string | null;
+  noteParagraph: string | null;
+  url: string | null;
+  ogImageUrl: string | null;
+  ogTitle: string | null;
+  campaignPhase: string | null;
+  campaignBrief: string | null;
+};
+
+export type CollectionDetail = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  lastUpdatedAt: string;
+  pieceCount: number;
+  kindSummary: string;
+  items: CollectionDetailItem[];
+};
+
 export type CollectionOptionsQuery = {
   workspaceId: string;
   itemId?: string;
@@ -39,15 +82,21 @@ export type ItemCollectionAttachResult = {
 };
 
 export type ItemCollectionClient = {
+  getCollectionDetail(query: CollectionDetailQuery): Promise<CollectionDetail>;
   listCollectionOptions(query: CollectionOptionsQuery): Promise<CollectionOption[]>;
   attachCollection(change: ItemCollectionAttach): Promise<ItemCollectionAttachResult>;
 };
 
 export type PocketBaseItemCollectionClientOptions = {
   baseUrl: string;
+  detailEndpointPath?: string;
   optionsEndpointPath?: string;
   attachEndpointPath?: string;
   fetcher?: Fetcher;
+};
+
+type CollectionDetailResponse = {
+  collection: CollectionDetail;
 };
 
 type CollectionOptionsResponse = {
@@ -56,11 +105,29 @@ type CollectionOptionsResponse = {
 
 export function createPocketBaseItemCollectionClient({
   baseUrl,
+  detailEndpointPath = "/api/vita/collection-detail",
   optionsEndpointPath = "/api/vita/collection-options",
   attachEndpointPath = "/api/vita/item-collection",
   fetcher = globalThis.fetch,
 }: PocketBaseItemCollectionClientOptions): ItemCollectionClient {
   return {
+    async getCollectionDetail(query) {
+      const response = await fetcher(buildCollectionDetailUrl(baseUrl, detailEndpointPath, query), {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase collection detail read failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as CollectionDetailResponse;
+      if (!payload.collection) {
+        throw new Error("PocketBase collection detail response must include { collection }");
+      }
+
+      return payload.collection;
+    },
+
     async listCollectionOptions(query) {
       const response = await fetcher(buildCollectionOptionsUrl(baseUrl, optionsEndpointPath, query), {
         headers: { Accept: "application/json" },
@@ -105,6 +172,17 @@ export function createPocketBaseItemCollectionClient({
       return payload;
     },
   };
+}
+
+function buildCollectionDetailUrl(
+  baseUrl: string,
+  endpointPath: string,
+  query: CollectionDetailQuery,
+) {
+  const url = new URL(endpointPath, normalizeBaseUrl(baseUrl));
+  url.searchParams.set("workspace_id", query.workspaceId);
+  url.searchParams.set("collection_id", query.collectionId);
+  return url;
 }
 
 function buildCollectionOptionsUrl(

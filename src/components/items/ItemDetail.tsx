@@ -62,8 +62,10 @@ export type ItemDetailViewProps = {
   error: string | null;
   archiveContext: string;
   archiveFlow?: DetailArchiveFlow | null;
+  backLabel?: string;
   onBack: () => void;
   onOpenArchiveItem?: (itemId: string) => void;
+  onOpenCollection?: (collectionId: string) => void;
   onOpenRelatedItem?: (itemId: string) => void;
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   statusActionPending?: boolean;
@@ -92,8 +94,10 @@ export function ItemDetailView({
   error,
   archiveContext,
   archiveFlow = null,
+  backLabel = "Back to archive",
   onBack,
   onOpenArchiveItem,
+  onOpenCollection,
   onOpenRelatedItem,
   onChangeStatus,
   statusActionPending = false,
@@ -118,7 +122,7 @@ export function ItemDetailView({
   if (loading) {
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
-        <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
+        <DetailTopBar archiveContext={archiveContext} backLabel={backLabel} onBack={onBack} />
         <div className="item-detail__loading">Loading archive piece.</div>
       </section>
     );
@@ -127,7 +131,7 @@ export function ItemDetailView({
   if (error || !item) {
     return (
       <section className="item-detail">
-        <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
+        <DetailTopBar archiveContext={archiveContext} backLabel={backLabel} onBack={onBack} />
         <p className="proof-empty">{error ?? "Archive piece could not be loaded."}</p>
       </section>
     );
@@ -138,10 +142,16 @@ export function ItemDetailView({
     statusActionError,
     retirementActionError,
   );
+  const hasContent = Boolean(item.description || item.summary || item.tags.length > 0);
+  const hasFit = Boolean(
+    item.relationships.length > 0 ||
+      item.collections.length > 0 ||
+      item.campaignAttachments.length > 0,
+  );
 
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
-      <DetailTopBar archiveContext={archiveContext} onBack={onBack} />
+      <DetailTopBar archiveContext={archiveContext} backLabel={backLabel} onBack={onBack} />
 
       <div className="item-detail__layout">
         <div className="item-detail__main">
@@ -149,34 +159,41 @@ export function ItemDetailView({
             {renderHero(item)}
           </section>
 
-          <DetailSectionGroup title="Content" meta="description, summary, tags">
-          <Section title="Description">
-            <ReadableBlock value={item.description} fallback="No description yet." />
-          </Section>
+          <DetailSectionGroup id="detail-content" title="Content">
+          {hasContent ? (
+            <>
+              <Section title="Description">
+                <ReadableBlock value={item.description} fallback="No description yet." />
+              </Section>
 
-          <Section title="Summary">
-            <ReadableBlock value={item.summary} fallback="No summary yet." />
-          </Section>
+              <Section title="Summary">
+                <ReadableBlock value={item.summary} fallback="No summary yet." />
+              </Section>
 
-          <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
-            {item.tags.length > 0 ? (
-              <div className="tag-row">
-                {item.tags.map((tag) => (
-                  <span className={`tag-chip tag-chip--${tag.status}`} key={tag.id}>
-                    {tag.name}
-                    {tag.status === "pending" ? <span>pending</span> : null}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <DetailEmptyState label="No tags yet." />
-            )}
-          </Section>
+              <Section title="Tags" meta={formatCount(item.tags.length, "tag", "tags")}>
+                {item.tags.length > 0 ? (
+                  <div className="tag-row">
+                    {item.tags.map((tag) => (
+                      <span className={`tag-chip tag-chip--${tag.status}`} key={tag.id}>
+                        {tag.name}
+                        {tag.status === "pending" ? <span>pending</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <DetailEmptyState label="No tags yet." />
+                )}
+              </Section>
+            </>
+          ) : (
+            <DetailEmptyState label="Empty — add description, summary, or tags" />
+          )}
           </DetailSectionGroup>
 
-          <DetailSectionGroup title="Where it fits" meta="connected to, collections, campaigns">
+          <DetailSectionGroup id="detail-fit" title="Where it fits">
+          {!hasFit ? <DetailEmptyState label="Empty — connect, collect, or attach" /> : null}
           <Section title="Connected to" meta={formatCount(item.relationships.length, "connection", "connections")}>
-            <DetailActionGroup id="detail-action-relationship" title="Connect to another piece" meta="show why it belongs together">
+            <DetailActionGroup id="detail-action-relationship" title="Connect">
               <RelationshipCreateForm
                 currentItemId={item.id}
                 error={relationshipActionError}
@@ -195,13 +212,13 @@ export function ItemDetailView({
                   />
                 ))}
               </div>
-            ) : (
+            ) : !hasFit ? null : (
               <DetailEmptyState label="Not connected to anything yet." />
             )}
           </Section>
 
           <Section title="In collections" meta={formatCount(item.collections.length, "collection", "collections")}>
-            <DetailActionGroup id="detail-action-collection" title="Add to collection" meta="keep with related work">
+            <DetailActionGroup id="detail-action-collection" title="Collect">
               <CollectionAttachForm
                 error={collectionActionError}
                 onAttachCollection={onAttachCollection}
@@ -212,18 +229,38 @@ export function ItemDetailView({
             {item.collections.length > 0 ? (
               <div className="tag-row">
                 {item.collections.map((collection) => (
-                  <span className="tag-chip" key={collection.id}>
+                  <a
+                    className="tag-chip tag-chip--link"
+                    href={`/collections/${encodeURIComponent(collection.id)}`}
+                    key={collection.id}
+                    onClick={(event) => {
+                      if (
+                        !onOpenCollection ||
+                        event.defaultPrevented ||
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.altKey ||
+                        event.ctrlKey ||
+                        event.shiftKey
+                      ) {
+                        return;
+                      }
+
+                      event.preventDefault();
+                      onOpenCollection(collection.id);
+                    }}
+                  >
                     {collection.name}
-                  </span>
+                  </a>
                 ))}
               </div>
-            ) : (
+            ) : !hasFit ? null : (
               <DetailEmptyState label="Not in any collections yet." />
             )}
           </Section>
 
           <Section title="In campaigns" meta={formatCount(item.campaignAttachments.length, "campaign", "campaigns")}>
-            <DetailActionGroup id="detail-action-campaign" title="Attach to campaign" meta="reuse with rights check">
+            <DetailActionGroup id="detail-action-campaign" title="Attach">
               <CampaignAttachForm
                 error={campaignActionError}
                 onAttachCampaign={onAttachCampaign}
@@ -243,12 +280,12 @@ export function ItemDetailView({
                 ))}
               </div>
             ) : (
-              <DetailEmptyState label="Not in any campaigns yet." />
+              !hasFit ? null : <DetailEmptyState label="Not in any campaigns yet." />
             )}
           </Section>
           </DetailSectionGroup>
 
-          <DetailSectionGroup title="History" meta="AI notes and activity">
+          <DetailSectionGroup id="detail-history-group" title="History">
           <Section title="AI notes" meta={formatCount(item.aiAnnotations.length, "note", "notes")}>
             {item.aiAnnotations.length > 0 ? (
               <div className="annotation-list">
@@ -300,11 +337,9 @@ export function ItemDetailView({
             archiveFlow={archiveFlow}
             onOpenArchiveItem={onOpenArchiveItem}
           />
-          <DetailSessionFocus item={item} showLifecycle={showsLifecycleActions} />
-          <DetailActionMap showLifecycle={showsLifecycleActions} />
           {showsLifecycleActions ? (
             <div className="item-detail__action-stack">
-              <DetailActionGroup id="detail-action-lifecycle" title="Work state" meta="move through the archive">
+              <DetailActionGroup id="detail-action-lifecycle" title="Work state">
                 <LifecycleControls
                   currentStatus={item.status}
                   pending={statusActionPending}
@@ -322,7 +357,7 @@ export function ItemDetailView({
               </DetailActionGroup>
             </div>
           ) : null}
-          <DetailSectionMap item={item} />
+          <DetailSectionMap />
           <dl>
             <Metadata label="Archive ID" value={item.id} />
             <Metadata label="From" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
@@ -423,103 +458,19 @@ function ArchiveFlowStep({
   );
 }
 
-function DetailActionMap({ showLifecycle }: { showLifecycle: boolean }) {
-  const actions = [
-    showLifecycle
-      ? {
-          href: "#detail-action-lifecycle",
-          label: "change work state",
-          meta: "state",
-        }
-      : null,
-    {
-      href: "#detail-action-relationship",
-      label: "connect to piece",
-      meta: "connected to",
-    },
-    {
-      href: "#detail-action-collection",
-      label: "add collection",
-      meta: "in collections",
-    },
-    {
-      href: "#detail-action-campaign",
-      label: "attach campaign",
-      meta: "in campaigns",
-    },
-  ].filter((action): action is { href: string; label: string; meta: string } => action !== null);
-
-  return (
-    <nav className="item-detail__action-map" aria-label="what can be done">
-      <span className="item-detail__action-map-title">do next</span>
-      <div className="item-detail__action-map-links">
-        {actions.map((action) => (
-          <a href={action.href} key={action.href}>
-            <span>{action.label}</span>
-            <span>{action.meta}</span>
-          </a>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
-function DetailSessionFocus({
-  item,
-  showLifecycle,
-}: {
-  item: ItemDetail;
-  showLifecycle: boolean;
-}) {
-  const focusItems = [
-    {
-      href: showLifecycle ? "#detail-action-lifecycle" : "#detail-event-timeline",
-      label: "work state",
-      value: getLifecycleSessionValue(item.status),
-    },
-    {
-      href: "#detail-action-campaign",
-      label: "campaign use",
-      tone: getRightsSessionTone(item.rightsStatus),
-      value: getRightsSessionValue(item.rightsStatus),
-    },
-    {
-      href: getConnectionSessionHref(item),
-      label: "connected to",
-      value: getConnectionSessionValue(item),
-    },
-  ];
-
-  return (
-    <nav className="item-detail__session-focus" aria-label="what to check">
-      <span className="item-detail__session-focus-title">what to check</span>
-      <div className="item-detail__session-focus-links">
-        {focusItems.map((focus) => (
-          <a
-            className={focus.tone ? `item-detail__session-link item-detail__session-link--${focus.tone}` : "item-detail__session-link"}
-            href={focus.href}
-            key={focus.label}
-          >
-            <span>{focus.label}</span>
-            <span>{focus.value}</span>
-          </a>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
 function DetailTopBar({
   archiveContext,
+  backLabel,
   onBack,
 }: {
   archiveContext: string;
+  backLabel: string;
   onBack: () => void;
 }) {
   return (
     <div className="item-detail__topbar" aria-label="archive detail context">
       <button className="text-button" type="button" onClick={onBack}>
-        Back to archive
+        {backLabel}
       </button>
       <div className="item-detail__topbar-context">
         <span>archive detail</span>
@@ -529,37 +480,19 @@ function DetailTopBar({
   );
 }
 
-function DetailSectionMap({ item }: { item: ItemDetail }) {
+function DetailSectionMap() {
   const sections = [
     {
-      href: "#detail-description",
-      label: "description",
-      meta: item.description ? "set" : "empty",
+      href: "#detail-content",
+      label: "content",
     },
     {
-      href: "#detail-summary",
-      label: "summary",
-      meta: item.summary ? "set" : "empty",
+      href: "#detail-fit",
+      label: "where it fits",
     },
     {
-      href: "#detail-relationships",
-      label: "connected to",
-      meta: String(item.relationships.length),
-    },
-    {
-      href: "#detail-collections",
-      label: "in collections",
-      meta: String(item.collections.length),
-    },
-    {
-      href: "#detail-campaign-attachments",
-      label: "in campaigns",
-      meta: String(item.campaignAttachments.length),
-    },
-    {
-      href: "#detail-event-timeline",
+      href: "#detail-history-group",
       label: "history",
-      meta: String(item.events.length),
     },
   ];
 
@@ -569,8 +502,7 @@ function DetailSectionMap({ item }: { item: ItemDetail }) {
       <div className="item-detail__section-map-links">
         {sections.map((section) => (
           <a href={section.href} key={section.href}>
-            <span>{section.label}</span>
-            <span>{section.meta}</span>
+            {section.label}
           </a>
         ))}
       </div>
@@ -973,19 +905,18 @@ function renderHero(item: ItemDetail) {
 }
 
 function DetailSectionGroup({
+  id,
   title,
-  meta,
   children,
 }: {
+  id?: string;
   title: string;
-  meta: string;
   children: ReactNode;
 }) {
   return (
-    <div className="detail-section-group">
+    <div className="detail-section-group" id={id}>
       <div className="detail-section-group__header">
         <h2>{title}</h2>
-        <span>{meta}</span>
       </div>
       {children}
     </div>
@@ -1027,19 +958,16 @@ function DetailEmptyState({ label }: { label: string }) {
 function DetailActionGroup({
   id,
   title,
-  meta,
   children,
 }: {
   id?: string;
   title: string;
-  meta: string;
   children: ReactNode;
 }) {
   return (
     <div className="detail-action-group" id={id}>
       <div className="detail-action-group__header">
         <span className="detail-action-group__title">{title}</span>
-        <span className="detail-action-group__meta">{meta}</span>
       </div>
       {children}
     </div>
@@ -1121,8 +1049,8 @@ function RelationshipCreateForm({
     <form className="relationship-create" aria-label="connect piece" onSubmit={submit}>
       <div className="relationship-create__fields">
         <label>
-          <span>piece to connect</span>
           <input
+            aria-label="archive id"
             autoComplete="off"
             disabled={pending}
             list={targetOptions.length > 0 ? dataListId : undefined}
@@ -1231,86 +1159,6 @@ function hasLifecycleActions(
     canRetireWithReplacement(status) ||
     Boolean(statusError || retirementError)
   );
-}
-
-function getLifecycleSessionValue(status: ItemStatus) {
-  if (status === "inbox") {
-    return "triage or retire";
-  }
-
-  if (status === "triaged") {
-    return "promote or retire";
-  }
-
-  if (status === "active") {
-    return "connect or reuse";
-  }
-
-  if (status === "archived") {
-    return "review or retire";
-  }
-
-  return "history only";
-}
-
-function getRightsSessionValue(rightsStatus: ItemDetail["rightsStatus"]) {
-  if (rightsStatus === "restricted" || rightsStatus === "expired") {
-    return "campaign blocked";
-  }
-
-  if (rightsStatus === "unknown") {
-    return "campaign needs note";
-  }
-
-  if (rightsStatus === "reference_only") {
-    return "public roles need note";
-  }
-
-  return "campaign ready";
-}
-
-function getRightsSessionTone(rightsStatus: ItemDetail["rightsStatus"]) {
-  if (rightsStatus === "restricted" || rightsStatus === "expired") {
-    return "blocked";
-  }
-
-  if (rightsStatus === "unknown" || rightsStatus === "reference_only") {
-    return "warning";
-  }
-
-  return null;
-}
-
-function getConnectionSessionValue(item: ItemDetail) {
-  if (item.relationships.length === 0) {
-    return "connect to piece";
-  }
-
-  if (item.collections.length === 0) {
-    return "add collection";
-  }
-
-  if (item.campaignAttachments.length === 0) {
-    return "attach campaign";
-  }
-
-  return "connected";
-}
-
-function getConnectionSessionHref(item: ItemDetail) {
-  if (item.relationships.length === 0) {
-    return "#detail-action-relationship";
-  }
-
-  if (item.collections.length === 0) {
-    return "#detail-action-collection";
-  }
-
-  if (item.campaignAttachments.length === 0) {
-    return "#detail-action-campaign";
-  }
-
-  return "#detail-relationships";
 }
 
 function formatCount(count: number, singular: string, plural: string) {

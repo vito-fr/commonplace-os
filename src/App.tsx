@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ItemStatus, ItemType } from "./components/atoms";
+import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardProps } from "./components/items";
 import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemDetail";
@@ -11,6 +12,7 @@ import {
 } from "./data/pocketBaseItemCampaign";
 import {
   createPocketBaseItemCollectionClient,
+  type CollectionDetail,
   type CollectionOption,
 } from "./data/pocketBaseItemCollection";
 import type { ItemDetail } from "./data/pocketBaseItemDetail";
@@ -21,10 +23,15 @@ import { createPocketBaseItemRetirementWriter } from "./data/pocketBaseItemRetir
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 
-type AppRoute = { kind: "grid" } | { kind: "item"; itemId: string };
+type AppRoute =
+  | { kind: "grid" }
+  | { kind: "item"; itemId: string; returnCollectionId?: string }
+  | { kind: "collection"; collectionId: string };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
+type ArchiveShellPanel = "index" | "views" | "filters" | "import" | "information" | null;
+type SiteTheme = "light" | "dark";
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
   "all",
@@ -74,6 +81,10 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
+  const [archivePanel, setArchivePanel] = useState<ArchiveShellPanel>("index");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -82,6 +93,9 @@ export function App() {
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([]);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
+  const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
+  const [isCollectionLoading, setIsCollectionLoading] = useState(false);
+  const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isCampaignAttaching, setIsCampaignAttaching] = useState(false);
@@ -108,10 +122,53 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = siteTheme;
+    window.localStorage.setItem("vita:theme", siteTheme);
+  }, [siteTheme]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsSettingsOpen(false);
+        setIsSearchOpen(true);
+        return;
+      }
+
+      if (!isTypingTarget && event.key.toLowerCase() === "m") {
+        event.preventDefault();
+        setSiteTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setIsSearchOpen(false);
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
     const nextUrl =
       route.kind === "item"
-        ? buildItemDetailUrl(route.itemId, itemCardFilters)
-        : buildArchiveUrl(itemCardFilters);
+        ? buildItemDetailUrl(route.itemId, itemCardFilters, {
+            returnCollectionId: route.returnCollectionId,
+          })
+        : route.kind === "collection"
+          ? buildCollectionUrl(route.collectionId)
+          : buildArchiveUrl(itemCardFilters);
     const currentUrl = `${window.location.pathname}${window.location.search}`;
 
     if (currentUrl !== nextUrl) {
@@ -254,12 +311,85 @@ export function App() {
     };
   }, [route]);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    if (route.kind !== "collection") {
+      setCollectionDetail(null);
+      setCollectionReadError(null);
+      setIsCollectionLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    if (!isPocketBaseMode) {
+      setCollectionDetail(null);
+      setCollectionReadError("Collection view requires live archive mode.");
+      setIsCollectionLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsCollectionLoading(true);
+    setCollectionReadError(null);
+
+    itemCollectionClient
+      .getCollectionDetail({ workspaceId, collectionId: route.collectionId })
+      .then((nextCollection) => {
+        if (isCurrent) {
+          setCollectionDetail(nextCollection);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          console.error(error);
+          setCollectionDetail(null);
+          setCollectionReadError("Unable to load collection.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsCollectionLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [route]);
+
   const openItemDetail = (itemId: string) => {
     window.history.pushState(null, "", buildItemDetailUrl(itemId, itemCardFilters));
     setRoute({ kind: "item", itemId });
   };
 
+  const openCollectionItemDetail = (itemId: string, collectionId: string) => {
+    window.history.pushState(
+      null,
+      "",
+      buildItemDetailUrl(itemId, {}, { returnCollectionId: collectionId }),
+    );
+    setRoute({ kind: "item", itemId, returnCollectionId: collectionId });
+  };
+
+  const openCollection = (collectionId: string) => {
+    window.history.pushState(null, "", buildCollectionUrl(collectionId));
+    setRoute({ kind: "collection", collectionId });
+  };
+
   const closeItemDetail = () => {
+    if (route.kind === "item" && route.returnCollectionId) {
+      window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
+      setRoute({ kind: "collection", collectionId: route.returnCollectionId });
+    } else {
+      window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
+      setRoute({ kind: "grid" });
+    }
+  };
+
+  const closeCollection = () => {
     window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
     setRoute({ kind: "grid" });
   };
@@ -428,7 +558,7 @@ export function App() {
     }
   };
 
-  const captureNote = async (body: string) => {
+  const captureArchiveInput = async (rawInput: string) => {
     if (!isPocketBaseMode) {
       return;
     }
@@ -438,20 +568,33 @@ export function App() {
     setCaptureNotice(null);
 
     try {
-      await itemCaptureWriter.captureNote({
-        workspaceId,
-        type: "note",
-        body,
-        sourceExternalId: captureSourceExternalId(),
-        actor: "system",
-      });
+      const captureInput = normalizeCaptureInput(rawInput);
+
+      if (captureInput.type === "link") {
+        await itemCaptureWriter.captureUrl({
+          workspaceId,
+          type: "link",
+          url: captureInput.url,
+          sourceExternalId: captureInput.url,
+          actor: "system",
+        });
+      } else {
+        await itemCaptureWriter.captureNote({
+          workspaceId,
+          type: "note",
+          body: captureInput.body,
+          sourceExternalId: captureSourceExternalId(),
+          actor: "system",
+        });
+      }
+
       const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
       setItems(nextItems);
       setReadError(null);
-      setCaptureNotice("Added to inbox.");
+      setCaptureNotice(captureInput.type === "link" ? "Imported URL to inbox." : "Added note to inbox.");
     } catch (error: unknown) {
       console.error(error);
-      setCaptureError("Unable to add note.");
+      setCaptureError("Unable to import.");
       throw error;
     } finally {
       setIsCapturing(false);
@@ -490,10 +633,34 @@ export function App() {
     setItemCardFilters({});
   };
 
+  const openArchiveSearch = () => {
+    setIsSettingsOpen(false);
+    setIsSearchOpen(true);
+  };
+
+  const openArchiveSettings = () => {
+    setIsSearchOpen(false);
+    setIsSettingsOpen(true);
+  };
+
+  if (route.kind === "collection") {
+    return (
+      <main className="app-shell" aria-label="Vita collection">
+        <CollectionView
+          collection={collectionDetail}
+          loading={isCollectionLoading}
+          error={collectionReadError}
+          onBack={closeCollection}
+          onOpenItem={openCollectionItemDetail}
+        />
+      </main>
+    );
+  }
+
   if (route.kind === "item") {
     const currentItemId = detail?.id ?? route.itemId;
-    const archiveContextLabel = formatArchiveContext(itemCardFilters);
-    const archiveFlow = getDetailArchiveFlow(items, currentItemId);
+    const archiveContextLabel = route.returnCollectionId ? "collection view" : formatArchiveContext(itemCardFilters);
+    const archiveFlow = route.returnCollectionId ? null : getDetailArchiveFlow(items, currentItemId);
     const relationshipTargetOptions = items
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
@@ -526,7 +693,9 @@ export function App() {
           error={detailError}
           archiveContext={archiveContextLabel}
           archiveFlow={archiveFlow}
+          backLabel={route.returnCollectionId ? "Back to collection" : "Back to archive"}
           onBack={closeItemDetail}
+          onOpenCollection={openCollection}
           onOpenArchiveItem={openItemDetail}
           onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
@@ -553,52 +722,40 @@ export function App() {
     );
   }
 
-  const renderedItems = isPocketBaseMode
-    ? items.map((item) => ({
-        ...item,
-        detailHref: buildItemDetailUrl(item.id, itemCardFilters),
-        onNavigate: openItemDetail,
-      }))
-    : items;
-  const archiveModeLabel = isPocketBaseMode ? "live archive" : "fixture preview";
+  const renderedItems = items.map((item) => ({
+    ...item,
+    activeFilters: itemCardFilters,
+    ...(isPocketBaseMode
+      ? {
+          detailHref: buildItemDetailUrl(item.id, itemCardFilters),
+          onNavigate: openItemDetail,
+        }
+      : {}),
+  }));
 
   return (
-    <main className="app-shell" aria-label="Vita archive">
-      <section className="proof-panel" aria-labelledby="proof-title">
-        <p className="proof-kicker">archive</p>
-        <h1 id="proof-title">Archive</h1>
-        <ArchiveUsageSummary
-          captureEnabled={isPocketBaseMode}
-          filters={itemCardFilters}
-          itemCount={items.length}
-          loading={isLoading}
-          modeLabel={archiveModeLabel}
-          readError={readError}
-        />
-        {isPocketBaseMode ? (
-          <CaptureNoteForm
-            error={captureError}
-            notice={captureNotice}
-            onCapture={captureNote}
-            pending={isCapturing}
-          />
-        ) : null}
-        <ArchiveFilterControls
-          filters={itemCardFilters}
-          loading={isLoading}
-          onClearFilters={clearArchiveFilters}
-          onSourceChange={updateSourceFilter}
-          onStatusChange={updateStatusFilter}
-          onTextChange={updateTextFilter}
-          onTypeChange={updateTypeFilter}
-        />
+    <main className="app-shell app-shell--archive" aria-label="Vita archive">
+      <h1 className="visually-hidden">Archive</h1>
+      <ArchiveTopShell
+        activePanel={archivePanel}
+        captureError={captureError}
+        captureNotice={captureNotice}
+        filters={itemCardFilters}
+        isPocketBaseMode={isPocketBaseMode}
+        itemCount={items.length}
+        loading={isLoading}
+        onCapture={captureArchiveInput}
+        onClearFilters={clearArchiveFilters}
+        onPanelChange={setArchivePanel}
+        onSourceChange={updateSourceFilter}
+        onStatusChange={updateStatusFilter}
+        onTextChange={updateTextFilter}
+        onTypeChange={updateTypeFilter}
+        pendingCapture={isCapturing}
+        readError={readError}
+      />
+      <section className="archive-canvas" aria-label="archive pieces">
         {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
-        <ArchiveResultHeader
-          filters={itemCardFilters}
-          itemCount={items.length}
-          loading={isLoading}
-          readError={readError}
-        />
         <MasonryGrid
           items={renderedItems}
           density="comfortable"
@@ -613,86 +770,336 @@ export function App() {
           ariaLabel="archive pieces"
         />
       </section>
+      <ArchiveTouchBar
+        activeFilters={itemCardFilters}
+        onOpenSearch={openArchiveSearch}
+        onOpenSettings={openArchiveSettings}
+        theme={siteTheme}
+      />
+      {isSearchOpen ? (
+        <ArchiveSearchOverlay
+          filters={itemCardFilters}
+          loading={isLoading}
+          onClose={() => setIsSearchOpen(false)}
+          onTextChange={updateTextFilter}
+          resultCount={items.length}
+        />
+      ) : null}
+      {isSettingsOpen ? (
+        <ArchiveSettingsOverlay
+          onClose={() => setIsSettingsOpen(false)}
+          onThemeChange={setSiteTheme}
+          theme={siteTheme}
+        />
+      ) : null}
     </main>
   );
 }
 
-function ArchiveResultHeader({
+function ArchiveTopShell({
+  activePanel,
+  captureError,
+  captureNotice,
   filters,
+  isPocketBaseMode,
   itemCount,
   loading,
+  onCapture,
+  onClearFilters,
+  onPanelChange,
+  onSourceChange,
+  onStatusChange,
+  onTextChange,
+  onTypeChange,
+  pendingCapture,
   readError,
 }: {
+  activePanel: ArchiveShellPanel;
+  captureError: string | null;
+  captureNotice: string | null;
   filters: ItemCardFilters;
+  isPocketBaseMode: boolean;
   itemCount: number;
   loading: boolean;
+  onCapture: (body: string) => Promise<void> | void;
+  onClearFilters: () => void;
+  onPanelChange: (panel: ArchiveShellPanel) => void;
+  onSourceChange: (source: ArchiveSourceFilter) => void;
+  onStatusChange: (status: ArchiveStatusFilter) => void;
+  onTextChange: (text: string) => void;
+  onTypeChange: (type: ArchiveTypeFilter) => void;
+  pendingCapture: boolean;
   readError: string | null;
 }) {
   const hasFilters = hasActiveFilters(filters);
   const resultLabel = readError
-    ? "archive set unavailable"
+    ? "load error"
     : loading
-      ? "loading archive set"
+      ? "loading"
       : `${formatResultCount(itemCount)} shown`;
-  const viewLabel = hasFilters ? "filtered archive" : "full archive";
+
+  const togglePanel = (panel: Exclude<ArchiveShellPanel, null>) => {
+    onPanelChange(activePanel === panel ? null : panel);
+  };
 
   return (
-    <div className="archive-result-header" aria-label="archive result context">
-      <div className="archive-result-header__body">
-        <h2>Archive set</h2>
-        <p>{resultLabel}</p>
-        <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
+    <header className="ridgeway-shell">
+      <div className="ridgeway-shell__bar">
+        <button className="ridgeway-shell__brand" type="button" onClick={onClearFilters} aria-label="live archive">
+          <span className="ridgeway-live-dot" aria-hidden="true" />
+        </button>
+        <nav className="ridgeway-shell__nav" aria-label="archive controls">
+          <ArchiveShellButton
+            active={activePanel === "index"}
+            label="Index of Work"
+            onClick={() => togglePanel("index")}
+          />
+          <ArchiveShellButton
+            active={activePanel === "views"}
+            label="Views"
+            onClick={() => togglePanel("views")}
+          />
+          <ArchiveShellButton
+            active={activePanel === "filters"}
+            label="Filters"
+            onClick={() => togglePanel("filters")}
+          />
+          <ArchiveShellButton
+            active={activePanel === "import"}
+            label="Import"
+            onClick={() => togglePanel("import")}
+          />
+          <ArchiveShellButton
+            active={activePanel === "information"}
+            label="Information"
+            onClick={() => togglePanel("information")}
+          />
+        </nav>
       </div>
-      <span>{viewLabel}</span>
+      <div className="ridgeway-shell__scope" aria-label="archive scope">
+        <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
+        <span>{resultLabel}</span>
+        {hasFilters ? (
+          <button className="ridgeway-text-control" disabled={loading} onClick={onClearFilters} type="button">
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+      {activePanel ? (
+        <div className="ridgeway-reveal" aria-live="polite">
+          {activePanel === "index" ? (
+            <div className="ridgeway-reveal__grid">
+              <div className="ridgeway-reveal__group">
+                <span className="ridgeway-reveal__label">Index</span>
+                <button className="ridgeway-option ridgeway-option--active" type="button" onClick={onClearFilters}>
+                  All pieces
+                </button>
+                <span className="ridgeway-option ridgeway-option--muted">Collections</span>
+                <span className="ridgeway-option ridgeway-option--muted">Campaigns</span>
+              </div>
+              <div className="ridgeway-reveal__group">
+                <span className="ridgeway-reveal__label">Current set</span>
+                <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
+                <span className="ridgeway-reveal__meta">{resultLabel}</span>
+              </div>
+            </div>
+          ) : null}
+          {activePanel === "views" ? (
+            <div className="ridgeway-reveal__grid">
+              <div className="ridgeway-reveal__group">
+                <span className="ridgeway-reveal__label">View</span>
+                <span className="ridgeway-option ridgeway-option--active">Masonry</span>
+                <span className="ridgeway-option ridgeway-option--muted">Gallery</span>
+                <span className="ridgeway-option ridgeway-option--muted">List</span>
+                <span className="ridgeway-option ridgeway-option--muted">Graph</span>
+              </div>
+            </div>
+          ) : null}
+          {activePanel === "filters" ? (
+            <ArchiveFilterControls
+              filters={filters}
+              loading={loading}
+              onSourceChange={onSourceChange}
+              onStatusChange={onStatusChange}
+              onTextChange={onTextChange}
+              onTypeChange={onTypeChange}
+            />
+          ) : null}
+          {activePanel === "import" ? (
+            <div className="ridgeway-reveal__grid">
+              <div className="ridgeway-reveal__group ridgeway-reveal__group--wide">
+                <span className="ridgeway-reveal__label">Import</span>
+                {isPocketBaseMode ? (
+                  <CaptureNoteForm
+                    error={captureError}
+                    notice={captureNotice}
+                    onCapture={onCapture}
+                    pending={pendingCapture}
+                  />
+                ) : (
+                  <p className="ridgeway-reveal__meta">Import requires live archive mode.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+          {activePanel === "information" ? (
+            <div className="ridgeway-reveal__grid">
+              <div className="ridgeway-reveal__group">
+                <span className="ridgeway-reveal__label">Information</span>
+                <p className="ridgeway-reveal__copy">
+                  A working archive for capture, inspection, connection, campaign use, and retirement.
+                </p>
+                <p className="ridgeway-reveal__meta">⌘K search · M color mode · Esc close</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function ArchiveTouchBar({
+  activeFilters,
+  onOpenSearch,
+  onOpenSettings,
+  theme,
+}: {
+  activeFilters: ItemCardFilters;
+  onOpenSearch: () => void;
+  onOpenSettings: () => void;
+  theme: SiteTheme;
+}) {
+  const searchLabel = activeFilters.text?.trim() ? activeFilters.text.trim() : "Search archive";
+
+  return (
+    <div className="archive-touchbar" aria-label="archive quick controls">
+      <button className="archive-touchbar__search" type="button" onClick={onOpenSearch}>
+        <span>{searchLabel}</span>
+        <span>⌘K</span>
+      </button>
+      <button className="archive-touchbar__settings" type="button" onClick={onOpenSettings}>
+        {theme === "light" ? "light" : "dark"}
+      </button>
     </div>
   );
 }
 
-function ArchiveUsageSummary({
-  captureEnabled,
+function ArchiveSearchOverlay({
   filters,
-  itemCount,
   loading,
-  modeLabel,
-  readError,
+  onClose,
+  onTextChange,
+  resultCount,
 }: {
-  captureEnabled: boolean;
   filters: ItemCardFilters;
-  itemCount: number;
   loading: boolean;
-  modeLabel: string;
-  readError: string | null;
+  onClose: () => void;
+  onTextChange: (text: string) => void;
+  resultCount: number;
 }) {
-  const filterSummary = formatFilterSummary(filters);
-  const resultLabel = readError
-    ? "load error"
-    : loading
-      ? "loading pieces"
-      : formatResultCount(itemCount);
-
   return (
-    <dl className="archive-overview" aria-label="archive overview">
-      <div className="archive-overview__item">
-        <dt>archive mode</dt>
-        <dd>{modeLabel}</dd>
-      </div>
-      <div className="archive-overview__item">
-        <dt>shown</dt>
-        <dd>{resultLabel}</dd>
-      </div>
-      <div className="archive-overview__item">
-        <dt>add</dt>
-        <dd>{captureEnabled ? "manual note" : "seed view"}</dd>
-      </div>
-      <div className="archive-overview__item">
-        <dt>open pieces</dt>
-        <dd>work state · connected to · collections · campaigns</dd>
-      </div>
-      <div className="archive-overview__item">
-        <dt>looking at</dt>
-        <dd>{filterSummary || formatArchiveContext(filters)}</dd>
-      </div>
-    </dl>
+    <div
+      className="archive-modal-layer"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="spotlight-search" aria-label="search archive">
+        <label className="spotlight-search__field">
+          <span>Search</span>
+          <input
+            autoComplete="off"
+            autoFocus
+            onChange={(event) => onTextChange(event.target.value)}
+            placeholder="type to narrow the archive"
+            type="search"
+            value={filters.text ?? ""}
+          />
+        </label>
+        <div className="spotlight-search__meta">
+          <span>{loading ? "loading" : `${formatResultCount(resultCount)} shown`}</span>
+          <button className="ridgeway-text-control" type="button" onClick={onClose}>
+            close
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ArchiveSettingsOverlay({
+  onClose,
+  onThemeChange,
+  theme,
+}: {
+  onClose: () => void;
+  onThemeChange: (theme: SiteTheme) => void;
+  theme: SiteTheme;
+}) {
+  return (
+    <div
+      className="archive-modal-layer"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="archive-settings" aria-label="site settings">
+        <div className="archive-settings__header">
+          <span>Settings</span>
+          <button className="ridgeway-text-control" type="button" onClick={onClose}>
+            close
+          </button>
+        </div>
+        <div className="archive-settings__row">
+          <span>Color mode</span>
+          <div className="archive-settings__options">
+            <button
+              className={`ridgeway-option${theme === "light" ? " ridgeway-option--active" : ""}`}
+              type="button"
+              onClick={() => onThemeChange("light")}
+            >
+              light
+            </button>
+            <button
+              className={`ridgeway-option${theme === "dark" ? " ridgeway-option--active" : ""}`}
+              type="button"
+              onClick={() => onThemeChange("dark")}
+            >
+              dark
+            </button>
+          </div>
+        </div>
+        <p className="ridgeway-reveal__meta">Press M from the archive to invert the interface.</p>
+      </section>
+    </div>
+  );
+}
+
+function ArchiveShellButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-expanded={active}
+      className={`ridgeway-shell__control${active ? " ridgeway-shell__control--active" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -756,7 +1163,6 @@ function ArchiveEmptyState({
 function ArchiveFilterControls({
   filters,
   loading,
-  onClearFilters,
   onSourceChange,
   onStatusChange,
   onTextChange,
@@ -764,36 +1170,17 @@ function ArchiveFilterControls({
 }: {
   filters: ItemCardFilters;
   loading: boolean;
-  onClearFilters: () => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTextChange: (text: string) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
 }) {
-  const hasFilters = hasActiveFilters(filters);
-
   return (
     <form
       className="archive-filters"
       aria-label="narrow archive"
       onSubmit={(event) => event.preventDefault()}
     >
-      <div className="archive-filters__header">
-        <div>
-          <span className="archive-filters__kicker">narrow archive</span>
-          <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
-        </div>
-        {hasFilters ? (
-          <button
-            className="text-button archive-filters__clear"
-            disabled={loading}
-            onClick={onClearFilters}
-            type="button"
-          >
-            Clear narrow view
-          </button>
-        ) : null}
-      </div>
       <div className="archive-filters__controls">
         <label
           className={`archive-filter-field archive-filter-field--text${
@@ -815,73 +1202,80 @@ function ArchiveFilterControls({
             value={filters.text ?? ""}
           />
         </label>
-        <label
-          className={`archive-filter-field${
-            filters.status ? " archive-filter-field--active" : ""
-          }`}
-        >
-          <span className="archive-filter-field__label">
-            <span>work state</span>
-            {filters.status ? (
-              <span className="archive-filter-field__state">active</span>
-            ) : null}
+        <div className="archive-filters__filter-group" aria-labelledby="archive-filter-heading">
+          <span className="archive-filters__section-title" id="archive-filter-heading">
+            Filter
           </span>
-          <select
-            disabled={loading}
-            onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
-            value={filters.status ?? "all"}
-          >
-            {statusFilterOptions.map((status) => (
-              <option key={status} value={status}>
-                {status === "all" ? "all work states" : status}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
-          className={`archive-filter-field${filters.type ? " archive-filter-field--active" : ""}`}
-        >
-          <span className="archive-filter-field__label">
-            <span>kind</span>
-            {filters.type ? (
-              <span className="archive-filter-field__state">active</span>
-            ) : null}
-          </span>
-          <select
-            disabled={loading}
-            onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
-            value={filters.type ?? "all"}
-          >
-            {typeFilterOptions.map((type) => (
-              <option key={type} value={type}>
-                {type === "all" ? "all kinds" : type}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label
-          className={`archive-filter-field${
-            filters.source ? " archive-filter-field--active" : ""
-          }`}
-        >
-          <span className="archive-filter-field__label">
-            <span>from</span>
-            {filters.source ? (
-              <span className="archive-filter-field__state">active</span>
-            ) : null}
-          </span>
-          <select
-            disabled={loading}
-            onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
-            value={filters.source ?? "all"}
-          >
-            {sourceFilterOptions.map((source) => (
-              <option key={source} value={source}>
-                {source === "all" ? "all origins" : source.replace("_", " ")}
-              </option>
-            ))}
-          </select>
-        </label>
+          <div className="archive-filters__filter-controls">
+            <label
+              className={`archive-filter-field${
+                filters.status ? " archive-filter-field--active" : ""
+              }`}
+            >
+              <span className="archive-filter-field__label">
+                <span>work state</span>
+                {filters.status ? (
+                  <span className="archive-filter-field__state">active</span>
+                ) : null}
+              </span>
+              <select
+                disabled={loading}
+                onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
+                value={filters.status ?? "all"}
+              >
+                {statusFilterOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status === "all" ? "any state" : status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className={`archive-filter-field${filters.type ? " archive-filter-field--active" : ""}`}
+            >
+              <span className="archive-filter-field__label">
+                <span>kind</span>
+                {filters.type ? (
+                  <span className="archive-filter-field__state">active</span>
+                ) : null}
+              </span>
+              <select
+                disabled={loading}
+                onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
+                value={filters.type ?? "all"}
+              >
+                {typeFilterOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {type === "all" ? "any kind" : type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className={`archive-filter-field${
+                filters.source ? " archive-filter-field--active" : ""
+              }`}
+            >
+              <span className="archive-filter-field__label">
+                <span>from</span>
+                {filters.source ? (
+                  <span className="archive-filter-field__state">active</span>
+                ) : null}
+              </span>
+              <select
+                disabled={loading}
+                onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
+                value={filters.source ?? "all"}
+              >
+                {sourceFilterOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {source === "all" ? "any origin" : source.replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
       </div>
     </form>
   );
@@ -935,7 +1329,7 @@ function CaptureNoteForm({
     const normalizedBody = body.trim();
 
     if (!normalizedBody) {
-      setLocalError("Note body is required.");
+      setLocalError("Text or URL is required.");
       return;
     }
 
@@ -950,24 +1344,18 @@ function CaptureNoteForm({
   };
 
   return (
-    <form className="capture-note" aria-label="add note" onSubmit={submit}>
-      <div className="capture-note__header">
-        <span>add note</span>
-        <p>new note · starts in inbox</p>
-      </div>
-      <label>
-        <span>note</span>
-        <textarea
-          disabled={pending}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder="write note"
-          rows={3}
-          value={body}
-        />
-      </label>
+    <form className="capture-note" aria-label="import item" onSubmit={submit}>
+      <textarea
+        aria-label="text or URL"
+        disabled={pending}
+        onChange={(event) => setBody(event.target.value)}
+        placeholder="paste URL or write text"
+        rows={3}
+        value={body}
+      />
       <div className="capture-note__actions">
         <button className="status-action" disabled={pending} type="submit">
-          {pending ? "Adding" : "Add note to inbox"}
+          {pending ? "Importing" : "Add to inbox"}
         </button>
         {notice ? <span className="capture-note__notice">{notice}</span> : null}
       </div>
@@ -977,13 +1365,22 @@ function CaptureNoteForm({
 }
 
 function getRouteFromLocation(): AppRoute {
-  const match = window.location.pathname.match(/^\/items\/([^/]+)\/?$/);
-
-  if (!match) {
-    return { kind: "grid" };
+  const itemMatch = window.location.pathname.match(/^\/items\/([^/]+)\/?$/);
+  if (itemMatch) {
+    const returnCollectionId = new URLSearchParams(window.location.search).get("return_collection")?.trim();
+    return {
+      kind: "item",
+      itemId: decodeURIComponent(itemMatch[1]),
+      returnCollectionId: returnCollectionId ? returnCollectionId : undefined,
+    };
   }
 
-  return { kind: "item", itemId: decodeURIComponent(match[1]) };
+  const collectionMatch = window.location.pathname.match(/^\/collections\/([^/]+)\/?$/);
+  if (collectionMatch) {
+    return { kind: "collection", collectionId: decodeURIComponent(collectionMatch[1]) };
+  }
+
+  return { kind: "grid" };
 }
 
 function getFiltersFromLocation(): ItemCardFilters {
@@ -1017,11 +1414,22 @@ function buildArchiveUrl(filters: ItemCardFilters) {
   return `/${buildFilterSearch(filters)}`;
 }
 
-function buildItemDetailUrl(itemId: string, filters: ItemCardFilters) {
-  return `/items/${encodeURIComponent(itemId)}${buildFilterSearch(filters)}`;
+function buildCollectionUrl(collectionId: string) {
+  return `/collections/${encodeURIComponent(collectionId)}`;
 }
 
-function buildFilterSearch(filters: ItemCardFilters) {
+function buildItemDetailUrl(
+  itemId: string,
+  filters: ItemCardFilters,
+  options: { returnCollectionId?: string } = {},
+) {
+  return `/items/${encodeURIComponent(itemId)}${buildFilterSearch(filters, options)}`;
+}
+
+function buildFilterSearch(
+  filters: ItemCardFilters,
+  options: { returnCollectionId?: string } = {},
+) {
   const searchParams = new URLSearchParams();
 
   if (filters.status) {
@@ -1038,6 +1446,10 @@ function buildFilterSearch(filters: ItemCardFilters) {
 
   if (filters.text?.trim()) {
     searchParams.set("q", filters.text.trim());
+  }
+
+  if (options.returnCollectionId) {
+    searchParams.set("return_collection", options.returnCollectionId);
   }
 
   const search = searchParams.toString();
@@ -1131,4 +1543,33 @@ function captureSourceExternalId() {
   }
 
   return `manual:note:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeCaptureInput(rawInput: string):
+  | { type: "link"; url: string }
+  | { type: "note"; body: string } {
+  const value = rawInput.trim();
+
+  try {
+    const url = new URL(value);
+
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      url.hash = "";
+      return { type: "link", url: url.toString().replace(/\/$/, "") };
+    }
+  } catch {
+    // Non-URL input is captured as a note.
+  }
+
+  return { type: "note", body: value };
+}
+
+function getInitialSiteTheme(): SiteTheme {
+  const savedTheme = window.localStorage.getItem("vita:theme");
+
+  if (savedTheme === "dark" || savedTheme === "light") {
+    return savedTheme;
+  }
+
+  return "light";
 }

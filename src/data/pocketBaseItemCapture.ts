@@ -10,6 +10,14 @@ export type ItemCaptureCreate = {
   actor?: string;
 };
 
+export type ItemUrlCaptureCreate = {
+  workspaceId: string;
+  type: "link";
+  url: string;
+  sourceExternalId?: string;
+  actor?: string;
+};
+
 export type ItemCaptureCreateResult = {
   created: boolean;
   item: {
@@ -29,8 +37,28 @@ export type ItemCaptureCreateResult = {
   } | null;
 };
 
+export type ItemUrlCaptureCreateResult = {
+  created: boolean;
+  item: {
+    id: string;
+    workspaceId: string;
+    type: "link";
+    status: ItemStatus;
+    sourceId: string;
+    sourceExternalId: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  event: {
+    id: string;
+    eventType: "imported";
+    createdAt: string;
+  } | null;
+};
+
 export type ItemCaptureWriter = {
   captureNote(change: ItemCaptureCreate): Promise<ItemCaptureCreateResult>;
+  captureUrl(change: ItemUrlCaptureCreate): Promise<ItemUrlCaptureCreateResult>;
 };
 
 export type PocketBaseItemCaptureWriterOptions = {
@@ -68,6 +96,33 @@ export function createPocketBaseItemCaptureWriter({
       const payload = (await response.json()) as ItemCaptureCreateResult;
       if (!payload.item || typeof payload.created !== "boolean") {
         throw new Error("PocketBase capture response must include { created, item }");
+      }
+
+      return payload;
+    },
+    async captureUrl(change) {
+      const response = await fetcher(buildCaptureUrl(baseUrl, endpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          type: change.type,
+          url: change.url,
+          source_external_id: change.sourceExternalId,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase URL capture write failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as ItemUrlCaptureCreateResult;
+      if (!payload.item || typeof payload.created !== "boolean") {
+        throw new Error("PocketBase URL capture response must include { created, item }");
       }
 
       return payload;

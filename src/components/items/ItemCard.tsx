@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { Fragment, type MouseEvent, type ReactNode } from "react";
 import {
   SourceMark,
   StatusIndicator,
@@ -34,6 +34,12 @@ export interface ItemCardProps {
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
   detailHref?: string;
+  activeFilters?: {
+    status?: ItemStatus;
+    type?: ItemType;
+    source?: string;
+    text?: string;
+  };
   onNavigate?: (id: string) => void;
 }
 
@@ -55,10 +61,20 @@ export function ItemCard({
   rightsStatus = null,
   isSelected = false,
   detailHref,
+  activeFilters,
   onNavigate,
 }: ItemCardProps) {
   const isRetired = status === "retired";
   const showRightsMark = rightsStatus === "restricted" || rightsStatus === "expired";
+  const hasActiveFilters = Boolean(
+    activeFilters?.status ||
+      activeFilters?.type ||
+      activeFilters?.source ||
+      activeFilters?.text?.trim(),
+  );
+  const showType = hasActiveFilters && activeFilters?.type !== type;
+  const showStatus = hasActiveFilters && activeFilters?.status !== status;
+  const showSource = hasActiveFilters && activeFilters?.source !== source;
   const ariaLabel = title ? `Open ${title}` : `Open ${type} item ${id}`;
   const cardClassName = [
     "item-card",
@@ -69,6 +85,35 @@ export function ItemCard({
     .join(" ");
 
   const itemHref = detailHref ?? `/items/${encodeURIComponent(id)}`;
+  const signalItems: Array<{ key: string; node: ReactNode }> = [];
+
+  if (showType) {
+    signalItems.push({ key: "type", node: <TypeIndicator type={type} /> });
+  }
+
+  if (showStatus || showRightsMark) {
+    signalItems.push({
+      key: "status",
+      node: (
+        <span className="item-card__status-cluster">
+          {showStatus ? <StatusIndicator status={status} /> : null}
+          {showRightsMark ? (
+            <span className="item-card__rights-mark" aria-label={`rights: ${rightsStatus}`}>
+              rights
+            </span>
+          ) : null}
+        </span>
+      ),
+    });
+  }
+
+  if (showSource) {
+    signalItems.push({ key: "source", node: <SourceMark source={source} /> });
+  }
+
+  if (usageCount > 0) {
+    signalItems.push({ key: "usage", node: <UsageBadge count={usageCount} /> });
+  }
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
@@ -96,21 +141,16 @@ export function ItemCard({
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
       <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle, campaignCoverUrl)}</div>
-      <div className="item-card__signal-row">
-        <TypeIndicator type={type} />
-        <span aria-hidden="true">·</span>
-        <span className="item-card__status-cluster">
-          <StatusIndicator status={status} />
-          {showRightsMark ? (
-            <span className="item-card__rights-mark" aria-label={`rights: ${rightsStatus}`}>
-              rights
-            </span>
-          ) : null}
-        </span>
-        <span aria-hidden="true">·</span>
-        <SourceMark source={source} />
-        <UsageBadge count={usageCount} />
-      </div>
+      {signalItems.length > 0 ? (
+        <div className="item-card__signal-row">
+          {signalItems.map((item, index) => (
+            <Fragment key={item.key}>
+              {index > 0 ? <span aria-hidden="true">·</span> : null}
+              {item.node}
+            </Fragment>
+          ))}
+        </div>
+      ) : null}
     </a>
   );
 }
