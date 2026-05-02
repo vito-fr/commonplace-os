@@ -148,6 +148,8 @@ export function ItemDetailView({
       item.collections.length > 0 ||
       item.campaignAttachments.length > 0,
   );
+  const sourceLabel =
+    item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual";
 
   return (
     <article className="item-detail" aria-labelledby="item-detail-title">
@@ -193,7 +195,7 @@ export function ItemDetailView({
           <DetailSectionGroup id="detail-fit" title="Where it fits">
           {!hasFit ? <DetailEmptyState label="Empty — connect, collect, or attach" /> : null}
           <Section title="Connected to" meta={formatCount(item.relationships.length, "connection", "connections")}>
-            <DetailActionGroup id="detail-action-relationship" title="Connect">
+            <CollapsibleAction summary="Connect">
               <RelationshipCreateForm
                 currentItemId={item.id}
                 error={relationshipActionError}
@@ -201,7 +203,7 @@ export function ItemDetailView({
                 pending={relationshipActionPending}
                 targetOptions={relationshipTargetOptions}
               />
-            </DetailActionGroup>
+            </CollapsibleAction>
             {item.relationships.length > 0 ? (
               <div className="detail-list">
                 {item.relationships.map((relationship) => (
@@ -218,14 +220,14 @@ export function ItemDetailView({
           </Section>
 
           <Section title="In collections" meta={formatCount(item.collections.length, "collection", "collections")}>
-            <DetailActionGroup id="detail-action-collection" title="Collect">
+            <CollapsibleAction summary="Collect">
               <CollectionAttachForm
                 error={collectionActionError}
                 onAttachCollection={onAttachCollection}
                 options={collectionOptions}
                 pending={collectionActionPending}
               />
-            </DetailActionGroup>
+            </CollapsibleAction>
             {item.collections.length > 0 ? (
               <div className="tag-row">
                 {item.collections.map((collection) => (
@@ -260,7 +262,7 @@ export function ItemDetailView({
           </Section>
 
           <Section title="In campaigns" meta={formatCount(item.campaignAttachments.length, "campaign", "campaigns")}>
-            <DetailActionGroup id="detail-action-campaign" title="Attach">
+            <CollapsibleAction summary="Attach">
               <CampaignAttachForm
                 error={campaignActionError}
                 onAttachCampaign={onAttachCampaign}
@@ -268,7 +270,7 @@ export function ItemDetailView({
                 pending={campaignActionPending}
                 rightsStatus={item.rightsStatus}
               />
-            </DetailActionGroup>
+            </CollapsibleAction>
             {item.campaignAttachments.length > 0 ? (
               <div className="detail-list">
                 {item.campaignAttachments.map((attachment) => (
@@ -311,7 +313,7 @@ export function ItemDetailView({
                   <div className="detail-list__row" key={event.id}>
                     <span className="detail-list__label">{event.eventType}</span>
                     <span>{event.actor}</span>
-                    <span className="detail-muted">{event.createdAt}</span>
+                    <span className="detail-muted">{formatDate(event.createdAt)}</span>
                   </div>
                 ))}
               </div>
@@ -332,13 +334,30 @@ export function ItemDetailView({
             <span aria-hidden="true">·</span>
             <SourceMark source={item.source?.kind ?? "manual"} />
           </div>
-          <ItemWorkSummary item={item} />
-          <DetailArchiveFlowPanel
-            archiveFlow={archiveFlow}
-            onOpenArchiveItem={onOpenArchiveItem}
-          />
-          {showsLifecycleActions ? (
-            <div className="item-detail__action-stack">
+
+          <dl className="item-detail__metadata-list">
+            <Metadata label="Created" value={formatDate(item.createdAt)} />
+            <Metadata label="Last edited" value={formatDate(item.updatedAt)} />
+            <Metadata label="Source" value={sourceLabel} />
+            <Metadata
+              label="Collections"
+              value={
+                <CollectionMetaList
+                  collections={item.collections}
+                  onOpenCollection={onOpenCollection}
+                />
+              }
+            />
+            <Metadata
+              label="Campaigns"
+              value={<CampaignMetaList attachments={item.campaignAttachments} />}
+            />
+            <Metadata label="Rights" value={item.rightsStatus} />
+          </dl>
+
+          <div className="item-detail__action-cluster">
+            <DownloadAction item={item} />
+            {showsLifecycleActions ? (
               <DetailActionGroup id="detail-action-lifecycle" title="Work state">
                 <LifecycleControls
                   currentStatus={item.status}
@@ -355,44 +374,16 @@ export function ItemDetailView({
                   targetOptions={retirementTargetOptions}
                 />
               </DetailActionGroup>
-            </div>
-          ) : null}
-          <DetailSectionMap />
-          <dl>
-            <Metadata label="Archive ID" value={item.id} />
-            <Metadata label="From" value={item.source?.label ?? item.source?.identifier ?? item.source?.kind ?? "manual"} />
-            <Metadata label="Added" value={item.createdAt} />
-            <Metadata label="Last changed" value={item.updatedAt} />
-            <Metadata label="Visibility" value={item.privacyLevel ?? "inherited"} />
-            <Metadata label="Rights" value={item.rightsStatus} />
-            <Metadata label="Rights reviewed" value={item.rightsReviewedAt ?? "not reviewed"} />
-          </dl>
+            ) : null}
+          </div>
+
+          <DetailArchiveFlowPanel
+            archiveFlow={archiveFlow}
+            onOpenArchiveItem={onOpenArchiveItem}
+          />
         </aside>
       </div>
     </article>
-  );
-}
-
-function ItemWorkSummary({ item }: { item: ItemDetail }) {
-  return (
-    <dl className="item-detail__work-summary" aria-label="archive piece work state">
-      <div>
-        <dt>work state</dt>
-        <dd>{item.status}</dd>
-      </div>
-      <div>
-        <dt>rights</dt>
-        <dd>{item.rightsStatus}</dd>
-      </div>
-      <div>
-        <dt>in campaigns</dt>
-        <dd>{formatCount(item.campaignAttachments.length, "attachment", "attachments")}</dd>
-      </div>
-      <div>
-        <dt>connected to</dt>
-        <dd>{formatCount(item.relationships.length, "connection", "connections")}</dd>
-      </div>
-    </dl>
   );
 }
 
@@ -477,36 +468,6 @@ function DetailTopBar({
         <span>{archiveContext}</span>
       </div>
     </div>
-  );
-}
-
-function DetailSectionMap() {
-  const sections = [
-    {
-      href: "#detail-content",
-      label: "content",
-    },
-    {
-      href: "#detail-fit",
-      label: "where it fits",
-    },
-    {
-      href: "#detail-history-group",
-      label: "history",
-    },
-  ];
-
-  return (
-    <nav className="item-detail__section-map" aria-label="archive detail sections">
-      <span className="item-detail__section-map-title">on this page</span>
-      <div className="item-detail__section-map-links">
-        {sections.map((section) => (
-          <a href={section.href} key={section.href}>
-            {section.label}
-          </a>
-        ))}
-      </div>
-    </nav>
   );
 }
 
@@ -974,7 +935,7 @@ function DetailActionGroup({
   );
 }
 
-function Metadata({ label, value }: { label: string; value: string }) {
+function Metadata({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt>{label}</dt>
@@ -1171,6 +1132,152 @@ function formatPayload(payload: string) {
   } catch {
     return payload;
   }
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function CollectionMetaList({
+  collections,
+  onOpenCollection,
+}: {
+  collections: ItemDetail["collections"];
+  onOpenCollection?: (collectionId: string) => void;
+}) {
+  if (collections.length === 0) {
+    return <span className="detail-muted">none</span>;
+  }
+
+  return (
+    <div className="metadata-chip-row">
+      {collections.map((collection) => (
+        <a
+          className="metadata-chip metadata-chip--link"
+          href={`/collections/${encodeURIComponent(collection.id)}`}
+          key={collection.id}
+          onClick={(event) => {
+            if (
+              !onOpenCollection ||
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.altKey ||
+              event.ctrlKey ||
+              event.shiftKey
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+            onOpenCollection(collection.id);
+          }}
+        >
+          {collection.name}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function CampaignMetaList({
+  attachments,
+}: {
+  attachments: ItemDetail["campaignAttachments"];
+}) {
+  if (attachments.length === 0) {
+    return <span className="detail-muted">none</span>;
+  }
+
+  return (
+    <div className="metadata-chip-row">
+      {attachments.map((attachment) => (
+        <span className="metadata-chip" key={attachment.id}>
+          {attachment.campaignTitle ?? attachment.campaignId}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CollapsibleAction({
+  summary,
+  children,
+}: {
+  summary: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="detail-collapsible">
+      <summary className="detail-collapsible__summary">{summary}</summary>
+      <div className="detail-collapsible__body">{children}</div>
+    </details>
+  );
+}
+
+function DownloadAction({ item }: { item: ItemDetail }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const payload = getDownloadPayload(item);
+
+  if (!payload) {
+    return null;
+  }
+
+  const handleClick = async () => {
+    try {
+      await navigator.clipboard.writeText(payload.text);
+      setError(null);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setError("Could not copy.");
+    }
+  };
+
+  return (
+    <div className="detail-download">
+      <button
+        className={`status-action${copied ? " status-action--copied" : ""}`}
+        type="button"
+        onClick={handleClick}
+      >
+        {copied ? "Copied" : payload.label}
+      </button>
+      {error ? <p className="detail-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function getDownloadPayload(item: ItemDetail): { label: string; text: string } | null {
+  if (item.type === "caption" && item.content.caption?.body) {
+    return { label: "Copy caption", text: item.content.caption.body };
+  }
+
+  if (item.type === "note" && item.content.note?.body) {
+    return { label: "Copy note", text: item.content.note.body };
+  }
+
+  if (item.type === "link" && item.content.link?.url) {
+    return { label: "Copy link", text: item.content.link.url };
+  }
+
+  return null;
 }
 
 function slug(value: string) {

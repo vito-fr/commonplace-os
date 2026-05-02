@@ -1212,55 +1212,6 @@ select:focus-visible {
   font-size: 11px;
 }
 
-.item-detail__action-stack {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.item-detail__section-map {
-  display: grid;
-  gap: 9px;
-  margin-top: 18px;
-  border-top: 1px solid var(--color-rule);
-  padding-top: 12px;
-}
-
-.item-detail__section-map-title {
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-}
-
-.item-detail__section-map-links {
-  display: grid;
-}
-
-.item-detail__section-map a {
-  display: block;
-  border-top: 1px solid var(--color-rule);
-  padding: 7px 0;
-  color: var(--color-ink);
-  font-size: 13px;
-  line-height: 1.5;
-  text-decoration: none;
-}
-
-.item-detail__section-map a:first-child {
-  border-top: 0;
-}
-
-.item-detail__section-map a:hover {
-  opacity: 0.72;
-}
-
-.item-detail__section-map a:focus-visible {
-  outline: 1px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
 .item-detail__status-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1316,25 +1267,103 @@ select:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.item-detail__metadata .item-detail__work-summary {
+.item-detail__metadata-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 18px 0 0;
+  gap: 12px;
+  margin: 22px 0 0;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 14px;
+}
+
+.metadata-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.metadata-chip {
+  display: inline-flex;
+  align-items: baseline;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.metadata-chip--link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.item-detail__action-cluster {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  border-top: 1px solid var(--color-rule);
+  padding-top: 14px;
+}
+
+.item-detail__action-cluster .retirement-link {
   border-top: 1px solid var(--color-rule);
   padding-top: 12px;
 }
 
-.item-detail__work-summary div {
-  min-width: 0;
+.detail-download {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
-.item-detail__work-summary dt {
-  margin: 0 0 4px;
+.status-action--copied {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
-.item-detail__work-summary dd {
-  margin: 0;
+.detail-collapsible {
+  border-top: 1px solid var(--color-rule);
+  padding-top: 12px;
+  margin-bottom: 12px;
+}
+
+.detail-collapsible__summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.detail-collapsible__summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-collapsible__summary::before {
+  content: "+";
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.detail-collapsible[open] > .detail-collapsible__summary::before {
+  content: "−";
+}
+
+.detail-collapsible__body {
+  margin-top: 12px;
 }
 
 .item-detail__archive-flow {
@@ -1595,11 +1624,6 @@ select:focus-visible {
 
 .retirement-link {
   margin-top: 0;
-}
-
-.item-detail__action-stack .retirement-link {
-  border-top: 1px solid var(--color-rule);
-  padding-top: 12px;
 }
 
 .relationship-create__fields,
