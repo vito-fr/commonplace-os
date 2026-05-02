@@ -54,17 +54,10 @@ A relationship row may carry:
 
 `X used_in Y` means asset X was deployed in container Y.
 
-- Use when: an image was used in a campaign; a caption shipped in a social post
-- The container is most often a `type='campaign'` item, but `used_in` can also point to other items (e.g., a deliverable note that aggregates assets)
-- Metadata: `{"role": "primary" | "supporting" | "reference" | "retired_from"}`
-- Logged event: `campaign_attached` when the target is a campaign; `used` for non-campaign targets
-
-### `retired_by` — directional
-
-`X retired_by Y` means X was retired and Y is its replacement.
-
-- Use when: a new asset supersedes an older one
-- Implies but does not require that `X.status = 'retired'`. The system flags retired items without `retired_by` and items linked by `retired_by` whose source is not `retired` as inconsistencies for the hygiene subagent
+- Use when: an image is reused in a note; a caption is incorporated into a writeup
+- Metadata: optional
+- Logged event: `used`
+- The earlier campaign-attachment semantics (with `role` metadata) were removed in ADR 0006 along with the `campaign` item type. `used_in` now describes general reuse, not campaign membership.
 
 ### `contradicts` — symmetric
 
@@ -79,15 +72,21 @@ A relationship row may carry:
 
 - Use when: surfaced by perceptual hash, embedding similarity, or human judgment
 - Symmetric: stored once with `from_id < to_id`
-- Often AI-asserted; high-confidence matches may auto-create with `asserted_by='subagent:enrichment'` but only against inbox items
+- Often AI-asserted. High-confidence matches may auto-create with `asserted_by='subagent:enrichment'` per the AI write rules in CONSTITUTION section 8.
 
 ---
 
 ## Reserved for future use — do not implement without ADR
 
-- `precedes` / `follows` — temporal sequencing within a campaign or narrative
+- `precedes` / `follows` — temporal sequencing within a narrative
 - `responds_to` — for tracking conversation chains
 - `cross_workspace_reference` — when business workspace arrives
+
+---
+
+## Removed in ADR 0006
+
+- `retired_by` — the asymmetric "X is superseded by Y" type. Removed when the `retired` lifecycle status was retired in favour of hard delete.
 
 ---
 
@@ -96,5 +95,5 @@ A relationship row may carry:
 1. A relationship's `type` must exist in the registry. Foreign-keyed.
 2. Symmetric types insert once. The database trigger `trg_relationships_symmetric_ordering` enforces `from_id < to_id` for rows whose type is registered as symmetric.
 3. `from_id != to_id` always. Self-relationships are not modeled.
-4. AI-asserted relationships (`asserted_by` starts with `subagent:`) are only allowed when at least one endpoint has `status='inbox'`. For all other cases, AI proposes via `ai_annotations` with `field_name='relationship_suggestion'`.
+4. AI-asserted relationships (`asserted_by` starts with `subagent:`) follow the canonical-write rules in CONSTITUTION section 8: high confidence may auto-create the edge; below threshold the AI proposes via `ai_annotations` with `field_name='relationship_suggestion'`.
 5. Removing a relationship logs a `relationship_removed` event on both endpoints.
