@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { gsap } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid } from "./components/items";
@@ -759,6 +760,73 @@ function ArchiveTopShell({
     onPanelChange(activePanel === panel ? null : panel);
   };
 
+  const revealRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const previousPanelRef = useRef<ArchiveShellPanel>(null);
+  const [renderedPanel, setRenderedPanel] = useState<ArchiveShellPanel>(activePanel);
+
+  useEffect(() => {
+    const wrapper = revealRef.current;
+    const inner = innerRef.current;
+
+    if (!wrapper || !inner) {
+      previousPanelRef.current = activePanel;
+      return;
+    }
+
+    const previousPanel = previousPanelRef.current;
+    previousPanelRef.current = activePanel;
+
+    if (!previousPanel && activePanel) {
+      setRenderedPanel(activePanel);
+      requestAnimationFrame(() => {
+        gsap.fromTo(
+          wrapper,
+          { height: 0 },
+          {
+            height: "auto",
+            duration: 0.32,
+            ease: "power3.out",
+            onComplete: () => {
+              wrapper.style.height = "";
+            },
+          },
+        );
+        gsap.fromTo(
+          inner,
+          { y: 4, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.24, delay: 0.06, ease: "power2.out" },
+        );
+      });
+      return;
+    }
+
+    if (previousPanel && !activePanel) {
+      gsap.to(inner, { opacity: 0, duration: 0.16, ease: "power2.in" });
+      gsap.to(wrapper, {
+        height: 0,
+        duration: 0.24,
+        ease: "power3.in",
+        onComplete: () => {
+          setRenderedPanel(null);
+        },
+      });
+      return;
+    }
+
+    if (previousPanel && activePanel && previousPanel !== activePanel) {
+      setRenderedPanel(activePanel);
+      requestAnimationFrame(() => {
+        wrapper.style.height = "";
+        gsap.fromTo(
+          inner,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.18, ease: "power2.out" },
+        );
+      });
+    }
+  }, [activePanel]);
+
   return (
     <header className="topbar-shell">
       <div className="topbar-shell__bar">
@@ -802,9 +870,15 @@ function ArchiveTopShell({
           </button>
         ) : null}
       </div>
-      {activePanel ? (
-        <div className="topbar-reveal" aria-live="polite">
-          {activePanel === "index" ? (
+      <div
+        className="topbar-reveal"
+        aria-live="polite"
+        aria-hidden={!activePanel}
+        ref={revealRef}
+        style={{ height: 0 }}
+      >
+        <div className="topbar-reveal__inner" ref={innerRef}>
+          {renderedPanel === "index" ? (
             <div className="topbar-reveal__grid">
               <div className="topbar-reveal__group">
                 <span className="topbar-reveal__label">Index</span>
@@ -820,7 +894,7 @@ function ArchiveTopShell({
               </div>
             </div>
           ) : null}
-          {activePanel === "views" ? (
+          {renderedPanel === "views" ? (
             <div className="topbar-reveal__grid">
               <div className="topbar-reveal__group">
                 <span className="topbar-reveal__label">View</span>
@@ -831,7 +905,7 @@ function ArchiveTopShell({
               </div>
             </div>
           ) : null}
-          {activePanel === "filters" ? (
+          {renderedPanel === "filters" ? (
             <ArchiveFilterControls
               filters={filters}
               loading={loading}
@@ -841,7 +915,7 @@ function ArchiveTopShell({
               onTypeChange={onTypeChange}
             />
           ) : null}
-          {activePanel === "import" ? (
+          {renderedPanel === "import" ? (
             <div className="topbar-reveal__grid">
               <div className="topbar-reveal__group topbar-reveal__group--wide">
                 <span className="topbar-reveal__label">Import</span>
@@ -858,7 +932,7 @@ function ArchiveTopShell({
               </div>
             </div>
           ) : null}
-          {activePanel === "information" ? (
+          {renderedPanel === "information" ? (
             <div className="topbar-reveal__grid">
               <div className="topbar-reveal__group">
                 <span className="topbar-reveal__label">Information</span>
@@ -870,7 +944,7 @@ function ArchiveTopShell({
             </div>
           ) : null}
         </div>
-      ) : null}
+      </div>
     </header>
   );
 }

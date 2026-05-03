@@ -213,7 +213,12 @@ select:focus-visible {
 
 .topbar-reveal {
   max-width: 920px;
-  animation: topbar-reveal 180ms ease;
+  overflow: hidden;
+  will-change: height;
+}
+
+.topbar-reveal__inner {
+  padding-bottom: 16px;
 }
 
 @keyframes topbar-reveal {
