@@ -20,6 +20,7 @@ import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRel
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
+import { SpotlightDock } from "./components/spotlight/SpotlightDock";
 
 type AppRoute =
   | { kind: "grid" }
@@ -77,7 +78,6 @@ export function App() {
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
   const [archivePanel, setArchivePanel] = useState<ArchiveShellPanel>("index");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
@@ -127,13 +127,6 @@ export function App() {
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable);
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setIsSettingsOpen(false);
-        setIsSearchOpen(true);
-        return;
-      }
-
       if (!isTypingTarget && event.key.toLowerCase() === "m") {
         event.preventDefault();
         setSiteTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
@@ -141,7 +134,6 @@ export function App() {
       }
 
       if (event.key === "Escape") {
-        setIsSearchOpen(false);
         setIsSettingsOpen(false);
       }
     };
@@ -418,7 +410,7 @@ export function App() {
       }
     } catch (error: unknown) {
       console.error(error);
-      setDeleteWriteError("Unable to delete piece.");
+      setDeleteWriteError("Unable to delete item.");
       throw error;
     } finally {
       setIsDeleting(false);
@@ -447,7 +439,7 @@ export function App() {
       setDetail(nextDetail);
     } catch (error: unknown) {
       console.error(error);
-      setRelationshipWriteError("Unable to connect piece.");
+      setRelationshipWriteError("Unable to connect item.");
       throw error;
     } finally {
       setIsRelationshipCreating(false);
@@ -560,13 +552,7 @@ export function App() {
     setItemCardFilters({});
   };
 
-  const openArchiveSearch = () => {
-    setIsSettingsOpen(false);
-    setIsSearchOpen(true);
-  };
-
   const openArchiveSettings = () => {
-    setIsSearchOpen(false);
     setIsSettingsOpen(true);
   };
 
@@ -635,7 +621,7 @@ export function App() {
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
         id: item.id,
-        label: item.title ?? `${item.type} piece`,
+        label: item.title ?? `${item.type} item`,
       }));
     const collectionTargetOptions = collectionOptions.map((collection) => ({
       id: collection.id,
@@ -708,7 +694,7 @@ export function App() {
           pendingCapture={isCapturing}
           readError={readError}
         />
-        <section className="archive-canvas" aria-label="archive pieces">
+        <section className="archive-canvas" aria-label="archive items">
           {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
           <MasonryGrid
             items={renderedItems}
@@ -721,24 +707,13 @@ export function App() {
                 onClearFilters={clearArchiveFilters}
               />
             }
-            ariaLabel="archive pieces"
+            ariaLabel="archive items"
           />
         </section>
         <ArchiveTouchBar
-          activeFilters={itemCardFilters}
-          onOpenSearch={openArchiveSearch}
           onOpenSettings={openArchiveSettings}
           theme={siteTheme}
         />
-        {isSearchOpen ? (
-          <ArchiveSearchOverlay
-            filters={itemCardFilters}
-            loading={isLoading}
-            onClose={() => setIsSearchOpen(false)}
-            onTextChange={updateTextFilter}
-            resultCount={items.length}
-          />
-        ) : null}
         {isSettingsOpen ? (
           <ArchiveSettingsOverlay
             onClose={() => setIsSettingsOpen(false)}
@@ -751,9 +726,12 @@ export function App() {
   }
 
   return (
-    <div className="app-route-shell" ref={routeRef}>
-      {routeContent}
-    </div>
+    <>
+      <div className="app-route-shell" ref={routeRef}>
+        {routeContent}
+      </div>
+      <SpotlightDock value={itemCardFilters.text ?? ""} onChange={updateTextFilter} />
+    </>
   );
 }
 
@@ -891,7 +869,7 @@ function ArchiveTopShell({
         <nav className="topbar-shell__nav" aria-label="archive controls">
           <ArchiveShellButton
             active={activePanel === "index"}
-            label="Index of Work"
+            label="Index"
             onClick={() => togglePanel("index")}
           />
           <ArchiveShellButton
@@ -938,7 +916,7 @@ function ArchiveTopShell({
               <div className="topbar-reveal__group">
                 <span className="topbar-reveal__label">Index</span>
                 <button className="topbar-option topbar-option--active" type="button" onClick={onClearFilters}>
-                  All pieces
+                  All items
                 </button>
                 <span className="topbar-option topbar-option--muted">Collections</span>
               </div>
@@ -1005,73 +983,17 @@ function ArchiveTopShell({
 }
 
 function ArchiveTouchBar({
-  activeFilters,
-  onOpenSearch,
   onOpenSettings,
   theme,
 }: {
-  activeFilters: ItemCardFilters;
-  onOpenSearch: () => void;
   onOpenSettings: () => void;
   theme: SiteTheme;
 }) {
-  const searchLabel = activeFilters.text?.trim() ? activeFilters.text.trim() : "Search archive";
-
   return (
     <div className="archive-touchbar" aria-label="archive quick controls">
-      <button className="archive-touchbar__search" type="button" onClick={onOpenSearch}>
-        <span>{searchLabel}</span>
-        <span>⌘K</span>
-      </button>
       <button className="archive-touchbar__settings" type="button" onClick={onOpenSettings}>
         {theme === "light" ? "light" : "dark"}
       </button>
-    </div>
-  );
-}
-
-function ArchiveSearchOverlay({
-  filters,
-  loading,
-  onClose,
-  onTextChange,
-  resultCount,
-}: {
-  filters: ItemCardFilters;
-  loading: boolean;
-  onClose: () => void;
-  onTextChange: (text: string) => void;
-  resultCount: number;
-}) {
-  return (
-    <div
-      className="archive-modal-layer"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section className="spotlight-search" aria-label="search archive">
-        <label className="spotlight-search__field">
-          <span>Search</span>
-          <input
-            autoComplete="off"
-            autoFocus
-            onChange={(event) => onTextChange(event.target.value)}
-            placeholder="type to narrow the archive"
-            type="search"
-            value={filters.text ?? ""}
-          />
-        </label>
-        <div className="spotlight-search__meta">
-          <span>{loading ? "loading" : `${formatResultCount(resultCount)} shown`}</span>
-          <button className="topbar-text-control" type="button" onClick={onClose}>
-            close
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
@@ -1155,7 +1077,7 @@ function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
     <div className="archive-state archive-state--loading" role="status" aria-live="polite">
       <span className="archive-state__kicker">loading</span>
       <p className="archive-state__copy">
-        {filterSummary ? `Loading archive pieces for ${filterSummary}.` : "Loading archive pieces."}
+        {filterSummary ? `Loading archive items for ${filterSummary}.` : "Loading archive items."}
       </p>
     </div>
   );
@@ -1199,7 +1121,7 @@ function ArchiveEmptyState({
   return (
     <div className="archive-state">
       <span className="archive-state__kicker">empty archive</span>
-      <h2 className="archive-state__title">Archive has no pieces yet.</h2>
+      <h2 className="archive-state__title">Archive has no items yet.</h2>
       <p className="archive-state__copy">This workspace has nothing available to inspect.</p>
     </div>
   );
@@ -1227,26 +1149,6 @@ function ArchiveFilterControls({
       onSubmit={(event) => event.preventDefault()}
     >
       <div className="archive-filters__controls">
-        <label
-          className={`archive-filter-field archive-filter-field--text${
-            filters.text?.trim() ? " archive-filter-field--active" : ""
-          }`}
-        >
-          <span className="archive-filter-field__label">
-            <span>search</span>
-            {filters.text?.trim() ? (
-              <span className="archive-filter-field__state">active</span>
-            ) : null}
-          </span>
-          <input
-            autoComplete="off"
-            disabled={loading}
-            onChange={(event) => onTextChange(event.target.value)}
-            placeholder="words in archive"
-            type="search"
-            value={filters.text ?? ""}
-          />
-        </label>
         <div className="archive-filters__filter-group" aria-labelledby="archive-filter-heading">
           <span className="archive-filters__section-title" id="archive-filter-heading">
             Filter
@@ -1514,7 +1416,7 @@ function formatArchiveContext(filters: ItemCardFilters) {
 }
 
 function formatResultCount(itemCount: number) {
-  return `${itemCount} ${itemCount === 1 ? "piece" : "pieces"}`;
+  return `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
 }
 
 function getDetailArchiveFlow(items: ItemCardProps[], currentItemId: string): DetailArchiveFlow | null {
@@ -1539,7 +1441,7 @@ function toArchiveNeighbor(item: ItemCardProps | undefined) {
 
   return {
     id: item.id,
-    label: item.title ?? `${item.type} piece`,
+    label: item.title ?? `${item.type} item`,
     meta: `${item.type} · ${item.status}`,
   };
 }

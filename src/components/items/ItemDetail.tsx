@@ -94,7 +94,7 @@ export function ItemDetailView({
     return (
       <section className="item-detail item-detail--loading" aria-busy="true">
         <DetailTopBar archiveContext={archiveContext} backLabel={backLabel} onBack={onBack} />
-        <div className="item-detail__loading">Loading archive piece.</div>
+        <div className="item-detail__loading">Loading archive item.</div>
       </section>
     );
   }
@@ -103,7 +103,7 @@ export function ItemDetailView({
     return (
       <section className="item-detail">
         <DetailTopBar archiveContext={archiveContext} backLabel={backLabel} onBack={onBack} />
-        <p className="proof-empty">{error ?? "Archive piece could not be loaded."}</p>
+        <p className="proof-empty">{error ?? "Archive item could not be loaded."}</p>
       </section>
     );
   }
@@ -119,7 +119,7 @@ export function ItemDetailView({
 
       <div className="item-detail__layout">
         <div className="item-detail__main">
-          <section className="item-detail__hero" aria-label="archive piece preview">
+          <section className="item-detail__hero" aria-label="archive item preview">
             {renderHero(item)}
           </section>
 
@@ -270,9 +270,9 @@ export function ItemDetailView({
           </DetailSectionGroup>
         </div>
 
-        <aside className="item-detail__metadata" aria-label="archive piece context">
-          <p className="proof-kicker">archive piece</p>
-          <h1 id="item-detail-title">{item.title ?? `${item.type} piece`}</h1>
+        <aside className="item-detail__metadata" aria-label="archive item context">
+          <p className="proof-kicker">archive item</p>
+          <h1 id="item-detail-title">{item.title ?? `${item.type} item`}</h1>
           <div className="item-detail__signal-row">
             <TypeIndicator type={item.type} />
             <span aria-hidden="true">·</span>
@@ -618,7 +618,7 @@ function RelationshipRow({
   onOpenRelatedItem?: (itemId: string) => void;
 }) {
   const directionLabel = relationship.direction === "outgoing" ? "to" : "from";
-  const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} piece`;
+  const targetLabel = relationship.otherItemTitle ?? `${relationship.otherItemType} item`;
   const targetMeta = [relationship.otherItemType, relationship.otherItemStatus].join(" · ");
 
   return (
@@ -836,12 +836,12 @@ function RelationshipCreateForm({
     }
 
     if (normalizedToId === currentItemId) {
-      setLocalError("Choose a different piece.");
+      setLocalError("Choose a different item.");
       return;
     }
 
     if (!onCreateRelationship) {
-      setLocalError("Connecting pieces requires live archive mode.");
+      setLocalError("Connecting items requires live archive mode.");
       return;
     }
 
@@ -860,7 +860,7 @@ function RelationshipCreateForm({
   };
 
   return (
-    <form className="relationship-create" aria-label="connect piece" onSubmit={submit}>
+    <form className="relationship-create" aria-label="connect item" onSubmit={submit}>
       <div className="relationship-create__fields">
         <label>
           <input
@@ -895,7 +895,7 @@ function RelationshipCreateForm({
         </label>
       </div>
       <button className="status-action" disabled={pending} type="submit">
-        {pending ? "Connecting" : "Connect piece"}
+        {pending ? "Connecting" : "Connect item"}
       </button>
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
     </form>

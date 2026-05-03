@@ -60,7 +60,7 @@ export function CollectionView({
         <p className="proof-kicker">collection</p>
         <h1 id="collection-title">{collection.name}</h1>
         <p className="collection-view__meta">
-          {formatCount(collection.pieceCount, "piece", "pieces")} · {collection.kindSummary} · last updated{" "}
+          {formatCount(collection.pieceCount, "item", "items")} · {collection.kindSummary} · last updated{" "}
           {formatDate(collection.lastUpdatedAt)}
         </p>
         {collection.description ? (
@@ -71,10 +71,10 @@ export function CollectionView({
       {collection.items.length === 0 ? (
         <div className="archive-state">
           <span className="archive-state__kicker">empty collection</span>
-          <h2 className="archive-state__title">No pieces in this collection yet.</h2>
+          <h2 className="archive-state__title">No items in this collection yet.</h2>
         </div>
       ) : (
-        <div className="collection-sequence" aria-label={`${collection.name} pieces`}>
+        <div className="collection-sequence" aria-label={`${collection.name} items`}>
           {buildSequence(collection.items).map((entry) =>
             entry.kind === "pair" ? (
               <div
@@ -275,7 +275,7 @@ function hasDimensions(
 
 function formatCaption(item: CollectionDetailItem) {
   const parts = [
-    item.title ?? `${item.type} piece`,
+    item.title ?? `${item.type} item`,
     getYear(item.createdAt),
     item.source.label ? `from ${item.source.label}` : null,
   ].filter((part): part is string => Boolean(part));
