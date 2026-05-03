@@ -21,6 +21,7 @@ import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
 import { SpotlightDock } from "./components/spotlight/SpotlightDock";
+import { PillNav, type PillNavPanel } from "./components/nav/PillNav";
 
 type AppRoute =
   | { kind: "grid" }
@@ -29,7 +30,6 @@ type AppRoute =
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
-type ArchiveShellPanel = "index" | "views" | "filters" | "import" | "information" | null;
 type SiteTheme = "light" | "dark";
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
@@ -77,7 +77,7 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
-  const [archivePanel, setArchivePanel] = useState<ArchiveShellPanel>("index");
+  const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>("index");
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
@@ -666,7 +666,7 @@ export function App() {
     routeContent = (
       <main className="app-shell app-shell--archive" aria-label="Vita archive">
         <h1 className="visually-hidden">Archive</h1>
-        <ArchiveTopShell
+        <PillNav
           activePanel={archivePanel}
           captureError={captureError}
           captureNotice={captureNotice}
@@ -679,10 +679,12 @@ export function App() {
           onPanelChange={setArchivePanel}
           onSourceChange={updateSourceFilter}
           onStatusChange={updateStatusFilter}
-          onTextChange={updateTextFilter}
           onTypeChange={updateTypeFilter}
           pendingCapture={isCapturing}
           readError={readError}
+          statusOptions={statusFilterOptions}
+          typeOptions={typeFilterOptions}
+          sourceOptions={sourceFilterOptions}
         />
         <section className="archive-canvas" aria-label="archive items">
           {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
@@ -726,261 +728,6 @@ function routeKey(r: AppRoute): string {
   return `item:${r.itemId}`;
 }
 
-function ArchiveTopShell({
-  activePanel,
-  captureError,
-  captureNotice,
-  filters,
-  isPocketBaseMode,
-  itemCount,
-  loading,
-  onCapture,
-  onClearFilters,
-  onPanelChange,
-  onSourceChange,
-  onStatusChange,
-  onTextChange,
-  onTypeChange,
-  pendingCapture,
-  readError,
-}: {
-  activePanel: ArchiveShellPanel;
-  captureError: string | null;
-  captureNotice: string | null;
-  filters: ItemCardFilters;
-  isPocketBaseMode: boolean;
-  itemCount: number;
-  loading: boolean;
-  onCapture: (body: string) => Promise<void> | void;
-  onClearFilters: () => void;
-  onPanelChange: (panel: ArchiveShellPanel) => void;
-  onSourceChange: (source: ArchiveSourceFilter) => void;
-  onStatusChange: (status: ArchiveStatusFilter) => void;
-  onTextChange: (text: string) => void;
-  onTypeChange: (type: ArchiveTypeFilter) => void;
-  pendingCapture: boolean;
-  readError: string | null;
-}) {
-  const hasFilters = hasActiveFilters(filters);
-  const resultLabel = readError
-    ? "load error"
-    : loading
-      ? "loading"
-      : `${formatResultCount(itemCount)} shown`;
-
-  const togglePanel = (panel: Exclude<ArchiveShellPanel, null>) => {
-    onPanelChange(activePanel === panel ? null : panel);
-  };
-
-  const revealRef = useRef<HTMLDivElement | null>(null);
-  const innerRef = useRef<HTMLDivElement | null>(null);
-  const previousPanelRef = useRef<ArchiveShellPanel>(null);
-  const [renderedPanel, setRenderedPanel] = useState<ArchiveShellPanel>(activePanel);
-
-  useEffect(() => {
-    const wrapper = revealRef.current;
-    const inner = innerRef.current;
-
-    if (!wrapper || !inner) {
-      previousPanelRef.current = activePanel;
-      return;
-    }
-
-    const previousPanel = previousPanelRef.current;
-    previousPanelRef.current = activePanel;
-
-    if (!previousPanel && activePanel) {
-      setRenderedPanel(activePanel);
-      requestAnimationFrame(() => {
-        gsap.fromTo(
-          wrapper,
-          { height: 0 },
-          {
-            height: "auto",
-            duration: 0.32,
-            ease: "power3.out",
-            onComplete: () => {
-              wrapper.style.height = "";
-            },
-          },
-        );
-        gsap.fromTo(
-          inner,
-          { y: 4, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.24, delay: 0.06, ease: "power2.out" },
-        );
-      });
-      return;
-    }
-
-    if (previousPanel && !activePanel) {
-      gsap.to(inner, { opacity: 0, duration: 0.16, ease: "power2.in" });
-      gsap.to(wrapper, {
-        height: 0,
-        duration: 0.24,
-        ease: "power3.in",
-        onComplete: () => {
-          setRenderedPanel(null);
-        },
-      });
-      return;
-    }
-
-    if (previousPanel && activePanel && previousPanel !== activePanel) {
-      setRenderedPanel(activePanel);
-      requestAnimationFrame(() => {
-        wrapper.style.height = "";
-        gsap.fromTo(
-          inner,
-          { opacity: 0 },
-          { opacity: 1, duration: 0.18, ease: "power2.out" },
-        );
-      });
-    }
-  }, [activePanel]);
-
-  return (
-    <header className="topbar-shell">
-      <div className="topbar-shell__bar">
-        <button className="topbar-shell__brand" type="button" onClick={onClearFilters} aria-label="live archive">
-          <span className="topbar-live-dot" aria-hidden="true" />
-        </button>
-        <nav className="topbar-shell__nav" aria-label="archive controls">
-          <ArchiveShellButton
-            active={activePanel === "index"}
-            label="Index"
-            onClick={() => togglePanel("index")}
-          />
-          <ArchiveShellButton
-            active={activePanel === "views"}
-            label="Views"
-            onClick={() => togglePanel("views")}
-          />
-          <ArchiveShellButton
-            active={activePanel === "filters"}
-            label="Filters"
-            onClick={() => togglePanel("filters")}
-          />
-          <ArchiveShellButton
-            active={activePanel === "import"}
-            label="Import"
-            onClick={() => togglePanel("import")}
-          />
-          <ArchiveShellButton
-            active={activePanel === "information"}
-            label="Information"
-            onClick={() => togglePanel("information")}
-          />
-        </nav>
-      </div>
-      <div className="topbar-shell__scope" aria-label="archive scope">
-        <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
-        <span>{resultLabel}</span>
-        {hasFilters ? (
-          <button className="topbar-text-control" disabled={loading} onClick={onClearFilters} type="button">
-            Clear filters
-          </button>
-        ) : null}
-      </div>
-      <div
-        className="topbar-reveal"
-        aria-live="polite"
-        aria-hidden={!activePanel}
-        ref={revealRef}
-        style={{ height: 0 }}
-      >
-        <div className="topbar-reveal__inner" ref={innerRef}>
-          {renderedPanel === "index" ? (
-            <div className="topbar-reveal__grid">
-              <div className="topbar-reveal__group">
-                <span className="topbar-reveal__label">Index</span>
-                <button className="topbar-option topbar-option--active" type="button" onClick={onClearFilters}>
-                  All items
-                </button>
-                <span className="topbar-option topbar-option--muted">Collections</span>
-              </div>
-              <div className="topbar-reveal__group">
-                <span className="topbar-reveal__label">Current set</span>
-                <ArchiveFilterChips filters={filters} emptyLabel="whole archive" />
-                <span className="topbar-reveal__meta">{resultLabel}</span>
-              </div>
-            </div>
-          ) : null}
-          {renderedPanel === "views" ? (
-            <div className="topbar-reveal__grid">
-              <div className="topbar-reveal__group">
-                <span className="topbar-reveal__label">View</span>
-                <span className="topbar-option topbar-option--active">Masonry</span>
-                <span className="topbar-option topbar-option--muted">Gallery</span>
-                <span className="topbar-option topbar-option--muted">List</span>
-                <span className="topbar-option topbar-option--muted">Graph</span>
-              </div>
-            </div>
-          ) : null}
-          {renderedPanel === "filters" ? (
-            <ArchiveFilterControls
-              filters={filters}
-              loading={loading}
-              onSourceChange={onSourceChange}
-              onStatusChange={onStatusChange}
-              onTextChange={onTextChange}
-              onTypeChange={onTypeChange}
-            />
-          ) : null}
-          {renderedPanel === "import" ? (
-            <div className="topbar-reveal__grid">
-              <div className="topbar-reveal__group topbar-reveal__group--wide">
-                <span className="topbar-reveal__label">Import</span>
-                {isPocketBaseMode ? (
-                  <CaptureNoteForm
-                    error={captureError}
-                    notice={captureNotice}
-                    onCapture={onCapture}
-                    pending={pendingCapture}
-                  />
-                ) : (
-                  <p className="topbar-reveal__meta">Import requires live archive mode.</p>
-                )}
-              </div>
-            </div>
-          ) : null}
-          {renderedPanel === "information" ? (
-            <div className="topbar-reveal__grid">
-              <div className="topbar-reveal__group">
-                <span className="topbar-reveal__label">Information</span>
-                <p className="topbar-reveal__copy">
-                  A working archive for capture, inspection, connection, reuse, and removal.
-                </p>
-                <p className="topbar-reveal__meta">⌘K search · M color mode · Esc close</p>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function ArchiveShellButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-expanded={active}
-      className={`topbar-shell__control${active ? " topbar-shell__control--active" : ""}`}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-}
 
 function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
   const filterSummary = formatFilterSummary(filters);
@@ -1036,190 +783,6 @@ function ArchiveEmptyState({
       <h2 className="archive-state__title">Archive has no items yet.</h2>
       <p className="archive-state__copy">This workspace has nothing available to inspect.</p>
     </div>
-  );
-}
-
-function ArchiveFilterControls({
-  filters,
-  loading,
-  onSourceChange,
-  onStatusChange,
-  onTextChange,
-  onTypeChange,
-}: {
-  filters: ItemCardFilters;
-  loading: boolean;
-  onSourceChange: (source: ArchiveSourceFilter) => void;
-  onStatusChange: (status: ArchiveStatusFilter) => void;
-  onTextChange: (text: string) => void;
-  onTypeChange: (type: ArchiveTypeFilter) => void;
-}) {
-  return (
-    <form
-      className="archive-filters"
-      aria-label="narrow archive"
-      onSubmit={(event) => event.preventDefault()}
-    >
-      <div className="archive-filters__controls">
-        <div className="archive-filters__filter-group" aria-labelledby="archive-filter-heading">
-          <span className="archive-filters__section-title" id="archive-filter-heading">
-            Filter
-          </span>
-          <div className="archive-filters__filter-controls">
-            <label
-              className={`archive-filter-field${
-                filters.status ? " archive-filter-field--active" : ""
-              }`}
-            >
-              <span className="archive-filter-field__label">
-                <span>work state</span>
-                {filters.status ? (
-                  <span className="archive-filter-field__state">active</span>
-                ) : null}
-              </span>
-              <select
-                disabled={loading}
-                onChange={(event) => onStatusChange(event.target.value as ArchiveStatusFilter)}
-                value={filters.status ?? "all"}
-              >
-                {statusFilterOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status === "all" ? "any state" : status}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className={`archive-filter-field${filters.type ? " archive-filter-field--active" : ""}`}
-            >
-              <span className="archive-filter-field__label">
-                <span>kind</span>
-                {filters.type ? (
-                  <span className="archive-filter-field__state">active</span>
-                ) : null}
-              </span>
-              <select
-                disabled={loading}
-                onChange={(event) => onTypeChange(event.target.value as ArchiveTypeFilter)}
-                value={filters.type ?? "all"}
-              >
-                {typeFilterOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {type === "all" ? "any kind" : type}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label
-              className={`archive-filter-field${
-                filters.source ? " archive-filter-field--active" : ""
-              }`}
-            >
-              <span className="archive-filter-field__label">
-                <span>from</span>
-                {filters.source ? (
-                  <span className="archive-filter-field__state">active</span>
-                ) : null}
-              </span>
-              <select
-                disabled={loading}
-                onChange={(event) => onSourceChange(event.target.value as ArchiveSourceFilter)}
-                value={filters.source ?? "all"}
-              >
-                {sourceFilterOptions.map((source) => (
-                  <option key={source} value={source}>
-                    {source === "all" ? "any origin" : source.replace("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-function ArchiveFilterChips({
-  filters,
-  emptyLabel,
-}: {
-  filters: ItemCardFilters;
-  emptyLabel: string;
-}) {
-  const filterItems = getFilterSummaryItems(filters);
-
-  if (filterItems.length === 0) {
-    return (
-      <div className="archive-filter-chips" aria-label="archive scope">
-        <span className="archive-filter-chip archive-filter-chip--empty">{emptyLabel}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="archive-filter-chips" aria-label="archive scope">
-      {filterItems.map((filter) => (
-        <span className="archive-filter-chip" key={filter.label}>
-          <span>{filter.label}</span>
-          {filter.value}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function CaptureNoteForm({
-  error,
-  notice,
-  onCapture,
-  pending,
-}: {
-  error: string | null;
-  notice: string | null;
-  onCapture: (body: string) => Promise<void> | void;
-  pending: boolean;
-}) {
-  const [body, setBody] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedBody = body.trim();
-
-    if (!normalizedBody) {
-      setLocalError("Text or URL is required.");
-      return;
-    }
-
-    setLocalError(null);
-
-    try {
-      await onCapture(normalizedBody);
-      setBody("");
-    } catch {
-      // The parent owns the persisted write error message.
-    }
-  };
-
-  return (
-    <form className="capture-note" aria-label="import item" onSubmit={submit}>
-      <textarea
-        aria-label="text or URL"
-        disabled={pending}
-        onChange={(event) => setBody(event.target.value)}
-        placeholder="paste URL or write text"
-        rows={3}
-        value={body}
-      />
-      <div className="capture-note__actions">
-        <button className="status-action" disabled={pending} type="submit">
-          {pending ? "Importing" : "Add to archive"}
-        </button>
-        {notice ? <span className="capture-note__notice">{notice}</span> : null}
-      </div>
-      {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
-    </form>
   );
 }
 
