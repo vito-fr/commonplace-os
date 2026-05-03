@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { gsap } from "./motion/MotionShell";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { gsap, ScrollTrigger } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid } from "./components/items";
@@ -13,12 +13,13 @@ import {
   type CollectionOption,
 } from "./data/pocketBaseItemCollection";
 import { createPocketBaseItemDeleteWriter } from "./data/pocketBaseItemDelete";
-import type { ItemDetail } from "./data/pocketBaseItemDetail";
+import type { ItemDetail, ItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
 import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRelationship";
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
+import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
 
 type AppRoute =
   | { kind: "grid" }
@@ -65,7 +66,9 @@ const itemCardReader: ItemCardReader =
 const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
 const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
 const itemDeleteWriter = createPocketBaseItemDeleteWriter({ baseUrl: pocketBaseUrl });
-const itemDetailReader = createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl });
+const itemDetailReader: ItemDetailReader = isPocketBaseMode
+  ? createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl })
+  : seedFixtureItemDetailReader;
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
@@ -216,24 +219,6 @@ export function App() {
       };
     }
 
-    if (!isPocketBaseMode) {
-      setDetail(null);
-      setCollectionOptions([]);
-      setDetailError("Item detail requires live archive mode.");
-      setIsDetailLoading(false);
-      setCollectionWriteError(null);
-      setIsCollectionAttaching(false);
-      setStatusWriteError(null);
-      setIsStatusUpdating(false);
-      setRelationshipWriteError(null);
-      setIsRelationshipCreating(false);
-      setDeleteWriteError(null);
-      setIsDeleting(false);
-      return () => {
-        isCurrent = false;
-      };
-    }
-
     setIsDetailLoading(true);
     setDetailError(null);
     setCollectionWriteError(null);
@@ -246,6 +231,13 @@ export function App() {
       .then(async (nextDetail) => {
         if (isCurrent) {
           setDetail(nextDetail);
+        }
+
+        if (!isPocketBaseMode) {
+          if (isCurrent) {
+            setCollectionOptions([]);
+          }
+          return;
         }
 
         try {
@@ -578,8 +570,49 @@ export function App() {
     setIsSettingsOpen(true);
   };
 
-  if (route.kind === "collection") {
-    return (
+  const routeRef = useRef<HTMLDivElement | null>(null);
+  const previousRouteKeyRef = useRef<string>(routeKey(route));
+  const [renderedRoute, setRenderedRoute] = useState<AppRoute>(route);
+
+  useEffect(() => {
+    const wrapper = routeRef.current;
+    const previousKey = previousRouteKeyRef.current;
+    const currentKey = routeKey(route);
+
+    if (previousKey === currentKey) {
+      setRenderedRoute(route);
+      return;
+    }
+
+    previousRouteKeyRef.current = currentKey;
+
+    if (!wrapper) {
+      setRenderedRoute(route);
+      return;
+    }
+
+    gsap.to(wrapper, {
+      opacity: 0,
+      duration: 0.18,
+      ease: "power2.in",
+      onComplete: () => {
+        setRenderedRoute(route);
+        requestAnimationFrame(() => {
+          gsap.fromTo(
+            wrapper,
+            { opacity: 0 },
+            { opacity: 1, duration: 0.24, ease: "power2.out" },
+          );
+          ScrollTrigger.refresh();
+        });
+      },
+    });
+  }, [route]);
+
+  let routeContent: ReactNode = null;
+
+  if (renderedRoute.kind === "collection") {
+    routeContent = (
       <main className="app-shell" aria-label="Vita collection">
         <CollectionView
           collection={collectionDetail}
@@ -590,12 +623,14 @@ export function App() {
         />
       </main>
     );
-  }
-
-  if (route.kind === "item") {
-    const currentItemId = detail?.id ?? route.itemId;
-    const archiveContextLabel = route.returnCollectionId ? "collection view" : formatArchiveContext(itemCardFilters);
-    const archiveFlow = route.returnCollectionId ? null : getDetailArchiveFlow(items, currentItemId);
+  } else if (renderedRoute.kind === "item") {
+    const currentItemId = detail?.id ?? renderedRoute.itemId;
+    const archiveContextLabel = renderedRoute.returnCollectionId
+      ? "collection view"
+      : formatArchiveContext(itemCardFilters);
+    const archiveFlow = renderedRoute.returnCollectionId
+      ? null
+      : getDetailArchiveFlow(items, currentItemId);
     const relationshipTargetOptions = items
       .filter((item) => item.id !== currentItemId)
       .map((item) => ({
@@ -608,7 +643,7 @@ export function App() {
       alreadyAttached: collection.alreadyAttached,
     }));
 
-    return (
+    routeContent = (
       <main className="app-shell" aria-label="Vita archive">
         <ItemDetailView
           item={detail}
@@ -616,7 +651,7 @@ export function App() {
           error={detailError}
           archiveContext={archiveContextLabel}
           archiveFlow={archiveFlow}
-          backLabel={route.returnCollectionId ? "Back to collection" : "Back to archive"}
+          backLabel={renderedRoute.returnCollectionId ? "Back to collection" : "Back to archive"}
           onBack={closeItemDetail}
           onOpenCollection={openCollection}
           onOpenArchiveItem={openItemDetail}
@@ -638,80 +673,100 @@ export function App() {
         />
       </main>
     );
-  }
-
-  const renderedItems = items.map((item) => ({
-    ...item,
-    activeFilters: itemCardFilters,
-    ...(isPocketBaseMode
-      ? {
-          detailHref: buildItemDetailUrl(item.id, itemCardFilters),
-          onNavigate: openItemDetail,
-        }
-      : {}),
-  }));
-
-  return (
-    <main className="app-shell app-shell--archive" aria-label="Vita archive">
-      <h1 className="visually-hidden">Archive</h1>
-      <ArchiveTopShell
-        activePanel={archivePanel}
-        captureError={captureError}
-        captureNotice={captureNotice}
-        filters={itemCardFilters}
-        isPocketBaseMode={isPocketBaseMode}
-        itemCount={items.length}
-        loading={isLoading}
-        onCapture={captureArchiveInput}
-        onClearFilters={clearArchiveFilters}
-        onPanelChange={setArchivePanel}
-        onSourceChange={updateSourceFilter}
-        onStatusChange={updateStatusFilter}
-        onTextChange={updateTextFilter}
-        onTypeChange={updateTypeFilter}
-        pendingCapture={isCapturing}
-        readError={readError}
-      />
-      <section className="archive-canvas" aria-label="archive pieces">
-        {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
-        <MasonryGrid
-          items={renderedItems}
-          density="comfortable"
-          loading={isLoading}
-          emptyState={
-            <ArchiveEmptyState
-              filters={itemCardFilters}
-              readError={readError}
-              onClearFilters={clearArchiveFilters}
-            />
+  } else {
+    const renderedItems = items.map((item) => ({
+      ...item,
+      activeFilters: itemCardFilters,
+      ...(isPocketBaseMode
+        ? {
+            detailHref: buildItemDetailUrl(item.id, itemCardFilters),
+            onNavigate: openItemDetail,
           }
-          ariaLabel="archive pieces"
-        />
-      </section>
-      <ArchiveTouchBar
-        activeFilters={itemCardFilters}
-        onOpenSearch={openArchiveSearch}
-        onOpenSettings={openArchiveSettings}
-        theme={siteTheme}
-      />
-      {isSearchOpen ? (
-        <ArchiveSearchOverlay
+        : {
+            onNavigate: openItemDetail,
+          }),
+    }));
+
+    routeContent = (
+      <main className="app-shell app-shell--archive" aria-label="Vita archive">
+        <h1 className="visually-hidden">Archive</h1>
+        <ArchiveTopShell
+          activePanel={archivePanel}
+          captureError={captureError}
+          captureNotice={captureNotice}
           filters={itemCardFilters}
+          isPocketBaseMode={isPocketBaseMode}
+          itemCount={items.length}
           loading={isLoading}
-          onClose={() => setIsSearchOpen(false)}
+          onCapture={captureArchiveInput}
+          onClearFilters={clearArchiveFilters}
+          onPanelChange={setArchivePanel}
+          onSourceChange={updateSourceFilter}
+          onStatusChange={updateStatusFilter}
           onTextChange={updateTextFilter}
-          resultCount={items.length}
+          onTypeChange={updateTypeFilter}
+          pendingCapture={isCapturing}
+          readError={readError}
         />
-      ) : null}
-      {isSettingsOpen ? (
-        <ArchiveSettingsOverlay
-          onClose={() => setIsSettingsOpen(false)}
-          onThemeChange={setSiteTheme}
+        <section className="archive-canvas" aria-label="archive pieces">
+          {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
+          <MasonryGrid
+            items={renderedItems}
+            density="comfortable"
+            loading={isLoading}
+            emptyState={
+              <ArchiveEmptyState
+                filters={itemCardFilters}
+                readError={readError}
+                onClearFilters={clearArchiveFilters}
+              />
+            }
+            ariaLabel="archive pieces"
+          />
+        </section>
+        <ArchiveTouchBar
+          activeFilters={itemCardFilters}
+          onOpenSearch={openArchiveSearch}
+          onOpenSettings={openArchiveSettings}
           theme={siteTheme}
         />
-      ) : null}
-    </main>
+        {isSearchOpen ? (
+          <ArchiveSearchOverlay
+            filters={itemCardFilters}
+            loading={isLoading}
+            onClose={() => setIsSearchOpen(false)}
+            onTextChange={updateTextFilter}
+            resultCount={items.length}
+          />
+        ) : null}
+        {isSettingsOpen ? (
+          <ArchiveSettingsOverlay
+            onClose={() => setIsSettingsOpen(false)}
+            onThemeChange={setSiteTheme}
+            theme={siteTheme}
+          />
+        ) : null}
+      </main>
+    );
+  }
+
+  return (
+    <div className="app-route-shell" ref={routeRef}>
+      {routeContent}
+    </div>
   );
+}
+
+function routeKey(r: AppRoute): string {
+  if (r.kind === "grid") {
+    return "grid";
+  }
+
+  if (r.kind === "collection") {
+    return `collection:${r.collectionId}`;
+  }
+
+  return `item:${r.itemId}`;
 }
 
 function ArchiveTopShell({
