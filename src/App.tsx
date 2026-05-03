@@ -78,7 +78,6 @@ export function App() {
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
   const [archivePanel, setArchivePanel] = useState<ArchiveShellPanel>("index");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
@@ -130,11 +129,6 @@ export function App() {
       if (!isTypingTarget && event.key.toLowerCase() === "m") {
         event.preventDefault();
         setSiteTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
-        return;
-      }
-
-      if (event.key === "Escape") {
-        setIsSettingsOpen(false);
       }
     };
 
@@ -552,10 +546,6 @@ export function App() {
     setItemCardFilters({});
   };
 
-  const openArchiveSettings = () => {
-    setIsSettingsOpen(true);
-  };
-
   const routeRef = useRef<HTMLDivElement | null>(null);
   const previousRouteKeyRef = useRef<string>(routeKey(route));
   const [renderedRoute, setRenderedRoute] = useState<AppRoute>(route);
@@ -710,17 +700,6 @@ export function App() {
             ariaLabel="archive items"
           />
         </section>
-        <ArchiveTouchBar
-          onOpenSettings={openArchiveSettings}
-          theme={siteTheme}
-        />
-        {isSettingsOpen ? (
-          <ArchiveSettingsOverlay
-            onClose={() => setIsSettingsOpen(false)}
-            onThemeChange={setSiteTheme}
-            theme={siteTheme}
-          />
-        ) : null}
       </main>
     );
   }
@@ -979,73 +958,6 @@ function ArchiveTopShell({
         </div>
       </div>
     </header>
-  );
-}
-
-function ArchiveTouchBar({
-  onOpenSettings,
-  theme,
-}: {
-  onOpenSettings: () => void;
-  theme: SiteTheme;
-}) {
-  return (
-    <div className="archive-touchbar" aria-label="archive quick controls">
-      <button className="archive-touchbar__settings" type="button" onClick={onOpenSettings}>
-        {theme === "light" ? "light" : "dark"}
-      </button>
-    </div>
-  );
-}
-
-function ArchiveSettingsOverlay({
-  onClose,
-  onThemeChange,
-  theme,
-}: {
-  onClose: () => void;
-  onThemeChange: (theme: SiteTheme) => void;
-  theme: SiteTheme;
-}) {
-  return (
-    <div
-      className="archive-modal-layer"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section className="archive-settings" aria-label="site settings">
-        <div className="archive-settings__header">
-          <span>Settings</span>
-          <button className="topbar-text-control" type="button" onClick={onClose}>
-            close
-          </button>
-        </div>
-        <div className="archive-settings__row">
-          <span>Color mode</span>
-          <div className="archive-settings__options">
-            <button
-              className={`topbar-option${theme === "light" ? " topbar-option--active" : ""}`}
-              type="button"
-              onClick={() => onThemeChange("light")}
-            >
-              light
-            </button>
-            <button
-              className={`topbar-option${theme === "dark" ? " topbar-option--active" : ""}`}
-              type="button"
-              onClick={() => onThemeChange("dark")}
-            >
-              dark
-            </button>
-          </div>
-        </div>
-        <p className="topbar-reveal__meta">Press M from the archive to invert the interface.</p>
-      </section>
-    </div>
   );
 }
 

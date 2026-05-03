@@ -20,10 +20,7 @@ export function SpotlightDock({ value, onChange }: SpotlightDockProps) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        (event.key === "k" || event.key === "K" || event.code === "Space")
-      ) {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K")) {
         event.preventDefault();
         setIsOpen(true);
         return;
@@ -40,6 +37,28 @@ export function SpotlightDock({ value, onChange }: SpotlightDockProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      const dock = dockRef.current;
+      if (!dock) {
+        return;
+      }
+
+      if (dock.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [isOpen]);
 
   useEffect(() => {
     const dock = dockRef.current;
@@ -85,9 +104,7 @@ export function SpotlightDock({ value, onChange }: SpotlightDockProps) {
     if (document.activeElement === inputRef.current) {
       return;
     }
-    if (!value.trim()) {
-      setIsOpen(false);
-    }
+    setIsOpen(false);
   };
 
   return createPortal(
@@ -108,14 +125,9 @@ export function SpotlightDock({ value, onChange }: SpotlightDockProps) {
           placeholder="search archive"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          onBlur={() => {
-            if (!value.trim()) {
-              setIsOpen(false);
-            }
-          }}
           aria-label="search archive"
         />
-        <span className="spotlight-dock__hint" aria-hidden="true">⌘K</span>
+        <span className="spotlight-dock__arrow" aria-hidden="true">→</span>
       </div>
     </div>,
     document.body,
