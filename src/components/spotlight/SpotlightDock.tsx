@@ -7,8 +7,8 @@ export type SpotlightDockProps = {
   onChange: (next: string) => void;
 };
 
-const COLLAPSED_WIDTH = 80;
-const COLLAPSED_HEIGHT = 8;
+const COLLAPSED_WIDTH = 46;
+const COLLAPSED_HEIGHT = 7;
 const EXPANDED_WIDTH = 480;
 const EXPANDED_HEIGHT = 48;
 

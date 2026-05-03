@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { gsap } from "../../motion/MotionShell";
+import { type CSSProperties, type FormEvent, type ReactNode, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ItemStatus, ItemType } from "../atoms";
 import type { ItemCardFilters, ItemSourceFilter } from "../../data/itemCardReader";
 
@@ -8,6 +8,8 @@ export type PillNavPanel = "index" | "views" | "filters" | "import" | "informati
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
+type FilterFamily = "state" | "kind" | "origin";
+type NavCellStyle = CSSProperties & { "--cell-index": number };
 
 export type PillNavProps = {
   activePanel: PillNavPanel | null;
@@ -30,281 +32,182 @@ export type PillNavProps = {
   sourceOptions: ArchiveSourceFilter[];
 };
 
-const PILL_INACTIVE_WIDTH = 160;
-const PILL_ACTIVE_WIDTH = 460;
-
-const pills: Array<{ key: PillNavPanel; label: string }> = [
-  { key: "index", label: "Index" },
-  { key: "views", label: "Views" },
-  { key: "filters", label: "Filters" },
-  { key: "import", label: "Import" },
-  { key: "information", label: "Info" },
-];
-
 export function PillNav(props: PillNavProps) {
-  const { activePanel, onPanelChange } = props;
+  const {
+    activePanel,
+    captureError,
+    captureNotice,
+    filters,
+    isPocketBaseMode,
+    itemCount,
+    loading,
+    onCapture,
+    onClearFilters,
+    onPanelChange,
+    onSourceChange,
+    onStatusChange,
+    onTypeChange,
+    pendingCapture,
+    readError,
+    sourceOptions,
+    statusOptions,
+    typeOptions,
+  } = props;
+  const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
 
-  const labelRefs = useRef<Partial<Record<PillNavPanel, HTMLDivElement | null>>>({});
-  const blobRefs = useRef<Partial<Record<PillNavPanel, HTMLDivElement | null>>>({});
-  const contentRefs = useRef<Partial<Record<PillNavPanel, HTMLDivElement | null>>>({});
-  const previousPanelRef = useRef<PillNavPanel | null>(activePanel);
-  const [renderedPanel, setRenderedPanel] = useState<PillNavPanel | null>(activePanel);
-
-  useEffect(() => {
-    const previous = previousPanelRef.current;
-    previousPanelRef.current = activePanel;
-
-    if (previous === activePanel) {
-      return;
-    }
-
-    if (activePanel) {
-      setRenderedPanel(activePanel);
-      const label = labelRefs.current[activePanel];
-      const blob = blobRefs.current[activePanel];
-      if (label) {
-        gsap.to(label, { width: PILL_ACTIVE_WIDTH, duration: 0.34, ease: "power3.out" });
-      }
-      if (blob) {
-        gsap.to(blob, { width: PILL_ACTIVE_WIDTH, duration: 0.34, ease: "power3.out" });
-      }
-      requestAnimationFrame(() => {
-        const content = contentRefs.current[activePanel];
-        if (content) {
-          gsap.fromTo(
-            content,
-            { opacity: 0, x: -6 },
-            { opacity: 1, x: 0, duration: 0.26, delay: 0.08, ease: "power2.out" },
-          );
-        }
-      });
-    }
-
-    if (previous && previous !== activePanel) {
-      const label = labelRefs.current[previous];
-      const blob = blobRefs.current[previous];
-      const content = contentRefs.current[previous];
-      if (content) {
-        gsap.to(content, { opacity: 0, duration: 0.14, ease: "power2.in" });
-      }
-      if (label) {
-        gsap.to(label, { width: PILL_INACTIVE_WIDTH, duration: 0.26, ease: "power3.in" });
-      }
-      if (blob) {
-        gsap.to(blob, { width: PILL_INACTIVE_WIDTH, duration: 0.26, ease: "power3.in" });
-      }
-    }
-
-    if (!activePanel && previous) {
-      const timeout = window.setTimeout(() => setRenderedPanel(null), 320);
-      return () => window.clearTimeout(timeout);
-    }
-  }, [activePanel]);
-
-  const togglePanel = (key: PillNavPanel) => {
-    onPanelChange(activePanel === key ? null : key);
+  const togglePanel = (panel: PillNavPanel) => {
+    onPanelChange(activePanel === panel ? null : panel);
   };
 
-  return (
-    <aside className="pill-nav" aria-label="archive controls">
-      <svg className="pill-nav__svg" aria-hidden="true" focusable="false">
-        <defs>
-          <filter id="pill-goo">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
-            <feColorMatrix
-              in="blur"
-              mode="matrix"
-              values="1 0 0 0 0
-                      0 1 0 0 0
-                      0 0 1 0 0
-                      0 0 0 19 -9"
-              result="goo"
-            />
-            <feBlend in="SourceGraphic" in2="goo" />
-          </filter>
-        </defs>
-      </svg>
+  const resultLabel = readError
+    ? "Load error"
+    : loading
+      ? "Loading"
+      : `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
+  const subnavOptionCount =
+    activeFilterFamily === "state"
+      ? statusOptions.length
+      : activeFilterFamily === "kind"
+        ? typeOptions.length
+        : sourceOptions.length;
 
-      <div className="pill-nav__layer pill-nav__layer--blobs" aria-hidden="true">
-        {pills.map((p) => (
-          <div
-            key={p.key}
-            ref={(el) => {
-              blobRefs.current[p.key] = el;
-            }}
-            className="pill-blob"
-            style={{ width: activePanel === p.key ? PILL_ACTIVE_WIDTH : PILL_INACTIVE_WIDTH }}
-          />
-        ))}
-      </div>
+  const nav = (
+    <header className="pill-nav" aria-label="archive controls">
+      <div className="pill-nav__group" aria-label="primary archive controls">
+        <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
+          <span className="live-logo-dot" aria-hidden="true" />
+        </button>
 
-      <div className="pill-nav__layer pill-nav__layer--labels">
-        {pills.map((p) => {
-          const isActive = activePanel === p.key;
-          return (
-            <div
-              key={p.key}
-              ref={(el) => {
-                labelRefs.current[p.key] = el;
-              }}
-              className="pill-label"
-              data-active={isActive ? "true" : "false"}
-              style={{ width: isActive ? PILL_ACTIVE_WIDTH : PILL_INACTIVE_WIDTH }}
-            >
-              <button
-                className="pill-label__button"
-                type="button"
-                onClick={() => togglePanel(p.key)}
-                aria-expanded={isActive}
-              >
-                <span>{p.label}</span>
-                <span className="pill-label__chevron" aria-hidden="true">
-                  {isActive ? "−" : "+"}
-                </span>
-              </button>
-              <div
-                ref={(el) => {
-                  contentRefs.current[p.key] = el;
-                }}
-                className="pill-label__content"
-                style={{ opacity: isActive ? 1 : 0 }}
-              >
-                {renderedPanel === p.key ? <PanelContent panel={p.key} {...props} /> : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </aside>
-  );
-}
-
-function PanelContent({
-  panel,
-  filters,
-  loading,
-  onSourceChange,
-  onStatusChange,
-  onTypeChange,
-  statusOptions,
-  typeOptions,
-  sourceOptions,
-  isPocketBaseMode,
-  captureError,
-  captureNotice,
-  onCapture,
-  pendingCapture,
-  onClearFilters,
-  itemCount,
-  readError,
-}: { panel: PillNavPanel } & PillNavProps) {
-  if (panel === "index") {
-    const resultLabel = readError
-      ? "load error"
-      : loading
-        ? "loading"
-        : `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
-    return (
-      <PanelLayout>
-        <PanelOption active onClick={onClearFilters}>
+        <PrimaryCell label="Index" active={activePanel === "index"} onClick={() => togglePanel("index")} />
+        <ExpansionCell index={0} visible={activePanel === "index"} onClick={onClearFilters}>
           All items
-        </PanelOption>
-        <PanelOption muted>Collections</PanelOption>
-        <PanelMeta>{resultLabel}</PanelMeta>
-      </PanelLayout>
-    );
-  }
+        </ExpansionCell>
+        <ExpansionCell index={1} visible={activePanel === "index"}>{resultLabel}</ExpansionCell>
 
-  if (panel === "views") {
-    return (
-      <PanelLayout>
-        <PanelOption active>Masonry</PanelOption>
-        <PanelOption muted>Gallery</PanelOption>
-        <PanelOption muted>List</PanelOption>
-        <PanelOption muted>Graph</PanelOption>
-      </PanelLayout>
-    );
-  }
+        <PrimaryCell label="Views" active={activePanel === "views"} onClick={() => togglePanel("views")} />
+        <ExpansionCell index={0} visible={activePanel === "views"} active>Masonry</ExpansionCell>
+        <ExpansionCell index={1} visible={activePanel === "views"} disabled>Gallery</ExpansionCell>
+        <ExpansionCell index={2} visible={activePanel === "views"} disabled>List</ExpansionCell>
+        <ExpansionCell index={3} visible={activePanel === "views"} disabled>Graph</ExpansionCell>
 
-  if (panel === "filters") {
-    return (
-      <PanelLayout>
-        <FilterRow
-          label="state"
-          value={filters.status ?? "all"}
-          onChange={(value) => onStatusChange(value as ArchiveStatusFilter)}
-          options={statusOptions}
-          format={(value) => (value === "all" ? "any state" : value)}
-          loading={loading}
-        />
-        <FilterRow
-          label="kind"
-          value={filters.type ?? "all"}
-          onChange={(value) => onTypeChange(value as ArchiveTypeFilter)}
-          options={typeOptions}
-          format={(value) => (value === "all" ? "any kind" : value)}
-          loading={loading}
-        />
-        <FilterRow
-          label="from"
-          value={filters.source ?? "all"}
-          onChange={(value) => onSourceChange(value as ArchiveSourceFilter)}
-          options={sourceOptions}
-          format={(value) => (value === "all" ? "any origin" : value.replace("_", " "))}
-          loading={loading}
-        />
-      </PanelLayout>
-    );
-  }
+        <PrimaryCell label="Filters" active={activePanel === "filters"} onClick={() => togglePanel("filters")} />
+        <ExpansionCell
+          index={0}
+          visible={activePanel === "filters"}
+          active={activeFilterFamily === "state"}
+          onClick={() => setActiveFilterFamily("state")}
+        >
+          State
+        </ExpansionCell>
+        <ExpansionCell
+          index={1}
+          visible={activePanel === "filters"}
+          active={activeFilterFamily === "kind"}
+          onClick={() => setActiveFilterFamily("kind")}
+        >
+          Kind
+        </ExpansionCell>
+        <ExpansionCell
+          index={2}
+          visible={activePanel === "filters"}
+          active={activeFilterFamily === "origin"}
+          onClick={() => setActiveFilterFamily("origin")}
+        >
+          Origin
+        </ExpansionCell>
 
-  if (panel === "import") {
-    return (
-      <PanelLayout>
-        {isPocketBaseMode ? (
-          <CaptureForm
-            error={captureError}
-            notice={captureNotice}
-            pending={pendingCapture}
-            onCapture={onCapture}
-          />
-        ) : (
-          <PanelMeta>Import requires live archive mode.</PanelMeta>
-        )}
-      </PanelLayout>
-    );
-  }
+        <PrimaryCell label="Import" active={activePanel === "import"} onClick={() => togglePanel("import")} />
+        <ExpansionCell index={0} visible={activePanel === "import"} wide>
+          {isPocketBaseMode ? (
+            <CaptureForm
+              error={captureError}
+              notice={captureNotice}
+              pending={pendingCapture}
+              onCapture={onCapture}
+            />
+          ) : (
+            "Live mode required"
+          )}
+        </ExpansionCell>
 
-  return (
-    <PanelLayout>
-      <p className="pill-panel__copy">
-        A working archive for capture, inspection, connection, reuse, and removal.
-      </p>
-      <PanelMeta>⌘K search · M color mode · Esc close</PanelMeta>
-    </PanelLayout>
+        <PrimaryCell label="Info" active={activePanel === "information"} onClick={() => togglePanel("information")} />
+        <ExpansionCell index={0} visible={activePanel === "information"} wide>
+          {resultLabel} · Command K · M
+        </ExpansionCell>
+      </div>
+
+      <FilterSubnav
+        activeFilterFamily={activeFilterFamily}
+        filters={filters}
+        loading={loading}
+        onClearFilters={onClearFilters}
+        onSourceChange={onSourceChange}
+        onStatusChange={onStatusChange}
+        onTypeChange={onTypeChange}
+        sourceOptions={sourceOptions}
+        statusOptions={statusOptions}
+        visibleOptionCount={subnavOptionCount}
+        typeOptions={typeOptions}
+        visible={activePanel === "filters"}
+      />
+    </header>
   );
+
+  if (typeof document === "undefined") {
+    return nav;
+  }
+
+  return createPortal(nav, document.body);
 }
 
-function PanelLayout({ children }: { children: ReactNode }) {
-  return <div className="pill-panel">{children}</div>;
-}
-
-function PanelOption({
-  active = false,
-  muted = false,
-  children,
+function PrimaryCell({
+  active,
+  label,
   onClick,
 }: {
-  active?: boolean;
-  muted?: boolean;
-  children: ReactNode;
-  onClick?: () => void;
+  active: boolean;
+  label: string;
+  onClick: () => void;
 }) {
+  return (
+    <button className="nav-cell" data-active={active ? "true" : "false"} type="button" onClick={onClick} aria-expanded={active}>
+      {label}
+    </button>
+  );
+}
+
+function ExpansionCell({
+  active = false,
+  children,
+  disabled = false,
+  index,
+  onClick,
+  visible,
+  wide = false,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  index: number;
+  onClick?: () => void;
+  visible: boolean;
+  wide?: boolean;
+}) {
+  const style = getCellStyle(index);
+
   if (onClick) {
     return (
       <button
-        className={`pill-panel__option${active ? " pill-panel__option--active" : ""}${muted ? " pill-panel__option--muted" : ""}`}
+        className="nav-cell nav-cell--expansion"
+        data-active={active ? "true" : "false"}
+        data-disabled={disabled ? "true" : "false"}
+        data-visible={visible ? "true" : "false"}
+        data-wide={wide ? "true" : "false"}
+        disabled={!visible || disabled}
         type="button"
         onClick={onClick}
+        style={style}
+        aria-hidden={!visible}
       >
         {children}
       </button>
@@ -313,48 +216,145 @@ function PanelOption({
 
   return (
     <span
-      className={`pill-panel__option${active ? " pill-panel__option--active" : ""}${muted ? " pill-panel__option--muted" : ""}`}
+      className="nav-cell nav-cell--expansion"
+      data-active={active ? "true" : "false"}
+      data-disabled={disabled ? "true" : "false"}
+      data-visible={visible ? "true" : "false"}
+      data-wide={wide ? "true" : "false"}
+      style={style}
+      aria-hidden={!visible}
     >
       {children}
     </span>
   );
 }
 
-function PanelMeta({ children }: { children: ReactNode }) {
-  return <span className="pill-panel__meta">{children}</span>;
-}
-
-function FilterRow<T extends string>({
-  label,
-  value,
-  onChange,
-  options,
-  format,
+function FilterSubnav({
+  activeFilterFamily,
+  filters,
   loading,
+  onClearFilters,
+  onSourceChange,
+  onStatusChange,
+  onTypeChange,
+  statusOptions,
+  typeOptions,
+  sourceOptions,
+  visible,
+  visibleOptionCount,
 }: {
-  label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: T[];
-  format: (option: T) => string;
+  activeFilterFamily: FilterFamily;
+  filters: ItemCardFilters;
   loading: boolean;
+  onClearFilters: () => void;
+  onSourceChange: (source: ArchiveSourceFilter) => void;
+  onStatusChange: (status: ArchiveStatusFilter) => void;
+  onTypeChange: (type: ArchiveTypeFilter) => void;
+  statusOptions: ArchiveStatusFilter[];
+  typeOptions: ArchiveTypeFilter[];
+  sourceOptions: ArchiveSourceFilter[];
+  visible: boolean;
+  visibleOptionCount: number;
 }) {
   return (
-    <label className="pill-panel__filter">
-      <span>{label}</span>
-      <select
-        disabled={loading}
-        value={value}
-        onChange={(event) => onChange(event.target.value as T)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {format(option)}
-          </option>
+    <div className="pill-nav__subnav" data-visible={visible ? "true" : "false"} aria-label="filter choices" aria-hidden={!visible}>
+      <div className="pill-subnav__group">
+        <SubnavCell index={0} visible={visible} active>
+          {formatFilterFamily(activeFilterFamily)}
+        </SubnavCell>
+        {statusOptions.map((option, optionIndex) => (
+          <SubnavCell
+            key={`state:${option}`}
+            index={optionIndex + 1}
+            visible={visible && activeFilterFamily === "state"}
+            active={(filters.status ?? "all") === option}
+            disabled={loading}
+            onClick={() => onStatusChange(option)}
+          >
+            {formatStateOption(option)}
+          </SubnavCell>
         ))}
-      </select>
-    </label>
+        {typeOptions.map((option, optionIndex) => (
+          <SubnavCell
+            key={`kind:${option}`}
+            index={optionIndex + 1}
+            visible={visible && activeFilterFamily === "kind"}
+            active={(filters.type ?? "all") === option}
+            disabled={loading}
+            onClick={() => onTypeChange(option)}
+          >
+            {formatKindOption(option)}
+          </SubnavCell>
+        ))}
+        {sourceOptions.map((option, optionIndex) => (
+          <SubnavCell
+            key={`origin:${option}`}
+            index={optionIndex + 1}
+            visible={visible && activeFilterFamily === "origin"}
+            active={(filters.source ?? "all") === option}
+            disabled={loading}
+            onClick={() => onSourceChange(option)}
+          >
+            {formatOriginOption(option)}
+          </SubnavCell>
+        ))}
+        <SubnavCell index={visibleOptionCount + 1} visible={visible && hasActiveFilters(filters)} active onClick={onClearFilters}>
+          Clear
+        </SubnavCell>
+      </div>
+    </div>
   );
+}
+
+function SubnavCell({
+  active = false,
+  children,
+  disabled = false,
+  index,
+  onClick,
+  visible,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  index: number;
+  onClick?: () => void;
+  visible: boolean;
+}) {
+  const style = getCellStyle(index);
+
+  if (onClick) {
+    return (
+      <button
+        className="subnav-cell"
+        data-active={active ? "true" : "false"}
+        data-visible={visible ? "true" : "false"}
+        disabled={!visible || disabled}
+        type="button"
+        onClick={onClick}
+        style={style}
+        aria-hidden={!visible}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <span
+      className="subnav-cell"
+      data-active={active ? "true" : "false"}
+      data-visible={visible ? "true" : "false"}
+      style={style}
+      aria-hidden={!visible}
+    >
+      {children}
+    </span>
+  );
+}
+
+function getCellStyle(index: number): NavCellStyle {
+  return { "--cell-index": index };
 }
 
 function CaptureForm({
@@ -368,45 +368,73 @@ function CaptureForm({
   pending: boolean;
   onCapture: (body: string) => Promise<void> | void;
 }) {
-  const [body, setBody] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = body.trim();
+    const formData = new FormData(event.currentTarget);
+    const input = String(formData.get("archive-import") ?? "").trim();
 
-    if (!trimmed) {
-      setLocalError("Text or URL is required.");
+    if (!input) {
       return;
     }
 
-    setLocalError(null);
-
     try {
-      await onCapture(trimmed);
-      setBody("");
+      await onCapture(input);
+      event.currentTarget.reset();
     } catch {
       // Parent owns the persisted write error message.
     }
   };
 
   return (
-    <form className="pill-panel__capture" onSubmit={submit}>
-      <textarea
-        aria-label="text or URL"
+    <form className="nav-capture" onSubmit={submit}>
+      <input
+        aria-label="text, URL, or local reference"
         disabled={pending}
-        rows={2}
+        name="archive-import"
         placeholder="paste URL or write text"
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
+        type="text"
       />
-      <div className="pill-panel__capture-actions">
-        <button className="pill-panel__option" type="submit" disabled={pending}>
-          {pending ? "Importing" : "Add"}
-        </button>
-        {notice ? <span className="pill-panel__meta">{notice}</span> : null}
-      </div>
-      {localError || error ? <p className="pill-panel__error">{localError ?? error}</p> : null}
+      <button className="nav-cell__button" type="submit" disabled={pending}>
+        {pending ? "Adding" : "Add"}
+      </button>
+      {notice ? <span className="nav-capture__meta">{notice}</span> : null}
+      {error ? <span className="nav-capture__error">{error}</span> : null}
     </form>
   );
+}
+
+function hasActiveFilters(filters: ItemCardFilters): boolean {
+  return Boolean(filters.status || filters.type || filters.source || filters.text);
+}
+
+function formatStateOption(option: ArchiveStatusFilter): string {
+  return option === "all" ? "Any state" : option;
+}
+
+function formatKindOption(option: ArchiveTypeFilter): string {
+  if (option === "all") {
+    return "All items";
+  }
+
+  return option.charAt(0).toUpperCase() + option.slice(1);
+}
+
+function formatOriginOption(option: ArchiveSourceFilter): string {
+  if (option === "all") {
+    return "Any origin";
+  }
+
+  return option.replace("_", " ");
+}
+
+function formatFilterFamily(family: FilterFamily): string {
+  if (family === "origin") {
+    return "Origin";
+  }
+
+  if (family === "kind") {
+    return "Kind";
+  }
+
+  return "State";
 }

@@ -77,7 +77,7 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
-  const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>("index");
+  const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
@@ -586,6 +586,29 @@ export function App() {
   }, [route]);
 
   let routeContent: ReactNode = null;
+  const archiveNav =
+    renderedRoute.kind === "grid" ? (
+      <PillNav
+        activePanel={archivePanel}
+        captureError={captureError}
+        captureNotice={captureNotice}
+        filters={itemCardFilters}
+        isPocketBaseMode={isPocketBaseMode}
+        itemCount={items.length}
+        loading={isLoading}
+        onCapture={captureArchiveInput}
+        onClearFilters={clearArchiveFilters}
+        onPanelChange={setArchivePanel}
+        onSourceChange={updateSourceFilter}
+        onStatusChange={updateStatusFilter}
+        onTypeChange={updateTypeFilter}
+        pendingCapture={isCapturing}
+        readError={readError}
+        statusOptions={statusFilterOptions}
+        typeOptions={typeFilterOptions}
+        sourceOptions={sourceFilterOptions}
+      />
+    ) : null;
 
   if (renderedRoute.kind === "collection") {
     routeContent = (
@@ -666,26 +689,6 @@ export function App() {
     routeContent = (
       <main className="app-shell app-shell--archive" aria-label="Vita archive">
         <h1 className="visually-hidden">Archive</h1>
-        <PillNav
-          activePanel={archivePanel}
-          captureError={captureError}
-          captureNotice={captureNotice}
-          filters={itemCardFilters}
-          isPocketBaseMode={isPocketBaseMode}
-          itemCount={items.length}
-          loading={isLoading}
-          onCapture={captureArchiveInput}
-          onClearFilters={clearArchiveFilters}
-          onPanelChange={setArchivePanel}
-          onSourceChange={updateSourceFilter}
-          onStatusChange={updateStatusFilter}
-          onTypeChange={updateTypeFilter}
-          pendingCapture={isCapturing}
-          readError={readError}
-          statusOptions={statusFilterOptions}
-          typeOptions={typeFilterOptions}
-          sourceOptions={sourceFilterOptions}
-        />
         <section className="archive-canvas" aria-label="archive items">
           {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
           <MasonryGrid
@@ -708,6 +711,7 @@ export function App() {
 
   return (
     <>
+      {archiveNav}
       <div className="app-route-shell" ref={routeRef}>
         {routeContent}
       </div>
