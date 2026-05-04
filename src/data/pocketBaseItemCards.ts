@@ -69,6 +69,7 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: st
   return rows.map((row) => ({
     ...row,
     imageUrl: resolvePocketBaseFileUrl(baseUrl, row.imageUrl),
+    assetFileUrl: resolvePocketBaseFileUrl(baseUrl, row.assetFileUrl),
     onNavigate: () => undefined,
   }));
 }

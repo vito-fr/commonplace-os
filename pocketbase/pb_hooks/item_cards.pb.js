@@ -133,7 +133,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       captionText: nullString(),
       noteParagraph: nullString(),
       url: nullString(),
+      linkContentType: nullString(),
       ogMetadata: nullString(),
+      assetFileRef: nullString(),
+      assetMimeType: nullString(),
       hasPendingAIAnnotations: 0,
       rightsStatus: "",
     }),
@@ -169,7 +172,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           caption.body AS captionText,
           note.body AS noteParagraph,
           link.url AS url,
+          link.content_type AS linkContentType,
           link.og_metadata AS ogMetadata,
+          asset.file_ref AS assetFileRef,
+          asset.mime_type AS assetMimeType,
           EXISTS (
             SELECT 1
             FROM ai_annotations annotation
@@ -190,6 +196,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ON note.item_id = i.id
         LEFT JOIN items_link link
           ON link.item_id = i.id
+        LEFT JOIN item_assets asset
+          ON asset.item_id = i.id
+          AND asset.workspace_id = i.workspace_id
+          AND asset.role = 'source_file'
         WHERE i.workspace_id = {:workspaceId}
           ${itemIdFilter}
           ${statusFilter}
@@ -250,8 +260,11 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       captionText: nullableString(row.captionText),
       noteParagraph: nullableString(row.noteParagraph),
       url: nullableString(row.url),
+      linkContentType: nullableString(row.linkContentType),
       ogImageUrl: openGraph.image,
       ogTitle: openGraph.title,
+      assetFileUrl: nullableString(row.assetFileRef),
+      assetMimeType: nullableString(row.assetMimeType),
       hasPendingAIAnnotations: row.hasPendingAIAnnotations === 1,
       rightsStatus: row.rightsStatus,
     });

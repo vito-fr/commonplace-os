@@ -22,8 +22,11 @@ export interface ItemCardProps {
   captionText?: string | null;
   noteParagraph?: string | null;
   url?: string | null;
+  linkContentType?: string | null;
   ogImageUrl?: string | null;
   ogTitle?: string | null;
+  assetFileUrl?: string | null;
+  assetMimeType?: string | null;
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
@@ -50,8 +53,10 @@ export function ItemCard({
   captionText = null,
   noteParagraph = null,
   url = null,
+  linkContentType = null,
   ogImageUrl = null,
   ogTitle = null,
+  assetFileUrl = null,
   hasPendingAIAnnotations = false,
   rightsStatus = null,
   isSelected = false,
@@ -77,9 +82,14 @@ export function ItemCard({
   const primaryLabel = getPrimaryLabel({ type, title, url, ogTitle });
   const ariaLabel = `Open ${primaryLabel}`;
   const relativeAddedTime = formatAddedTime(createdAt);
+  const isPdf = type === "link" && linkContentType === "pdf";
   const frameTags: Array<{ key: string; label: string; tone?: "warning" | "upload" | "collection" }> = [
     { key: "source", label: formatLabel(source), tone: source === "local" ? "upload" : undefined },
-    { key: "type", label: formatLabel(type), tone: type === "image" && source === "local" ? "upload" : undefined },
+    {
+      key: "type",
+      label: isPdf ? "pdf" : formatLabel(type),
+      tone: (type === "image" || isPdf) && source === "local" ? "upload" : undefined,
+    },
   ];
 
   if (showStatus) {
@@ -140,7 +150,7 @@ export function ItemCard({
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
       <div className="item-card__content">
-        {renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle)}
+        {renderContent(type, title, imageUrl, captionText, noteParagraph, url, linkContentType, assetFileUrl, ogImageUrl, ogTitle)}
         <span className="item-card__actions" aria-hidden="true">
           <span className="item-card__action-cell item-card__action-cell--add">
             <span className="item-card__plus-icon" />
@@ -231,6 +241,8 @@ function renderContent(
   captionText: string | null,
   noteParagraph: string | null,
   url: string | null,
+  linkContentType: string | null,
+  assetFileUrl: string | null,
   ogImageUrl: string | null,
   ogTitle: string | null,
 ) {
@@ -258,6 +270,21 @@ function renderContent(
     );
   }
 
+  if (linkContentType === "pdf" && assetFileUrl) {
+    const previewUrl = buildPdfPreviewUrl(assetFileUrl, title ?? ogTitle ?? "PDF preview");
+
+    return (
+      <div className="item-card__pdf-preview" aria-label="PDF preview">
+        <iframe
+          className="item-card__pdf-frame"
+          src={previewUrl}
+          title={title ?? ogTitle ?? "PDF preview"}
+          tabIndex={-1}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="item-card__link-preview">
       {ogImageUrl ? <img className="item-card__image" src={ogImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
@@ -267,6 +294,13 @@ function renderContent(
 
 function Placeholder({ label }: { label: string }) {
   return <div className="item-card__placeholder">{label}</div>;
+}
+
+function buildPdfPreviewUrl(src: string, name: string) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("src", src);
+  searchParams.set("name", name);
+  return `/pdf-preview?${searchParams.toString()}`;
 }
 
 function getDomain(url: string | null) {

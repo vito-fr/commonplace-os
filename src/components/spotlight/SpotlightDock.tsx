@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { gsap } from "../../motion/MotionShell";
+import type { ShortcutBinding } from "../nav/PillNav";
 
 export type SpotlightCaptureRequest =
   | { type: "link"; url: string }
   | { type: "note"; body: string }
-  | { type: "image"; file: File };
+  | { type: "image"; file: File }
+  | { type: "pdf"; file: File };
 
 export type SpotlightDockProps = {
   value: string;
@@ -14,6 +16,7 @@ export type SpotlightDockProps = {
   pendingCapture: boolean;
   captureError: string | null;
   captureNotice: string | null;
+  searchShortcut: ShortcutBinding;
   onCapture: (request: SpotlightCaptureRequest) => Promise<void> | void;
 };
 
@@ -22,9 +25,9 @@ type ImportMode = "url" | "note" | "file";
 
 const IDLE_WIDTH = 48;
 const IDLE_HEIGHT = 10;
-const DOCK_HEIGHT = 36;
-const SEARCH_WIDTH = 390;
-const SEARCH_CONTENT_WIDTH = 378;
+const DOCK_HEIGHT = 44;
+const SEARCH_WIDTH = 440;
+const SEARCH_CONTENT_WIDTH = 432;
 
 export function SpotlightDock({
   captureError,
@@ -33,6 +36,7 @@ export function SpotlightDock({
   onCapture,
   onChange,
   pendingCapture,
+  searchShortcut,
   value,
 }: SpotlightDockProps) {
   const [activeMode, setActiveMode] = useState<DockMode>(null);
@@ -52,7 +56,14 @@ export function SpotlightDock({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K")) {
+      const target = event.target;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if (!isTypingTarget && matchesShortcut(event, searchShortcut)) {
         event.preventDefault();
         shouldFocusSearchRef.current = true;
         setActiveMode("search");
@@ -68,7 +79,7 @@ export function SpotlightDock({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [searchShortcut]);
 
   useEffect(() => {
     if (!activeMode) {
@@ -207,8 +218,12 @@ export function SpotlightDock({
     setImportMode("file");
 
     if (!file.type.startsWith("image/")) {
-      setFileNotice(`${file.name} staged. PDF and media import are next.`);
-      return;
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+      if (!isPdf) {
+        setFileNotice(`${file.name} staged. Video and audio import are next.`);
+        return;
+      }
     }
 
     if (!isPocketBaseMode) {
@@ -218,7 +233,7 @@ export function SpotlightDock({
 
     try {
       setFileNotice(`Importing ${file.name}.`);
-      await onCapture({ type: "image", file });
+      await onCapture(file.type.startsWith("image/") ? { type: "image", file } : { type: "pdf", file });
       setFileNotice(null);
     } catch {
       // App owns the persistent capture error message.
@@ -320,7 +335,7 @@ export function SpotlightDock({
               }}
             >
               Drop or choose image, media, or PDF
-              <span>images import now</span>
+              <span>images and PDFs import now</span>
             </div>
             <input
               ref={fileInputRef}
@@ -409,4 +424,23 @@ function getImportHint(importMode: ImportMode) {
   }
 
   return "image upload";
+}
+
+function matchesShortcut(event: KeyboardEvent, binding: ShortcutBinding) {
+  const eventKey = normalizeShortcutKey(event.key);
+  const expectedKeys = [binding.key, ...(binding.alternateKeys ?? [])].map(normalizeShortcutKey);
+
+  if (!expectedKeys.includes(eventKey)) {
+    return false;
+  }
+
+  if (binding.modifier === "mod") {
+    return (event.metaKey || event.ctrlKey) && !event.altKey;
+  }
+
+  return !event.metaKey && !event.ctrlKey && !event.altKey;
+}
+
+function normalizeShortcutKey(key: string) {
+  return key.length === 1 ? key.toLowerCase() : key.toLowerCase();
 }

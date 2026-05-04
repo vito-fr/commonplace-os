@@ -1,19 +1,44 @@
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import type { ItemStatus, ItemType } from "../atoms";
 import type { ItemCardFilters, ItemSourceFilter } from "../../data/itemCardReader";
 import { gsap } from "../../motion/MotionShell";
 
-export type PillNavPanel = "index" | "views" | "filters" | "information" | "settings";
+export type PillNavPanel = "index" | "views" | "filters" | "settings";
 
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
 type FilterFamily = "state" | "kind" | "origin";
+type SiteTheme = "light" | "dark";
+type SettingsSection = "appearance" | "gallery" | "shortcuts" | "import" | "system";
+export type ShortcutAction = "search" | "theme" | "galleryIncrease" | "galleryDecrease";
+export type ShortcutBinding = {
+  key: string;
+  modifier?: "mod";
+  alternateKeys?: string[];
+};
+export type ShortcutBindings = Record<ShortcutAction, ShortcutBinding>;
 type NavCellStyle = CSSProperties & {
   "--cell-width": string;
   "--cell-index": number;
 };
+
+const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
+  { key: "appearance", label: "Appearance" },
+  { key: "gallery", label: "Gallery" },
+  { key: "shortcuts", label: "Shortcuts" },
+  { key: "import", label: "Import" },
+  { key: "system", label: "System" },
+];
 
 export type PillNavProps = {
   activePanel: PillNavPanel | null;
@@ -22,8 +47,15 @@ export type PillNavProps = {
   loading: boolean;
   itemCount: number;
   galleryColumns: number;
+  isPocketBaseMode: boolean;
   readError: string | null;
+  shortcutBindings: ShortcutBindings;
+  shortcutError: string | null;
+  siteTheme: SiteTheme;
   onGalleryColumnsChange: (columns: number) => void;
+  onSiteThemeChange: (theme: SiteTheme) => void;
+  onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
+  onShortcutReset: () => void;
   onClearFilters: () => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
@@ -43,26 +75,37 @@ type SubnavItem = {
   onClick?: () => void;
 };
 
+type SubnavGroup = {
+  key: string;
+  items: SubnavItem[];
+};
+
 export function PillNav(props: PillNavProps) {
   const {
     activePanel,
     filters,
     galleryColumns,
+    isPocketBaseMode,
     itemCount,
     loading,
     onClearFilters,
     onGalleryColumnsChange,
     onPanelChange,
+    onSiteThemeChange,
+    onShortcutChange,
+    onShortcutReset,
     onSourceChange,
     onStatusChange,
     onTypeChange,
     readError,
+    shortcutBindings,
+    shortcutError,
+    siteTheme,
     sourceOptions,
     statusOptions,
     typeOptions,
   } = props;
   const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
-  const subnavGroupRef = useRef<HTMLDivElement | null>(null);
 
   const togglePanel = (panel: PillNavPanel) => {
     onPanelChange(activePanel === panel ? null : panel);
@@ -73,7 +116,7 @@ export function PillNav(props: PillNavProps) {
     : loading
       ? "Loading"
       : `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
-  const subnavItems = getSubnavItems({
+  const subnavGroups = getSubnavGroups({
     activeFilterFamily,
     filters,
     loading,
@@ -91,19 +134,139 @@ export function PillNav(props: PillNavProps) {
     typeOptions,
   });
 
-  useLayoutEffect(() => {
-    const group = subnavGroupRef.current;
-    if (!group || subnavItems.length === 0) {
+  const nav = (
+    <header className="pill-nav" aria-label="archive controls">
+      <div className="pill-nav__group" aria-label="primary archive controls">
+        <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
+          <span className="live-logo-dot" aria-hidden="true" />
+        </button>
+        <PrimaryCell label="Index" active={activePanel === "index"} onClick={() => togglePanel("index")} />
+        <PrimaryCell label="Views" active={activePanel === "views"} onClick={() => togglePanel("views")} />
+        <PrimaryCell label="Filters" active={activePanel === "filters"} onClick={() => togglePanel("filters")} />
+        <PrimaryCell label="Settings" active={activePanel === "settings"} onClick={() => togglePanel("settings")} />
+      </div>
+
+      {subnavGroups.length > 0 ? (
+        <div
+          key={activePanel ?? "subnav"}
+          className="pill-nav__subnav"
+          data-visible="true"
+          aria-label="archive secondary controls"
+        >
+          <AnimatedSubnavRow groups={subnavGroups} />
+        </div>
+      ) : null}
+
+      {activePanel === "settings" ? (
+        <SettingsIsland
+          galleryColumns={galleryColumns}
+          isPocketBaseMode={isPocketBaseMode}
+          readError={readError}
+          shortcutBindings={shortcutBindings}
+          shortcutError={shortcutError}
+          siteTheme={siteTheme}
+          onGalleryColumnsChange={onGalleryColumnsChange}
+          onSiteThemeChange={onSiteThemeChange}
+          onShortcutChange={onShortcutChange}
+          onShortcutReset={onShortcutReset}
+        />
+      ) : null}
+    </header>
+  );
+
+  if (typeof document === "undefined") {
+    return nav;
+  }
+
+  return createPortal(nav, document.body);
+}
+
+function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const rowSignature = groups.map((group) => `${group.key}:${group.items.map((item) => item.label).join("|")}`).join("::");
+
+  const updateRowMembrane = useCallback(() => {
+    const row = rowRef.current;
+    if (!row) {
       return;
     }
 
+    const membrane = row.querySelector<HTMLElement>(".pill-nav__subnav-membrane");
+    const cells = Array.from(row.querySelectorAll<HTMLElement>(".subnav-cell"));
+    if (!membrane || cells.length === 0) {
+      return;
+    }
+
+    const rowRect = row.getBoundingClientRect();
+    let minLeft = Infinity;
+    let minTop = Infinity;
+    let maxRight = -Infinity;
+    let maxBottom = -Infinity;
+
+    cells.forEach((cell) => {
+      const rect = cell.getBoundingClientRect();
+
+      minLeft = Math.min(minLeft, rect.left - rowRect.left);
+      minTop = Math.min(minTop, rect.top - rowRect.top);
+      maxRight = Math.max(maxRight, rect.right - rowRect.left);
+      maxBottom = Math.max(maxBottom, rect.bottom - rowRect.top);
+    });
+
+    const padding = 4;
+    gsap.set(membrane, {
+      height: maxBottom - minTop + padding * 2,
+      opacity: 1,
+      transform: `translate3d(${minLeft - padding}px, ${minTop - padding}px, 0)`,
+      width: maxRight - minLeft + padding * 2,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    updateRowMembrane();
+    const frame = requestAnimationFrame(updateRowMembrane);
+
+    return () => cancelAnimationFrame(frame);
+  }, [rowSignature, updateRowMembrane]);
+
+  return (
+    <div className="pill-nav__subnav-row" ref={rowRef}>
+      <span className="pill-nav__subnav-membrane" aria-hidden="true" />
+      {groups.map((group) => (
+        <AnimatedSubnavGroup key={group.key} groupKey={group.key} items={group.items} onFrame={updateRowMembrane} />
+      ))}
+    </div>
+  );
+}
+
+function AnimatedSubnavGroup({
+  groupKey,
+  items,
+  onFrame,
+}: {
+  groupKey: string;
+  items: SubnavItem[];
+  onFrame?: () => void;
+}) {
+  const subnavGroupRef = useRef<HTMLDivElement | null>(null);
+  const animationSignature = items.map((item) => item.label).join("|");
+
+  useLayoutEffect(() => {
+    const group = subnavGroupRef.current;
+    if (!group || items.length === 0) {
+      return;
+    }
+
+    const membrane = group.querySelector<HTMLElement>(".pill-subnav__membrane");
     const cells = Array.from(group.querySelectorAll<HTMLElement>(".subnav-cell"));
     const labels = cells
       .map((cell) => cell.querySelector<HTMLElement>(".nav-cell__text"))
       .filter((label): label is HTMLElement => Boolean(label));
 
-    gsap.killTweensOf([...cells, ...labels]);
+    gsap.killTweensOf([group, membrane, ...cells, ...labels].filter(Boolean));
     gsap.set(group, { clearProps: "width,height,position" });
+    if (membrane) {
+      gsap.set(membrane, { clearProps: "left,top,width,height,opacity,transform" });
+    }
     gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform" });
     gsap.set(labels, { clearProps: "opacity,filter,transform" });
 
@@ -119,6 +282,44 @@ export function PillNav(props: PillNavProps) {
     });
     const originLeft = Math.max(0, Math.round(groupRect.width / 2 - 12.5));
     const timeline = gsap.timeline();
+    const getAnimatedNumber = (element: HTMLElement, property: string, fallback: number) => {
+      const value = gsap.getProperty(element, property);
+      const parsed = typeof value === "number" ? value : parseFloat(String(value));
+
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const updateMembrane = () => {
+      if (!membrane || cells.length === 0) {
+        return;
+      }
+
+      let minLeft = Infinity;
+      let minTop = Infinity;
+      let maxRight = -Infinity;
+      let maxBottom = -Infinity;
+
+      cells.forEach((cell) => {
+        const left = getAnimatedNumber(cell, "left", 0);
+        const top = getAnimatedNumber(cell, "top", 0);
+        const width = getAnimatedNumber(cell, "width", cell.offsetWidth);
+        const height = getAnimatedNumber(cell, "height", cell.offsetHeight);
+
+        minLeft = Math.min(minLeft, left);
+        minTop = Math.min(minTop, top);
+        maxRight = Math.max(maxRight, left + width);
+        maxBottom = Math.max(maxBottom, top + height);
+      });
+
+      const padding = 4;
+      gsap.set(membrane, {
+        height: maxBottom - minTop + padding * 2,
+        left: minLeft - padding,
+        opacity: 1,
+        top: minTop - padding,
+        width: maxRight - minLeft + padding * 2,
+      });
+      onFrame?.();
+    };
 
     gsap.set(group, {
       height: groupRect.height,
@@ -135,6 +336,9 @@ export function PillNav(props: PillNavProps) {
       width: 25,
       zIndex: (index) => cells.length - index,
     });
+    updateMembrane();
+    onFrame?.();
+
     gsap.set(labels, {
       filter: "blur(5px)",
       opacity: 0,
@@ -156,11 +360,12 @@ export function PillNav(props: PillNavProps) {
       width: (index) => targetMetrics[index]?.width ?? 25,
       duration: 0.68,
       ease: "expo.out",
+      onUpdate: updateMembrane,
       stagger: {
         amount: 0.28,
         from: "center",
       },
-    });
+    }, 0.03);
 
     timeline.to(
       labels,
@@ -181,60 +386,39 @@ export function PillNav(props: PillNavProps) {
       0.34,
     );
 
+    timeline.eventCallback("onComplete", () => {
+      updateMembrane();
+      onFrame?.();
+      gsap.set(labels, { clearProps: "opacity,filter,transform" });
+    });
+
     return () => {
       timeline.kill();
     };
-  }, [activeFilterFamily, activePanel, galleryColumns, subnavItems.length]);
+  }, [animationSignature, groupKey, items.length, onFrame]);
 
-  const nav = (
-    <header className="pill-nav" aria-label="archive controls">
-      <div className="pill-nav__group" aria-label="primary archive controls">
-        <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
-          <span className="live-logo-dot" aria-hidden="true" />
-        </button>
-        <PrimaryCell label="Index" active={activePanel === "index"} onClick={() => togglePanel("index")} />
-        <PrimaryCell label="Views" active={activePanel === "views"} onClick={() => togglePanel("views")} />
-        <PrimaryCell label="Filters" active={activePanel === "filters"} onClick={() => togglePanel("filters")} />
-        <PrimaryCell label="Info" active={activePanel === "information"} onClick={() => togglePanel("information")} />
-        <PrimaryCell label="Settings" active={activePanel === "settings"} onClick={() => togglePanel("settings")} />
-      </div>
-
-      {subnavItems.length > 0 ? (
-        <div
-          key={`${activePanel}:${activeFilterFamily}`}
-          className="pill-nav__subnav"
-          data-visible="true"
-          aria-label="archive secondary controls"
+  return (
+    <div className="pill-subnav__group" ref={subnavGroupRef}>
+      <span className="pill-subnav__membrane" aria-hidden="true" />
+      {items.map((item, index) => (
+        <SubnavCell
+          key={item.key}
+          index={index}
+          label={item.label}
+          active={item.active}
+          className={item.className}
+          disabled={item.disabled}
+          node={item.node}
+          onClick={item.onClick}
         >
-          <div className="pill-subnav__group" ref={subnavGroupRef}>
-            {subnavItems.map((item, index) => (
-              <SubnavCell
-                key={item.key}
-                index={index}
-                label={item.label}
-                active={item.active}
-                className={item.className}
-                disabled={item.disabled}
-                node={item.node}
-                onClick={item.onClick}
-              >
-                {item.label}
-              </SubnavCell>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </header>
+          {item.label}
+        </SubnavCell>
+      ))}
+    </div>
   );
-
-  if (typeof document === "undefined") {
-    return nav;
-  }
-
-  return createPortal(nav, document.body);
 }
 
-function getSubnavItems({
+function getSubnavGroups({
   activeFilterFamily,
   filters,
   loading,
@@ -266,67 +450,63 @@ function getSubnavItems({
   sourceOptions: ArchiveSourceFilter[];
   statusOptions: ArchiveStatusFilter[];
   typeOptions: ArchiveTypeFilter[];
-}): SubnavItem[] {
+}): SubnavGroup[] {
   if (panel === "index") {
     return [
-      { key: "all-items", label: "All items", onClick: onClearFilters },
-      { key: "result-count", label: resultLabel },
+      {
+        key: "index",
+        items: [
+          { key: "all-items", label: "All items", onClick: onClearFilters },
+          { key: "result-count", label: resultLabel },
+        ],
+      },
     ];
   }
 
   if (panel === "views") {
     return [
       {
-        key: `gallery:${galleryColumns}`,
-        label: "Gallery | + -",
-        active: true,
-        className: "subnav-cell--gallery-control",
-        node: (
-          <span className="gallery-nav-control" aria-label={`Gallery columns: ${galleryColumns}`} title={`${galleryColumns} columns`}>
-            <span>Gallery</span>
-            <span aria-hidden="true">|</span>
-            <button
-              className="gallery-nav-control__step"
-              type="button"
-              disabled={galleryColumns >= 8}
-              onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
-              aria-label={`show more gallery columns, currently ${galleryColumns}`}
-            >
-              <span className="gallery-nav-control__icon gallery-nav-control__icon--plus" aria-hidden="true" />
-            </button>
-            <button
-              className="gallery-nav-control__step"
-              type="button"
-              disabled={galleryColumns <= 2}
-              onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
-              aria-label={`show fewer gallery columns, currently ${galleryColumns}`}
-            >
-              <span className="gallery-nav-control__icon gallery-nav-control__icon--minus" aria-hidden="true" />
-            </button>
-          </span>
-        ),
+        key: "views",
+        items: [
+          {
+            key: "gallery-control",
+            label: "Gallery | + -",
+            active: true,
+            className: "subnav-cell--gallery-control",
+            node: (
+              <span className="gallery-nav-control" aria-label={`Gallery columns: ${galleryColumns}`} title={`${galleryColumns} columns`}>
+                <span>Gallery</span>
+                <span className="gallery-nav-control__divider" aria-hidden="true" />
+                <button
+                  className="gallery-nav-control__step"
+                  type="button"
+                  disabled={galleryColumns >= 8}
+                  onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
+                  aria-label={`show more gallery columns, currently ${galleryColumns}`}
+                >
+                  <span className="gallery-nav-control__icon gallery-nav-control__icon--plus" aria-hidden="true" />
+                </button>
+                <button
+                  className="gallery-nav-control__step"
+                  type="button"
+                  disabled={galleryColumns <= 2}
+                  onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
+                  aria-label={`show fewer gallery columns, currently ${galleryColumns}`}
+                >
+                  <span className="gallery-nav-control__icon gallery-nav-control__icon--minus" aria-hidden="true" />
+                </button>
+              </span>
+            ),
+          },
+          { key: "list", label: "List", disabled: true },
+          { key: "graph", label: "Graph", disabled: true },
+        ],
       },
-      { key: "list", label: "List", disabled: true },
-      { key: "graph", label: "Graph", disabled: true },
-    ];
-  }
-
-  if (panel === "information") {
-    return [
-      { key: "result-count", label: resultLabel },
-      { key: "search-shortcut", label: "Search ⌘K" },
-      { key: "theme-shortcut", label: "Theme M" },
     ];
   }
 
   if (panel === "settings") {
-    return [
-      { key: "settings-appearance", label: "Appearance" },
-      { key: "settings-colors", label: "Colors" },
-      { key: "settings-macros", label: "Macros" },
-      { key: "settings-import", label: "Import" },
-      { key: "settings-shortcuts", label: "Shortcuts" },
-    ];
+    return [];
   }
 
   if (panel !== "filters") {
@@ -387,7 +567,10 @@ function getSubnavItems({
     });
   }
 
-  return [...familyItems, ...optionItems];
+  return [
+    { key: "filters-family", items: familyItems },
+    { key: `filters-options:${activeFilterFamily}`, items: optionItems },
+  ];
 }
 
 function PrimaryCell({
@@ -403,6 +586,217 @@ function PrimaryCell({
     <button className="nav-cell" data-active={active ? "true" : "false"} type="button" onClick={onClick} aria-expanded={active}>
       <span className="nav-cell__text">{label}</span>
     </button>
+  );
+}
+
+function SettingsIsland({
+  galleryColumns,
+  isPocketBaseMode,
+  onGalleryColumnsChange,
+  onSiteThemeChange,
+  onShortcutChange,
+  onShortcutReset,
+  readError,
+  shortcutBindings,
+  shortcutError,
+  siteTheme,
+}: {
+  galleryColumns: number;
+  isPocketBaseMode: boolean;
+  onGalleryColumnsChange: (columns: number) => void;
+  onSiteThemeChange: (theme: SiteTheme) => void;
+  onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
+  onShortcutReset: () => void;
+  readError: string | null;
+  shortcutBindings: ShortcutBindings;
+  shortcutError: string | null;
+  siteTheme: SiteTheme;
+}) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>("shortcuts");
+  const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
+  const captureShortcut = (action: ShortcutAction, event: ReactKeyboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      setRecordingAction(null);
+      return;
+    }
+
+    const binding = getShortcutBindingFromEvent(event.nativeEvent);
+    if (!binding) {
+      return;
+    }
+
+    if (onShortcutChange(action, binding)) {
+      setRecordingAction(null);
+    }
+  };
+
+  return (
+    <section className="settings-island" aria-label="archive settings">
+      <div className="settings-island__tabs" aria-label="settings sections">
+        {SETTINGS_SECTIONS.map((section) => (
+          <button
+            key={section.key}
+            className="settings-island__tab"
+            data-active={activeSection === section.key ? "true" : "false"}
+            type="button"
+            onClick={() => setActiveSection(section.key)}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="settings-island__panel">
+        {activeSection === "appearance" ? (
+          <div className="settings-island__section">
+            <span className="settings-island__label">Appearance</span>
+            <div className="settings-island__cells" aria-label="theme">
+              <button
+                className="settings-island__cell"
+                data-active={siteTheme === "light" ? "true" : "false"}
+                type="button"
+                onClick={() => onSiteThemeChange("light")}
+              >
+                Light
+              </button>
+              <button
+                className="settings-island__cell"
+                data-active={siteTheme === "dark" ? "true" : "false"}
+                type="button"
+                onClick={() => onSiteThemeChange("dark")}
+              >
+                Dark
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeSection === "gallery" ? (
+          <div className="settings-island__section">
+            <span className="settings-island__label">Gallery</span>
+            <div className="settings-island__cells" aria-label={`gallery columns ${galleryColumns}`}>
+              <button
+                className="settings-island__cell"
+                type="button"
+                disabled={galleryColumns <= 2}
+                onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
+              >
+                -
+              </button>
+              <span className="settings-island__cell" data-static="true">
+                {galleryColumns} cols
+              </span>
+              <button
+                className="settings-island__cell"
+                type="button"
+                disabled={galleryColumns >= 8}
+                onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeSection === "shortcuts" ? (
+          <div className="settings-island__section">
+            <div className="settings-island__section-header">
+              <span className="settings-island__label">Shortcuts</span>
+              <button className="settings-island__reset" type="button" onClick={onShortcutReset}>
+                Reset
+              </button>
+            </div>
+            <div className="settings-island__shortcut-list" aria-label="shortcut bindings">
+              <ShortcutCaptureField
+                action="search"
+                binding={shortcutBindings.search}
+                label="Search archive"
+                recording={recordingAction === "search"}
+                onFocus={() => setRecordingAction("search")}
+                onKeyDown={captureShortcut}
+              />
+              <ShortcutCaptureField
+                action="theme"
+                binding={shortcutBindings.theme}
+                label="Toggle theme"
+                recording={recordingAction === "theme"}
+                onFocus={() => setRecordingAction("theme")}
+                onKeyDown={captureShortcut}
+              />
+              <ShortcutCaptureField
+                action="galleryIncrease"
+                binding={shortcutBindings.galleryIncrease}
+                label="More columns"
+                recording={recordingAction === "galleryIncrease"}
+                onFocus={() => setRecordingAction("galleryIncrease")}
+                onKeyDown={captureShortcut}
+              />
+              <ShortcutCaptureField
+                action="galleryDecrease"
+                binding={shortcutBindings.galleryDecrease}
+                label="Fewer columns"
+                recording={recordingAction === "galleryDecrease"}
+                onFocus={() => setRecordingAction("galleryDecrease")}
+                onKeyDown={captureShortcut}
+              />
+            </div>
+            {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
+          </div>
+        ) : null}
+
+        {activeSection === "import" ? (
+          <div className="settings-island__section">
+            <span className="settings-island__label">Import</span>
+            <span className="settings-island__note">
+              {isPocketBaseMode ? "URL, note, image, PDF live" : "Live mode required"}
+            </span>
+          </div>
+        ) : null}
+
+        {activeSection === "system" ? (
+          <div className="settings-island__section">
+            <span className="settings-island__label">System</span>
+            <span className="settings-island__note">
+              {readError ? "Archive read error" : "Archive connected"} · Product Sans files pending
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ShortcutCaptureField({
+  action,
+  binding,
+  label,
+  onFocus,
+  onKeyDown,
+  recording,
+}: {
+  action: ShortcutAction;
+  binding: ShortcutBinding;
+  label: string;
+  onFocus: () => void;
+  onKeyDown: (action: ShortcutAction, event: ReactKeyboardEvent<HTMLInputElement>) => void;
+  recording: boolean;
+}) {
+  return (
+    <label className="settings-island__shortcut">
+      <span>{label}</span>
+      <input
+        readOnly
+        aria-label={`${label} shortcut`}
+        data-recording={recording ? "true" : "false"}
+        value={recording ? "Press" : formatShortcutBinding(binding)}
+        onFocus={onFocus}
+        onClick={onFocus}
+        onKeyDown={(event) => onKeyDown(action, event)}
+      />
+    </label>
   );
 }
 
@@ -489,4 +883,36 @@ function formatOriginOption(option: ArchiveSourceFilter): string {
   }
 
   return option.replace("_", " ");
+}
+
+function getShortcutBindingFromEvent(event: KeyboardEvent): ShortcutBinding | null {
+  if (event.altKey) {
+    return null;
+  }
+
+  if (!isSupportedShortcutKey(event.key)) {
+    return null;
+  }
+
+  return {
+    key: normalizeShortcutKey(event.key),
+    ...(event.metaKey || event.ctrlKey ? { modifier: "mod" as const } : {}),
+  };
+}
+
+function isSupportedShortcutKey(key: string) {
+  return key.length === 1 && key !== " ";
+}
+
+function normalizeShortcutKey(key: string) {
+  return key.length === 1 ? key.toLowerCase() : key.toLowerCase();
+}
+
+function formatShortcutBinding(binding: ShortcutBinding) {
+  const keys = [binding.key, ...(binding.alternateKeys ?? [])].map(formatShortcutKey).join(" / ");
+  return binding.modifier === "mod" ? `⌘${keys}` : keys;
+}
+
+function formatShortcutKey(key: string) {
+  return key.length === 1 ? key.toUpperCase() : key;
 }

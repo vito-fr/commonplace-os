@@ -21,12 +21,19 @@ import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
 import { SpotlightDock, type SpotlightCaptureRequest } from "./components/spotlight/SpotlightDock";
-import { PillNav, type PillNavPanel } from "./components/nav/PillNav";
+import {
+  PillNav,
+  type PillNavPanel,
+  type ShortcutAction,
+  type ShortcutBinding,
+  type ShortcutBindings,
+} from "./components/nav/PillNav";
 
 type AppRoute =
   | { kind: "grid" }
   | { kind: "item"; itemId: string; returnCollectionId?: string }
-  | { kind: "collection"; collectionId: string };
+  | { kind: "collection"; collectionId: string }
+  | { kind: "pdfPreview"; src: string; name?: string };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
@@ -55,6 +62,13 @@ const sourceFilterOptions: ArchiveSourceFilter[] = [
 ];
 const minGalleryColumns = 2;
 const maxGalleryColumns = 8;
+const shortcutStorageKey = "vita:shortcut-bindings:v1";
+const defaultShortcutBindings: ShortcutBindings = {
+  search: { key: "k", modifier: "mod" },
+  theme: { key: "m" },
+  galleryIncrease: { key: "+", alternateKeys: ["="] },
+  galleryDecrease: { key: "-" },
+};
 
 const workspaceId = "seed:ws001";
 const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
@@ -82,6 +96,8 @@ export function App() {
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
   const [galleryColumns, setGalleryColumns] = useState(4);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
+  const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -121,7 +137,15 @@ export function App() {
   }, [siteTheme]);
 
   useEffect(() => {
+    window.localStorage.setItem(shortcutStorageKey, JSON.stringify(shortcutBindings));
+  }, [shortcutBindings]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
       const target = event.target;
       const isTypingTarget =
         target instanceof HTMLInputElement ||
@@ -129,9 +153,25 @@ export function App() {
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable);
 
-      if (!isTypingTarget && event.key.toLowerCase() === "m") {
+      if (isTypingTarget) {
+        return;
+      }
+
+      if (matchesShortcut(event, shortcutBindings.theme)) {
         event.preventDefault();
         setSiteTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+        return;
+      }
+
+      if (route.kind === "grid" && matchesShortcut(event, shortcutBindings.galleryIncrease)) {
+        event.preventDefault();
+        setGalleryColumns((currentColumns) => Math.min(maxGalleryColumns, currentColumns + 1));
+        return;
+      }
+
+      if (route.kind === "grid" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
+        event.preventDefault();
+        setGalleryColumns((currentColumns) => Math.max(minGalleryColumns, currentColumns - 1));
       }
     };
 
@@ -139,11 +179,13 @@ export function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [route.kind, shortcutBindings]);
 
   useEffect(() => {
     const nextUrl =
-      route.kind === "item"
+      route.kind === "pdfPreview"
+        ? buildPdfPreviewRouteUrl(route.src, route.name)
+        : route.kind === "item"
         ? buildItemDetailUrl(route.itemId, itemCardFilters, {
             returnCollectionId: route.returnCollectionId,
           })
@@ -159,6 +201,15 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
+
+    if (route.kind === "pdfPreview") {
+      setItems([]);
+      setReadError(null);
+      setIsLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
 
     setIsLoading(true);
     itemCardReader
@@ -185,7 +236,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [itemCardFilters]);
+  }, [itemCardFilters, route.kind]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -501,6 +552,13 @@ export function App() {
           file: captureInput.file,
           actor: "system",
         });
+      } else if (captureInput.type === "pdf") {
+        await itemCaptureWriter.capturePdf({
+          workspaceId,
+          type: "pdf",
+          file: captureInput.file,
+          actor: "system",
+        });
       } else {
         await itemCaptureWriter.captureNote({
           workspaceId,
@@ -519,7 +577,9 @@ export function App() {
           ? "Imported URL."
           : captureInput.type === "image"
             ? "Imported image."
-            : "Added note.",
+            : captureInput.type === "pdf"
+              ? "Imported PDF."
+              : "Added note.",
       );
     } catch (error: unknown) {
       console.error(error);
@@ -564,6 +624,27 @@ export function App() {
 
   const updateGalleryColumns = (columns: number) => {
     setGalleryColumns(Math.min(maxGalleryColumns, Math.max(minGalleryColumns, columns)));
+  };
+
+  const updateShortcutBinding = (action: ShortcutAction, binding: ShortcutBinding) => {
+    const conflict = getShortcutConflict(action, binding, shortcutBindings);
+
+    if (conflict) {
+      setShortcutError(`${formatShortcutBinding(binding)} is already used for ${formatShortcutAction(conflict)}.`);
+      return false;
+    }
+
+    setShortcutBindings((currentBindings) => ({
+      ...currentBindings,
+      [action]: binding,
+    }));
+    setShortcutError(null);
+    return true;
+  };
+
+  const resetShortcutBindings = () => {
+    setShortcutBindings(defaultShortcutBindings);
+    setShortcutError(null);
   };
 
   const routeRef = useRef<HTMLDivElement | null>(null);
@@ -612,22 +693,31 @@ export function App() {
         activePanel={archivePanel}
         filters={itemCardFilters}
         galleryColumns={galleryColumns}
+        isPocketBaseMode={isPocketBaseMode}
         itemCount={items.length}
         loading={isLoading}
         onClearFilters={clearArchiveFilters}
         onGalleryColumnsChange={updateGalleryColumns}
         onPanelChange={setArchivePanel}
+        onSiteThemeChange={setSiteTheme}
         onSourceChange={updateSourceFilter}
         onStatusChange={updateStatusFilter}
         onTypeChange={updateTypeFilter}
         readError={readError}
+        shortcutBindings={shortcutBindings}
+        shortcutError={shortcutError}
+        siteTheme={siteTheme}
+        onShortcutChange={updateShortcutBinding}
+        onShortcutReset={resetShortcutBindings}
         statusOptions={statusFilterOptions}
         typeOptions={typeFilterOptions}
         sourceOptions={sourceFilterOptions}
       />
     ) : null;
 
-  if (renderedRoute.kind === "collection") {
+  if (renderedRoute.kind === "pdfPreview") {
+    routeContent = <PdfPreview src={renderedRoute.src} name={renderedRoute.name ?? null} />;
+  } else if (renderedRoute.kind === "collection") {
     routeContent = (
       <main className="app-shell" aria-label="Vita collection">
         <CollectionView
@@ -733,15 +823,18 @@ export function App() {
       <div className="app-route-shell" ref={routeRef}>
         {routeContent}
       </div>
-      <SpotlightDock
-        value={itemCardFilters.text ?? ""}
-        onChange={updateTextFilter}
-        isPocketBaseMode={isPocketBaseMode}
-        pendingCapture={isCapturing}
-        captureError={captureError}
-        captureNotice={captureNotice}
-        onCapture={captureArchiveInput}
-      />
+      {renderedRoute.kind !== "pdfPreview" ? (
+        <SpotlightDock
+          value={itemCardFilters.text ?? ""}
+          onChange={updateTextFilter}
+          isPocketBaseMode={isPocketBaseMode}
+          pendingCapture={isCapturing}
+          captureError={captureError}
+          captureNotice={captureNotice}
+          searchShortcut={shortcutBindings.search}
+          onCapture={captureArchiveInput}
+        />
+      ) : null}
     </>
   );
 }
@@ -753,6 +846,10 @@ function routeKey(r: AppRoute): string {
 
   if (r.kind === "collection") {
     return `collection:${r.collectionId}`;
+  }
+
+  if (r.kind === "pdfPreview") {
+    return `pdf-preview:${r.src}`;
   }
 
   return `item:${r.itemId}`;
@@ -816,7 +913,93 @@ function ArchiveEmptyState({
   );
 }
 
+function PdfPreview({ name, src }: { name: string | null; src: string }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const label = name || "PDF preview";
+
+  useEffect(() => {
+    if (!src) {
+      setObjectUrl(null);
+      setError("PDF unavailable.");
+      return;
+    }
+
+    const controller = new AbortController();
+    let nextObjectUrl: string | null = null;
+
+    setObjectUrl(null);
+    setError(null);
+
+    fetch(src, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`PDF preview failed with HTTP ${response.status}`);
+        }
+
+        return response.blob();
+      })
+      .then((blob) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
+        nextObjectUrl = URL.createObjectURL(pdfBlob);
+        setObjectUrl(nextObjectUrl);
+      })
+      .catch((fetchError: unknown) => {
+        if (!controller.signal.aborted) {
+          console.error(fetchError);
+          setError("PDF preview unavailable.");
+        }
+      });
+
+    return () => {
+      controller.abort();
+
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [src]);
+
+  return (
+    <main className="pdf-preview-shell" aria-label={label}>
+      <div className="pdf-preview-shell__page">
+        {objectUrl ? (
+          <>
+            <iframe
+              className="pdf-preview-shell__frame"
+              src={`${objectUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
+              title={label}
+            />
+            <span className="pdf-preview-shell__badge" aria-hidden="true">
+              <strong>PDF</strong>
+              <small>{label}</small>
+            </span>
+          </>
+        ) : (
+          <div className="pdf-preview-shell__fallback" role={error ? "alert" : "status"}>
+            <span>PDF</span>
+            <small>{error ?? label}</small>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
 function getRouteFromLocation(): AppRoute {
+  if (window.location.pathname === "/pdf-preview") {
+    const searchParams = new URLSearchParams(window.location.search);
+    return {
+      kind: "pdfPreview",
+      src: searchParams.get("src") ?? "",
+      name: searchParams.get("name") ?? undefined,
+    };
+  }
+
   const itemMatch = window.location.pathname.match(/^\/items\/([^/]+)\/?$/);
   if (itemMatch) {
     const returnCollectionId = new URLSearchParams(window.location.search).get("return_collection")?.trim();
@@ -868,6 +1051,17 @@ function buildArchiveUrl(filters: ItemCardFilters) {
 
 function buildCollectionUrl(collectionId: string) {
   return `/collections/${encodeURIComponent(collectionId)}`;
+}
+
+function buildPdfPreviewRouteUrl(src: string, name?: string) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("src", src);
+
+  if (name) {
+    searchParams.set("name", name);
+  }
+
+  return `/pdf-preview?${searchParams.toString()}`;
 }
 
 function buildItemDetailUrl(
@@ -1007,6 +1201,126 @@ function normalizeCaptureUrl(rawInput: string) {
 
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function getInitialShortcutBindings(): ShortcutBindings {
+  const savedBindings = window.localStorage.getItem(shortcutStorageKey);
+
+  if (!savedBindings) {
+    return defaultShortcutBindings;
+  }
+
+  try {
+    const parsed = JSON.parse(savedBindings) as Partial<ShortcutBindings>;
+
+    return {
+      search: sanitizeShortcutBinding(parsed.search) ?? defaultShortcutBindings.search,
+      theme: sanitizeShortcutBinding(parsed.theme) ?? defaultShortcutBindings.theme,
+      galleryIncrease: sanitizeShortcutBinding(parsed.galleryIncrease) ?? defaultShortcutBindings.galleryIncrease,
+      galleryDecrease: sanitizeShortcutBinding(parsed.galleryDecrease) ?? defaultShortcutBindings.galleryDecrease,
+    };
+  } catch {
+    return defaultShortcutBindings;
+  }
+}
+
+function sanitizeShortcutBinding(binding: unknown): ShortcutBinding | null {
+  if (!binding || typeof binding !== "object") {
+    return null;
+  }
+
+  const candidate = binding as Partial<ShortcutBinding>;
+  if (typeof candidate.key !== "string" || candidate.key.trim() === "") {
+    return null;
+  }
+
+  return {
+    key: normalizeShortcutKey(candidate.key),
+    ...(candidate.modifier === "mod" ? { modifier: "mod" as const } : {}),
+    ...(Array.isArray(candidate.alternateKeys)
+      ? {
+          alternateKeys: candidate.alternateKeys
+            .filter((key): key is string => typeof key === "string" && key.trim() !== "")
+            .map(normalizeShortcutKey),
+        }
+      : {}),
+  };
+}
+
+function matchesShortcut(event: KeyboardEvent, binding: ShortcutBinding) {
+  const eventKey = normalizeShortcutKey(event.key);
+  const expectedKeys = [binding.key, ...(binding.alternateKeys ?? [])].map(normalizeShortcutKey);
+
+  if (!expectedKeys.includes(eventKey)) {
+    return false;
+  }
+
+  if (binding.modifier === "mod") {
+    return (event.metaKey || event.ctrlKey) && !event.altKey;
+  }
+
+  return !event.metaKey && !event.ctrlKey && !event.altKey;
+}
+
+function getShortcutConflict(
+  action: ShortcutAction,
+  binding: ShortcutBinding,
+  bindings: ShortcutBindings,
+): ShortcutAction | null {
+  const actions = Object.keys(bindings) as ShortcutAction[];
+
+  return actions.find((candidateAction) => {
+    if (candidateAction === action) {
+      return false;
+    }
+
+    return shortcutBindingsOverlap(binding, bindings[candidateAction]);
+  }) ?? null;
+}
+
+function shortcutBindingsOverlap(first: ShortcutBinding, second: ShortcutBinding) {
+  if ((first.modifier ?? null) !== (second.modifier ?? null)) {
+    return false;
+  }
+
+  const firstKeys = [first.key, ...(first.alternateKeys ?? [])].map(normalizeShortcutKey);
+  const secondKeys = [second.key, ...(second.alternateKeys ?? [])].map(normalizeShortcutKey);
+
+  return firstKeys.some((key) => secondKeys.includes(key));
+}
+
+function normalizeShortcutKey(key: string) {
+  if (key === " ") {
+    return "space";
+  }
+
+  return key.length === 1 ? key.toLowerCase() : key.toLowerCase();
+}
+
+function formatShortcutBinding(binding: ShortcutBinding) {
+  const keys = [binding.key, ...(binding.alternateKeys ?? [])].map(formatShortcutKey).join(" / ");
+  return binding.modifier === "mod" ? `⌘${keys}` : keys;
+}
+
+function formatShortcutKey(key: string) {
+  if (key === "space") {
+    return "Space";
+  }
+
+  return key.length === 1 ? key.toUpperCase() : key;
+}
+
+function formatShortcutAction(action: ShortcutAction) {
+  switch (action) {
+    case "search":
+      return "Search archive";
+    case "theme":
+      return "Toggle theme";
+    case "galleryIncrease":
+      return "More columns";
+    case "galleryDecrease":
+      return "Fewer columns";
+  }
 }
 
 function getInitialSiteTheme(): SiteTheme {
