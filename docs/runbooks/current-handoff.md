@@ -10,6 +10,8 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 
 ## Latest Accepted Result
 
+- Latest import/filter checkpoint:
+  - Commit: `6cb8f67 Improve Spotlight import and archive filters`
 - Latest card add-to-collection checkpoint:
   - Commit: `3ab6afb Implement card add-to-collection workflow`
 - Prior nav/settings/search dock checkpoint:
@@ -48,14 +50,35 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
   - `src/assets/fonts/ProductSans-Regular.woff2`
   - `src/assets/fonts/ProductSans-Bold.woff2`
 - Current Spotlight import support:
+  - bottom Import panel is organized as `Paste / Files / Sources`
+  - Paste mode accepts URLs or note text and previews the detected capture type
+  - Files mode stages multi-file batches, with a 20-file limit and 25MB-per-file limit
+  - Sources mode documents current platform behavior without requiring API setup
   - URL capture creates live `link` records through `/api/vita/item-capture`
+  - pasted Pinterest URLs are classified as `source.kind='pinterest'`
+  - pasted Are.na URLs are classified as `source.kind='arena'`
+  - YouTube/Vimeo URLs remain URL-source links and are stored with `items_link.content_type='video'`
   - note capture creates live `note` records through `/api/vita/item-capture`
   - local image upload creates live `image` records with `items_image.file_ref`
   - local PDF upload creates live `link` records with `items_link.content_type='pdf'` plus `item_assets.role='source_file'`
   - video, audio, and other file types are still staged as unsupported
+- Current archive filters:
+  - State, Kind, Origin, text query, and Format are wired through the live item-card endpoint
+  - Origin exposes active stored source kinds: `local`, `manual`, `url`, `pinterest`, and `arena`
+  - Format exposes `PDF`, `Video`, and `Website`; Website maps to the existing `items_link.content_type='unknown'` storage value
 
 ## Verified Runtime Notes
 
+- `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the import/filter checkpoint.
+- `node --check pocketbase/pb_hooks/item_cards.pb.js` passed after the import/filter checkpoint.
+- `npm run typecheck` passed after the import/filter checkpoint.
+- `npm run build` passed after the import/filter checkpoint.
+- `http://127.0.0.1:5173/?format=pdf` returned `200`.
+- `http://127.0.0.1:5173/?source=arena` returned `200`.
+- `GET /api/vita/item-cards?workspace_id=seed:ws001&source=pinterest&q=vita-import-classification-test` returned `200` with `source: pinterest`.
+- `GET /api/vita/item-cards?workspace_id=seed:ws001&source=arena&q=vita` returned `200` with `source: arena`.
+- `GET /api/vita/item-cards?workspace_id=seed:ws001&format=video&q=vitaImportClassificationTest` returned `200` with `linkContentType: video`.
+- `GET /api/vita/item-cards?workspace_id=seed:ws001&format=pdf` returned `200`.
 - `node --check pocketbase/pb_migrations/0003_item_assets.js` passed after the PDF checkpoint.
 - `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the PDF checkpoint.
 - `node --check pocketbase/pb_hooks/item_detail.pb.js` passed after the PDF checkpoint.
