@@ -6,32 +6,40 @@ Last updated: 2026-05-04
 
 Personal archive v0.1 is past the initial schema/seed boundary and is now in live UI/product-surface plus Track 2 import iteration.
 
-The app has a working PocketBase-backed archive read path, item detail path, core write paths, first collection view, Austen/Ridgeway-inspired archive UI shell, and first real local image import path.
+The app has a working PocketBase-backed archive read path, item detail path, core write paths, first collection view, Austen/Ridgeway-inspired archive UI shell, local image import, and local PDF import/reader path.
 
 ## Latest Accepted Result
 
-- Latest archive card/search/nav polish checkpoint:
+- Latest nav/settings/search dock checkpoint:
+  - Commit: `4e58bc0 Polish nav settings and search dock`
+- Latest PDF import/reader checkpoint:
+  - Commit: `90f1802 Implement local PDF import and reader`
+- Prior archive card/search/nav polish checkpoint:
   - Commit: `06de7d6 Polish archive card metadata and controls`
-- Latest import checkpoint:
+- Prior image import checkpoint:
   - Commit: `553df61 Implement first local image import path`
 - Latest UI checkpoint:
   - Commit: `172afbf Checkpoint archive UI polish`
 - Prior nav checkpoint:
   - Commit: `8e07f8d Refine Austen-style archive navigation`
 - Current archive surface includes:
-  - centered fixed pill navigation with live dot, Index, Views, Filters, Info, and Settings shell
-  - centered secondary pill row for Index/View/Filter/Info/Settings choices
+  - centered fixed pill navigation with live dot, Index, Views, Filters, and Settings shell
+  - centered secondary pill row for Index/View/Filter choices
   - Gallery grid with `2-8` column controls
   - Spotlight-style bottom search/import dock
   - simplified archive cards with equal preview rhythm, below-thumbnail truncated labels, and hover-only action affordances
   - card hover/focus metadata tags inside the preview frame for source, kind, upload/local status, rights warning, and collection count
   - card hover/focus label swap from title/filename to `added ... ago` when `createdAt` is available
+  - PDF link cards can render a same-origin first-page preview shell when an asset file is available
 - Current item-card read model includes:
   - `createdAt`
   - `collectionCount`
+  - PDF link asset fields for local PDF card previews
 - Current search/nav polish includes:
   - bottom search placeholder: `Search archive`
   - nav pill text reveal refined to slide/blur inside the pill mask
+  - one continuous blurred secondary-row membrane around split filter groups
+  - Settings shortcut fields are editable locally and persisted in `localStorage`
 - Product Sans is wired through local `@font-face` URLs, but the actual font files are not present yet:
   - `src/assets/fonts/ProductSans-Regular.woff2`
   - `src/assets/fonts/ProductSans-Bold.woff2`
@@ -39,16 +47,20 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
   - URL capture creates live `link` records through `/api/vita/item-capture`
   - note capture creates live `note` records through `/api/vita/item-capture`
   - local image upload creates live `image` records with `items_image.file_ref`
-  - PDF, video, audio, and other file types are still staged as unsupported
+  - local PDF upload creates live `link` records with `items_link.content_type='pdf'` plus `item_assets.role='source_file'`
+  - video, audio, and other file types are still staged as unsupported
 
 ## Verified Runtime Notes
 
-- `node --check pocketbase/pb_hooks/item_cards.pb.js` passed after the archive card/search/nav polish checkpoint.
-- `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the image import checkpoint.
-- `npm run typecheck` passed after the archive card/search/nav polish checkpoint.
-- `npm run build` passed after the archive card/search/nav polish checkpoint.
+- `node --check pocketbase/pb_migrations/0003_item_assets.js` passed after the PDF checkpoint.
+- `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the PDF checkpoint.
+- `node --check pocketbase/pb_hooks/item_detail.pb.js` passed after the PDF checkpoint.
+- `node --check pocketbase/pb_hooks/item_delete.pb.js` passed after the PDF checkpoint.
+- `npm run typecheck` passed after the latest nav/settings/search checkpoint.
+- `npm run build` passed after the latest nav/settings/search checkpoint.
 - `http://127.0.0.1:5173/` returned `200`.
 - `http://127.0.0.1:5173/?type=image` returned `200`.
+- `http://127.0.0.1:5173/pdf-preview?...` returned `200` for the same-origin PDF preview route.
 - `GET /api/vita/item-cards?workspace_id=seed:ws001&type=image` returned `200` and includes `createdAt` plus `collectionCount`.
 - `GET /api/vita/item-detail?workspace_id=seed:ws001&item_id=<imported-image-id>` returned `200`.
 - `GET /api/vita/imported-file?key=<items_image.file_ref>` returned `200 image/png`.
@@ -77,22 +89,22 @@ Do not sweep these into UI commits. Review them separately before staging.
 
 ## Next Task
 
-Continue Track 2 import with the next file-ingestion slice.
+Implement the first collection creation/add-to-collection slice from the card `+` affordance.
 
 Recommended next slice:
 
-- design the PDF/media import backend path now that local image import works
-- decide whether PDF/media belong in the existing item-type tables or need a new asset/file model
-- keep URL, note, and local image import behavior unchanged
-- avoid schema changes unless a concrete ingestion incompatibility is proven
+- use the existing hover-only card `+` affordance as the entry point
+- add a narrow UI for creating a collection or attaching the selected item to an existing collection
+- preserve the current item detail collection-attach path
+- keep collection creation/add behavior focused on the archive card workflow only
 
 ## In-Scope Files For Next Slice
 
-- `src/components/spotlight/SpotlightDock.tsx`
 - `src/App.tsx`
-- `src/data/pocketBaseItemCapture.ts`
-- `pocketbase/pb_hooks/item_capture.pb.js`
-- `SCHEMA.md` and migration files only if PDF/media support proves a concrete schema gap
+- `src/components/items/ItemCard.tsx`
+- `src/data/pocketBaseItemCollection.ts`
+- `pocketbase/pb_hooks/item_collection.pb.js`
+- collection creation endpoint/files only if no existing path can support creating a collection
 - `README.md` and/or `docs/runbooks/current-handoff.md` only if workflow docs need alignment
 
 ## Out-Of-Scope Files For Next Slice
@@ -102,15 +114,16 @@ Recommended next slice:
 - existing item-detail behavior
 - CollectionView behavior
 - unrelated nav/card polish
-- URL, note, and local image import rewrites
+- URL, note, local image, and local PDF import rewrites
 - `.DS_Store` files and `.claude/`
 
 ## Done-When Criteria
 
-The next Track 2 planning/implementation slice is done when:
+The next collection slice is done when:
 
-- PDF/media import is either implemented narrowly or blocked by a documented schema decision
-- URL, note, and local image capture continue to work in live PocketBase mode
-- source metadata behavior is explicit for any newly supported input type
+- an archive card can open the collection add/create surface from `+`
+- an item can be attached to an existing collection from the archive card flow
+- collection creation is implemented only if needed for the chosen flow
+- current item-detail collection behavior still works
 - `npm run typecheck` and `npm run build` pass
-- live-mode startup and verification steps are documented if they change
+- live-mode verification covers the card collection flow
