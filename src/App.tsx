@@ -494,6 +494,13 @@ export function App() {
           sourceExternalId: normalizedUrl,
           actor: "system",
         });
+      } else if (captureInput.type === "image") {
+        await itemCaptureWriter.captureImage({
+          workspaceId,
+          type: "image",
+          file: captureInput.file,
+          actor: "system",
+        });
       } else {
         await itemCaptureWriter.captureNote({
           workspaceId,
@@ -507,7 +514,13 @@ export function App() {
       const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
       setItems(nextItems);
       setReadError(null);
-      setCaptureNotice(captureInput.type === "link" ? "Imported URL." : "Added note.");
+      setCaptureNotice(
+        captureInput.type === "link"
+          ? "Imported URL."
+          : captureInput.type === "image"
+            ? "Imported image."
+            : "Added note.",
+      );
     } catch (error: unknown) {
       console.error(error);
       setCaptureError("Unable to import.");

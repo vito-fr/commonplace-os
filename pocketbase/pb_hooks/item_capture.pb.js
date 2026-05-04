@@ -1,5 +1,68 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+routerAdd("GET", "/api/vita/imported-file", (e) => {
+  function isSafeImportedFileKey(fileKey) {
+    return (
+      typeof fileKey === "string" &&
+      fileKey.startsWith("imports/") &&
+      !fileKey.includes("..") &&
+      !fileKey.includes("\\") &&
+      fileKey.length <= 500
+    );
+  }
+
+  function fileNameFromKey(fileKey) {
+    const parts = fileKey.split("/");
+    return parts[parts.length - 1] || "imported-file";
+  }
+
+  function mimeTypeForImportedFile(fileKey) {
+    const lower = fileNameFromKey(fileKey).toLowerCase();
+
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+      return "image/jpeg";
+    }
+
+    if (lower.endsWith(".png")) {
+      return "image/png";
+    }
+
+    if (lower.endsWith(".webp")) {
+      return "image/webp";
+    }
+
+    if (lower.endsWith(".gif")) {
+      return "image/gif";
+    }
+
+    if (lower.endsWith(".avif")) {
+      return "image/avif";
+    }
+
+    return "application/octet-stream";
+  }
+
+  const fileKey = e.request.url.query().get("key");
+
+  if (!isSafeImportedFileKey(fileKey)) {
+    throw new BadRequestError("file key is invalid");
+  }
+
+  const filesystem = e.app.newFilesystem();
+  let reader = null;
+
+  try {
+    reader = filesystem.getReader(fileKey);
+    e.stream(200, mimeTypeForImportedFile(fileKey), reader);
+  } finally {
+    if (reader) {
+      reader.close();
+    }
+
+    filesystem.close();
+  }
+});
+
 routerAdd("POST", "/api/vita/item-capture", (e) => {
   const body = new DynamicModel({
     workspace_id: "",
@@ -16,9 +79,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   const noteBody = optionalString(body.body);
   const rawUrl = optionalString(body.url);
   const actor = optionalString(body.actor) || "system";
+  let uploadedFile = null;
 
-  if (!["note", "link"].includes(type)) {
-    throw new BadRequestError("capture type must be note or link");
+  if (!["note", "link", "image"].includes(type)) {
+    throw new BadRequestError("capture type must be note, link, or image");
   }
 
   if (type === "note" && !noteBody) {
@@ -27,6 +91,15 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
   if (type === "link" && !rawUrl) {
     throw new BadRequestError("url is required");
+  }
+
+  if (type === "image") {
+    const uploadedFiles = e.findUploadedFiles("file");
+    uploadedFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
+  }
+
+  if (type === "image" && !uploadedFile) {
+    throw new BadRequestError("file is required");
   }
 
   function requiredString(value, fieldName) {
@@ -68,6 +141,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   }
 
   function itemIdFor(itemType, timestamp) {
+    if (itemType === "image") {
+      return `capture:image:${timestamp}:${idSuffix()}`;
+    }
+
     if (itemType === "link") {
       return `capture:link:${timestamp}:${idSuffix()}`;
     }
@@ -79,12 +156,32 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return `manual:note:${timestamp}:${idSuffix()}`;
   }
 
+  function imageExternalIdFor(timestamp) {
+    return `local:image:${timestamp}:${idSuffix()}`;
+  }
+
   function eventIdFor(itemId, timestamp) {
     return `capture:event:${itemId}:${timestamp}:${idSuffix()}`;
   }
 
   function manualSourceIdFor(workspaceId) {
     return `source:manual:${workspaceId}`;
+  }
+
+  function localSourceIdFor(workspaceId) {
+    return `source:local:${workspaceId}`;
+  }
+
+  function sourceIdFor(workspaceId, sourceKind, sourceIdentifier) {
+    if (sourceKind === "local") {
+      return localSourceIdFor(workspaceId);
+    }
+
+    if (sourceKind === "manual") {
+      return manualSourceIdFor(workspaceId);
+    }
+
+    return `source:${sourceKind}:${workspaceId}:${sourceIdentifier.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
   }
 
   function urlSourceIdFor(workspaceId, identifier) {
@@ -125,6 +222,54 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return "unknown";
   }
 
+  function fileOriginalName(file) {
+    return sanitizeFileName(file.originalName || file.name || "imported-image");
+  }
+
+  function sanitizeFileName(value) {
+    const cleaned = String(value)
+      .trim()
+      .replace(/[/\\?%*:|"<>]/g, "-")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
+
+    return cleaned || "imported-image";
+  }
+
+  function safePathSegment(value) {
+    return String(value).replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
+  function mimeTypeForFileName(fileName) {
+    const lower = fileName.toLowerCase();
+
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+      return "image/jpeg";
+    }
+
+    if (lower.endsWith(".png")) {
+      return "image/png";
+    }
+
+    if (lower.endsWith(".webp")) {
+      return "image/webp";
+    }
+
+    if (lower.endsWith(".gif")) {
+      return "image/gif";
+    }
+
+    if (lower.endsWith(".avif")) {
+      return "image/avif";
+    }
+
+    return "";
+  }
+
+  function imageFileKeyFor(workspaceId, itemId, fileName) {
+    return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/${fileName}`;
+  }
+
   let result = null;
 
   e.app.runInTransaction((txApp) => {
@@ -149,9 +294,13 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     let sourceExternalId = optionalString(body.source_external_id);
     let normalizedUrl = "";
     let linkContentType = null;
+    let imageFileName = "";
+    let imageFileRef = "";
+    let imageMimeType = "";
     let sourceKind = "manual";
     let sourceIdentifier = "manual";
     let sourceLabel = "Manual entries";
+    let itemTitle = null;
 
     if (type === "link") {
       normalizedUrl = normalizeUrl(rawUrl);
@@ -160,6 +309,19 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       sourceIdentifier = urlIdentifierFor(normalizedUrl);
       sourceLabel = sourceIdentifier;
       linkContentType = linkContentTypeFor(normalizedUrl);
+    } else if (type === "image") {
+      imageFileName = fileOriginalName(uploadedFile);
+      imageMimeType = mimeTypeForFileName(imageFileName);
+
+      if (!imageMimeType) {
+        throw new BadRequestError("image file must be jpg, png, webp, gif, or avif");
+      }
+
+      sourceExternalId = sourceExternalId || imageExternalIdFor(now);
+      sourceKind = "local";
+      sourceIdentifier = "local";
+      sourceLabel = "Local files";
+      itemTitle = imageFileName;
     } else {
       sourceExternalId = sourceExternalId || externalIdFor(now);
     }
@@ -209,7 +371,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       if (sourceRows.length > 0) {
         sourceId = sourceRows[0].id;
       } else {
-        sourceId = manualSourceIdFor(workspaceId);
+        sourceId = sourceIdFor(workspaceId, sourceKind, sourceIdentifier);
         txApp
           .db()
           .newQuery(
@@ -296,6 +458,24 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         return;
       }
 
+      if (type === "image") {
+        result = {
+          created: false,
+          item: {
+            id: existing.id,
+            workspaceId,
+            type,
+            status: existing.status,
+            sourceId,
+            sourceExternalId,
+            createdAt: existing.createdAt,
+            updatedAt: existing.createdAt,
+          },
+          event: null,
+        };
+        return;
+      }
+
       txApp
         .db()
         .newQuery(
@@ -329,11 +509,30 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
     const itemId = itemIdFor(type, now);
     const eventId = eventIdFor(itemId, now);
-    const metadata = JSON.stringify({
+    if (type === "image") {
+      imageFileRef = imageFileKeyFor(workspaceId, itemId, imageFileName);
+      const filesystem = txApp.newFilesystem();
+      try {
+        filesystem.uploadFile(uploadedFile, imageFileRef);
+      } finally {
+        filesystem.close();
+      }
+    }
+
+    const metadataBody = {
       source_id: sourceId,
       source_external_id: sourceExternalId,
-      capture_type: type === "link" ? "url" : "manual_note",
-    });
+      capture_type: type === "link" ? "url" : type === "image" ? "local_image" : "manual_note",
+    };
+
+    if (type === "image") {
+      metadataBody.file_ref = imageFileRef;
+      metadataBody.mime_type = imageMimeType;
+      metadataBody.original_name = imageFileName;
+      metadataBody.size = uploadedFile.size;
+    }
+
+    const metadata = JSON.stringify(metadataBody);
 
     txApp
       .db()
@@ -361,7 +560,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
             {:workspaceId},
             {:type},
             'active',
-            NULL,
+            {:itemTitle},
             NULL,
             NULL,
             {:sourceId},
@@ -376,7 +575,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           )
         `,
       )
-      .bind({ itemId, workspaceId, type, sourceId, sourceExternalId, now })
+      .bind({ itemId, workspaceId, type, itemTitle, sourceId, sourceExternalId, now })
       .execute();
 
     if (type === "note") {
@@ -397,7 +596,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         )
         .bind({ itemId, noteBody })
         .execute();
-    } else {
+    } else if (type === "link") {
       txApp
         .db()
         .newQuery(
@@ -424,6 +623,34 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           linkContentType,
           now,
         })
+        .execute();
+    } else {
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO items_image (
+              item_id,
+              file_ref,
+              mime_type,
+              width,
+              height,
+              dominant_colors,
+              perceptual_hash,
+              ocr_text
+            ) VALUES (
+              {:itemId},
+              {:imageFileRef},
+              {:imageMimeType},
+              NULL,
+              NULL,
+              NULL,
+              NULL,
+              NULL
+            )
+          `,
+        )
+        .bind({ itemId, imageFileRef, imageMimeType })
         .execute();
     }
 
@@ -455,13 +682,13 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
     result = {
       created: true,
-        item: {
-          id: itemId,
-          workspaceId,
-          type,
-          status: "active",
-          sourceId,
-          sourceExternalId,
+      item: {
+        id: itemId,
+        workspaceId,
+        type,
+        status: "active",
+        sourceId,
+        sourceExternalId,
         createdAt: now,
         updatedAt: now,
       },

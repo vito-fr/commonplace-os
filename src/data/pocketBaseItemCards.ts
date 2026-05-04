@@ -1,5 +1,6 @@
 import type { ItemCardProps } from "../components/items";
 import type { ItemCardQuery, ItemCardReader } from "./itemCardReader";
+import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type RemoteItemCard = Omit<ItemCardProps, "onNavigate">;
@@ -26,7 +27,7 @@ export function createPocketBaseItemCardReader({
         throw new Error(`PocketBase item card read failed with HTTP ${response.status}`);
       }
 
-      return parseItemCardsResponse((await response.json()) as PocketBaseItemCardResponse);
+      return parseItemCardsResponse((await response.json()) as PocketBaseItemCardResponse, baseUrl);
     },
   };
 }
@@ -58,7 +59,7 @@ function buildItemCardsUrl(baseUrl: string, endpointPath: string, query: ItemCar
   return url;
 }
 
-function parseItemCardsResponse(payload: PocketBaseItemCardResponse) {
+function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: string) {
   const rows = Array.isArray(payload) ? payload : payload.items;
 
   if (!Array.isArray(rows)) {
@@ -67,6 +68,7 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse) {
 
   return rows.map((row) => ({
     ...row,
+    imageUrl: resolvePocketBaseFileUrl(baseUrl, row.imageUrl),
     onNavigate: () => undefined,
   }));
 }

@@ -717,6 +717,10 @@ function CollectionAttachForm({
 }
 
 function renderHero(item: ItemDetail) {
+  if (item.type === "image" && item.content.image?.fileRef) {
+    return <img className="item-detail__hero-image" src={item.content.image.fileRef} alt={item.title ?? ""} />;
+  }
+
   if (item.type === "caption") {
     return <p className="item-detail__text-hero">{item.content.caption?.body ?? "Caption body unavailable."}</p>;
   }

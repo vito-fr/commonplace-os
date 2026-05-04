@@ -872,6 +872,7 @@ select:focus-visible {
   gap: 12px;
   padding: 12px 14px;
   color: color-mix(in srgb, var(--dock-cell-ink) 72%, transparent);
+  cursor: pointer;
 }
 
 .spotlight-import-panel__drop--active {
@@ -1434,6 +1435,14 @@ select:focus-visible {
   border-top: 1px solid var(--color-rule);
   border-bottom: 1px solid var(--color-rule);
   background: var(--color-rule);
+}
+
+.item-detail__hero-image {
+  display: block;
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  background: var(--color-paper);
 }
 
 .item-detail__media-placeholder,

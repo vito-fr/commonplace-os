@@ -4,7 +4,8 @@ import { gsap } from "../../motion/MotionShell";
 
 export type SpotlightCaptureRequest =
   | { type: "link"; url: string }
-  | { type: "note"; body: string };
+  | { type: "note"; body: string }
+  | { type: "image"; file: File };
 
 export type SpotlightDockProps = {
   value: string;
@@ -43,6 +44,7 @@ export function SpotlightDock({
   const inputWrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const importInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusSearchRef = useRef(false);
   const isSearchOpen = activeMode === "search";
   const isImportOpen = activeMode === "import";
@@ -175,7 +177,7 @@ export function SpotlightDock({
     }
 
     if (importMode === "file") {
-      setFileNotice("File import is next. Add a URL or note for now.");
+      setFileNotice("Drop or choose an image to import.");
       return;
     }
 
@@ -196,16 +198,40 @@ export function SpotlightDock({
     }
   };
 
-  const stageFileImport = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const file = event.dataTransfer.files.item(0);
+  const captureFile = async (file: File | null) => {
     if (!file) {
       setFileNotice("File import is next. URL and note import are live.");
       return;
     }
 
     setImportMode("file");
-    setFileNotice(`${file.name} staged. File import is next; no file was added.`);
+
+    if (!file.type.startsWith("image/")) {
+      setFileNotice(`${file.name} staged. PDF and media import are next.`);
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      setFileNotice("Live mode required.");
+      return;
+    }
+
+    try {
+      setFileNotice(`Importing ${file.name}.`);
+      await onCapture({ type: "image", file });
+      setFileNotice(null);
+    } catch {
+      // App owns the persistent capture error message.
+    }
+  };
+
+  const stageFileImport = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    void captureFile(event.dataTransfer.files.item(0));
+  };
+
+  const chooseFile = () => {
+    fileInputRef.current?.click();
   };
 
   const openSearch = () => {
@@ -258,7 +284,10 @@ export function SpotlightDock({
                 className="spotlight-dock__cell"
                 data-active={importMode === "file" ? "true" : "false"}
                 type="button"
-                onClick={() => setImportMode("file")}
+                onClick={() => {
+                  setImportMode("file");
+                  chooseFile();
+                }}
               >
                 File
               </button>
@@ -278,12 +307,31 @@ export function SpotlightDock({
             ) : null}
             <div
               className={`spotlight-import-panel__drop${importMode === "file" ? " spotlight-import-panel__drop--active" : ""}`}
+              onClick={chooseFile}
               onDragOver={(event) => event.preventDefault()}
               onDrop={stageFileImport}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  chooseFile();
+                }
+              }}
             >
-              Drop image, media, or PDF here
-              <span>storage path next</span>
+              Drop or choose image, media, or PDF
+              <span>images import now</span>
             </div>
+            <input
+              ref={fileInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/*,application/pdf,video/*,audio/*"
+              onChange={(event) => {
+                void captureFile(event.target.files?.item(0) ?? null);
+                event.currentTarget.value = "";
+              }}
+            />
             <div className="spotlight-import-panel__actions">
               <button
                 className="spotlight-dock__cell"
@@ -360,5 +408,5 @@ function getImportHint(importMode: ImportMode) {
     return "manual note";
   }
 
-  return "local file staged";
+  return "image upload";
 }

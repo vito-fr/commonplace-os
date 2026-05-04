@@ -1,5 +1,6 @@
 import type { ItemStatus, ItemType } from "../components/atoms";
 import type { RightsStatus } from "../components/items";
+import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -155,7 +156,7 @@ export function createPocketBaseItemDetailReader({
         throw new Error("PocketBase item detail response must include { item }");
       }
 
-      return payload.item;
+      return resolveItemDetailFileRefs(payload.item, baseUrl);
     },
   };
 }
@@ -169,4 +170,21 @@ function buildItemDetailUrl(baseUrl: string, endpointPath: string, query: ItemDe
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+}
+
+function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetail {
+  if (!item.content.image) {
+    return item;
+  }
+
+  return {
+    ...item,
+    content: {
+      ...item.content,
+      image: {
+        ...item.content.image,
+        fileRef: resolvePocketBaseFileUrl(baseUrl, item.content.image.fileRef),
+      },
+    },
+  };
 }

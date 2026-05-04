@@ -18,12 +18,20 @@ export type ItemUrlCaptureCreate = {
   actor?: string;
 };
 
+export type ItemImageCaptureCreate = {
+  workspaceId: string;
+  type: "image";
+  file: File;
+  sourceExternalId?: string;
+  actor?: string;
+};
+
 export type ItemCaptureCreateResult = {
   created: boolean;
   item: {
     id: string;
     workspaceId: string;
-    type: "note";
+    type: "note" | "link" | "image";
     status: ItemStatus;
     sourceId: string;
     sourceExternalId: string;
@@ -56,9 +64,12 @@ export type ItemUrlCaptureCreateResult = {
   } | null;
 };
 
+export type ItemImageCaptureCreateResult = ItemCaptureCreateResult;
+
 export type ItemCaptureWriter = {
   captureNote(change: ItemCaptureCreate): Promise<ItemCaptureCreateResult>;
   captureUrl(change: ItemUrlCaptureCreate): Promise<ItemUrlCaptureCreateResult>;
+  captureImage(change: ItemImageCaptureCreate): Promise<ItemImageCaptureCreateResult>;
 };
 
 export type PocketBaseItemCaptureWriterOptions = {
@@ -123,6 +134,39 @@ export function createPocketBaseItemCaptureWriter({
       const payload = (await response.json()) as ItemUrlCaptureCreateResult;
       if (!payload.item || typeof payload.created !== "boolean") {
         throw new Error("PocketBase URL capture response must include { created, item }");
+      }
+
+      return payload;
+    },
+    async captureImage(change) {
+      const formData = new FormData();
+      formData.set("workspace_id", change.workspaceId);
+      formData.set("type", change.type);
+      formData.set("file", change.file);
+
+      if (change.sourceExternalId) {
+        formData.set("source_external_id", change.sourceExternalId);
+      }
+
+      if (change.actor) {
+        formData.set("actor", change.actor);
+      }
+
+      const response = await fetcher(buildCaptureUrl(baseUrl, endpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase image capture write failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as ItemImageCaptureCreateResult;
+      if (!payload.item || typeof payload.created !== "boolean") {
+        throw new Error("PocketBase image capture response must include { created, item }");
       }
 
       return payload;

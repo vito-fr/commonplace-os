@@ -1,3 +1,5 @@
+import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
+
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export type CollectionOption = {
@@ -123,7 +125,13 @@ export function createPocketBaseItemCollectionClient({
         throw new Error("PocketBase collection detail response must include { collection }");
       }
 
-      return payload.collection;
+      return {
+        ...payload.collection,
+        items: payload.collection.items.map((item) => ({
+          ...item,
+          imageUrl: resolvePocketBaseFileUrl(baseUrl, item.imageUrl),
+        })),
+      };
     },
 
     async listCollectionOptions(query) {
