@@ -66,6 +66,119 @@ routerAdd("GET", "/api/vita/collection-options", (e) => {
   return e.json(200, { collections });
 });
 
+routerAdd("GET", "/api/vita/collection-index", (e) => {
+  const query = e.request.url.query();
+  const workspaceId = query.get("workspace_id");
+
+  if (!workspaceId) {
+    throw new BadRequestError("workspace_id is required");
+  }
+
+  function nullableString(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "valid")) {
+      return value.valid ? value.string : null;
+    }
+
+    return value;
+  }
+
+  function formatKindSummary(row) {
+    const parts = [];
+    const imageCount = Number(row.imageCount) || 0;
+    const captionCount = Number(row.captionCount) || 0;
+    const noteCount = Number(row.noteCount) || 0;
+    const linkCount = Number(row.linkCount) || 0;
+
+    if (imageCount > 0) {
+      parts.push(`${imageCount} ${imageCount === 1 ? "image" : "images"}`);
+    }
+
+    if (captionCount > 0) {
+      parts.push(`${captionCount} ${captionCount === 1 ? "caption" : "captions"}`);
+    }
+
+    if (noteCount > 0) {
+      parts.push(`${noteCount} ${noteCount === 1 ? "note" : "notes"}`);
+    }
+
+    if (linkCount > 0) {
+      parts.push(`${linkCount} ${linkCount === 1 ? "link" : "links"}`);
+    }
+
+    return parts.join(" · ") || "no pieces";
+  }
+
+  const rows = arrayOf(
+    new DynamicModel({
+      id: "",
+      workspaceId: "",
+      name: "",
+      description: nullString(),
+      createdAt: "",
+      lastUpdatedAt: "",
+      pieceCount: 0,
+      imageCount: 0,
+      captionCount: 0,
+      noteCount: 0,
+      linkCount: 0,
+    }),
+  );
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        SELECT
+          c.id,
+          c.workspace_id AS workspaceId,
+          c.name,
+          c.description,
+          c.created_at AS createdAt,
+          CASE
+            WHEN MAX(i.updated_at) IS NOT NULL AND MAX(i.updated_at) > c.created_at THEN MAX(i.updated_at)
+            ELSE c.created_at
+          END AS lastUpdatedAt,
+          COUNT(i.id) AS pieceCount,
+          SUM(CASE WHEN i.type = 'image' THEN 1 ELSE 0 END) AS imageCount,
+          SUM(CASE WHEN i.type = 'caption' THEN 1 ELSE 0 END) AS captionCount,
+          SUM(CASE WHEN i.type = 'note' THEN 1 ELSE 0 END) AS noteCount,
+          SUM(CASE WHEN i.type = 'link' THEN 1 ELSE 0 END) AS linkCount
+        FROM collections c
+        LEFT JOIN collection_items ci
+          ON ci.collection_id = c.id
+        LEFT JOIN items i
+          ON i.id = ci.item_id
+          AND i.workspace_id = c.workspace_id
+        WHERE c.workspace_id = {:workspaceId}
+        GROUP BY c.id, c.workspace_id, c.name, c.description, c.created_at
+        ORDER BY lastUpdatedAt DESC, c.name ASC, c.id ASC
+      `,
+    )
+    .bind({ workspaceId })
+    .all(rows);
+
+  const collections = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    collections.push({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      name: row.name,
+      description: nullableString(row.description),
+      createdAt: row.createdAt,
+      lastUpdatedAt: row.lastUpdatedAt,
+      pieceCount: row.pieceCount,
+      kindSummary: formatKindSummary(row),
+    });
+  }
+
+  return e.json(200, { collections });
+});
+
 routerAdd("GET", "/api/vita/collection-detail", (e) => {
   const query = e.request.url.query();
   const workspaceId = query.get("workspace_id");

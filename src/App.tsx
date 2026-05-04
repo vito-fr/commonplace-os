@@ -10,6 +10,7 @@ import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture"
 import {
   createPocketBaseItemCollectionClient,
   type CollectionDetail,
+  type CollectionIndexItem,
   type CollectionOption,
 } from "./data/pocketBaseItemCollection";
 import { createPocketBaseItemDeleteWriter } from "./data/pocketBaseItemDelete";
@@ -116,8 +117,11 @@ export function App() {
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
+  const [collectionIndex, setCollectionIndex] = useState<CollectionIndexItem[]>([]);
   const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
+  const [isCollectionIndexLoading, setIsCollectionIndexLoading] = useState(false);
   const [isCollectionLoading, setIsCollectionLoading] = useState(false);
+  const [collectionIndexError, setCollectionIndexError] = useState<string | null>(null);
   const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
   const [cardCollectionItem, setCardCollectionItem] = useState<ItemCardProps | null>(null);
   const [cardCollectionAnchor, setCardCollectionAnchor] = useState<CardCollectionIslandPosition | null>(null);
@@ -346,6 +350,54 @@ export function App() {
   useEffect(() => {
     let isCurrent = true;
 
+    if (route.kind !== "grid" || archivePanel !== "index") {
+      setCollectionIndexError(null);
+      setIsCollectionIndexLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    if (!isPocketBaseMode) {
+      setCollectionIndex([]);
+      setCollectionIndexError("Collection index requires live archive mode.");
+      setIsCollectionIndexLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsCollectionIndexLoading(true);
+    setCollectionIndexError(null);
+
+    itemCollectionClient
+      .listCollectionIndex({ workspaceId })
+      .then((nextCollections) => {
+        if (isCurrent) {
+          setCollectionIndex(nextCollections);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          console.error(error);
+          setCollectionIndex([]);
+          setCollectionIndexError("Unable to load collections.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsCollectionIndexLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [archivePanel, route.kind]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
     if (route.kind !== "collection") {
       setCollectionDetail(null);
       setCollectionReadError(null);
@@ -409,6 +461,7 @@ export function App() {
   const openCollection = (collectionId: string) => {
     window.history.pushState(null, "", buildCollectionUrl(collectionId));
     setRoute({ kind: "collection", collectionId });
+    setArchivePanel(null);
   };
 
   const closeItemDetail = () => {
@@ -829,12 +882,16 @@ export function App() {
     renderedRoute.kind === "grid" ? (
       <PillNav
         activePanel={archivePanel}
+        collectionIndex={collectionIndex}
+        collectionIndexError={collectionIndexError}
+        collectionIndexLoading={isCollectionIndexLoading}
         filters={itemCardFilters}
         galleryColumns={galleryColumns}
         isPocketBaseMode={isPocketBaseMode}
         itemCount={items.length}
         loading={isLoading}
         onClearFilters={clearArchiveFilters}
+        onOpenCollection={openCollection}
         onGalleryColumnsChange={updateGalleryColumns}
         onFormatChange={updateFormatFilter}
         onPanelChange={setArchivePanel}

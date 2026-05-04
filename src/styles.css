@@ -528,6 +528,113 @@ select:focus-visible {
   opacity: 0.35;
 }
 
+.collection-index-island {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  z-index: 1002;
+  display: grid;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 112px));
+  gap: 4px;
+  overflow: hidden;
+  border-radius: var(--panel-radius);
+  background: var(--nav-wrapper-bg);
+  padding: 4px;
+  color: var(--nav-cell-ink);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  isolation: isolate;
+  transform: translateX(-50%) translateZ(0);
+  backface-visibility: hidden;
+  animation: settings-island-enter 0.38s cubic-bezier(0.5, 0, 0, 1) both;
+}
+
+.collection-index-island__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: var(--panel-inner-radius);
+  background: var(--nav-cell-bg);
+  padding: 10px 12px;
+}
+
+.collection-index-island__header span {
+  color: var(--nav-cell-ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+.collection-index-island__header small,
+.collection-index-island__status,
+.collection-index-island__row em,
+.collection-index-island__row small {
+  color: color-mix(in srgb, var(--nav-cell-ink) 58%, transparent);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.collection-index-island__status {
+  margin: 0;
+  border-radius: var(--panel-inner-radius);
+  background: var(--nav-cell-bg);
+  padding: 14px 12px;
+}
+
+.collection-index-island__list {
+  display: grid;
+  min-width: 0;
+  max-height: 320px;
+  gap: 4px;
+  overflow: auto;
+}
+
+.collection-index-island__row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  border-radius: var(--panel-inner-radius);
+  background: var(--nav-cell-bg);
+  color: var(--nav-cell-ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.collection-index-island__row span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.collection-index-island__row strong,
+.collection-index-island__row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-index-island__row strong {
+  color: var(--nav-cell-ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
 .nav-cell,
 .subnav-cell {
   position: relative;

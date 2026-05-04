@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import type { ItemStatus, ItemType } from "../atoms";
 import type { ItemCardFilters, ItemFormatFilter, ItemSourceFilter } from "../../data/itemCardReader";
+import type { CollectionIndexItem } from "../../data/pocketBaseItemCollection";
 import { gsap } from "../../motion/MotionShell";
 
 export type PillNavPanel = "index" | "views" | "filters" | "settings";
@@ -19,6 +20,7 @@ type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
 type ArchiveFormatFilter = ItemFormatFilter | "all";
+type IndexMode = "all" | "collections";
 type FilterFamily = "state" | "kind" | "origin" | "format";
 type SiteTheme = "light" | "dark";
 type SettingsSection = "appearance" | "gallery" | "shortcuts" | "import" | "system";
@@ -44,6 +46,9 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
 
 export type PillNavProps = {
   activePanel: PillNavPanel | null;
+  collectionIndex: CollectionIndexItem[];
+  collectionIndexError: string | null;
+  collectionIndexLoading: boolean;
   onPanelChange: (panel: PillNavPanel | null) => void;
   filters: ItemCardFilters;
   loading: boolean;
@@ -60,6 +65,7 @@ export type PillNavProps = {
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
   onClearFilters: () => void;
+  onOpenCollection: (collectionId: string) => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
@@ -87,12 +93,16 @@ type SubnavGroup = {
 export function PillNav(props: PillNavProps) {
   const {
     activePanel,
+    collectionIndex,
+    collectionIndexError,
+    collectionIndexLoading,
     filters,
     galleryColumns,
     isPocketBaseMode,
     itemCount,
     loading,
     onClearFilters,
+    onOpenCollection,
     onFormatChange,
     onGalleryColumnsChange,
     onPanelChange,
@@ -111,6 +121,7 @@ export function PillNav(props: PillNavProps) {
     typeOptions,
     formatOptions,
   } = props;
+  const [activeIndexMode, setActiveIndexMode] = useState<IndexMode>("all");
   const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
   const primaryGroupRef = useRef<HTMLDivElement | null>(null);
   usePrimaryNavIntro(primaryGroupRef);
@@ -126,9 +137,11 @@ export function PillNav(props: PillNavProps) {
       : `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
   const subnavGroups = getSubnavGroups({
     activeFilterFamily,
+    activeIndexMode,
     filters,
     loading,
     onClearFilters,
+    setActiveIndexMode,
     onFormatChange,
     onSourceChange,
     onStatusChange,
@@ -180,6 +193,15 @@ export function PillNav(props: PillNavProps) {
           onSiteThemeChange={onSiteThemeChange}
           onShortcutChange={onShortcutChange}
           onShortcutReset={onShortcutReset}
+        />
+      ) : null}
+
+      {activePanel === "index" && activeIndexMode === "collections" ? (
+        <CollectionIndexIsland
+          collections={collectionIndex}
+          error={collectionIndexError}
+          loading={collectionIndexLoading}
+          onOpenCollection={onOpenCollection}
         />
       ) : null}
     </header>
@@ -568,6 +590,7 @@ function AnimatedSubnavGroup({
 
 function getSubnavGroups({
   activeFilterFamily,
+  activeIndexMode,
   filters,
   loading,
   onClearFilters,
@@ -579,6 +602,7 @@ function getSubnavGroups({
   onGalleryColumnsChange,
   panel,
   resultLabel,
+  setActiveIndexMode,
   setActiveFilterFamily,
   sourceOptions,
   statusOptions,
@@ -586,6 +610,7 @@ function getSubnavGroups({
   formatOptions,
 }: {
   activeFilterFamily: FilterFamily;
+  activeIndexMode: IndexMode;
   filters: ItemCardFilters;
   loading: boolean;
   onClearFilters: () => void;
@@ -597,6 +622,7 @@ function getSubnavGroups({
   onGalleryColumnsChange: (columns: number) => void;
   panel: PillNavPanel | null;
   resultLabel: string;
+  setActiveIndexMode: (mode: IndexMode) => void;
   setActiveFilterFamily: (family: FilterFamily) => void;
   sourceOptions: ArchiveSourceFilter[];
   statusOptions: ArchiveStatusFilter[];
@@ -608,7 +634,21 @@ function getSubnavGroups({
       {
         key: "index",
         items: [
-          { key: "all-items", label: "All items", onClick: onClearFilters },
+          {
+            key: "all-items",
+            label: "All items",
+            active: activeIndexMode === "all",
+            onClick: () => {
+              setActiveIndexMode("all");
+              onClearFilters();
+            },
+          },
+          {
+            key: "collections",
+            label: "Collections",
+            active: activeIndexMode === "collections",
+            onClick: () => setActiveIndexMode("collections"),
+          },
           { key: "result-count", label: resultLabel },
         ],
       },
@@ -737,6 +777,58 @@ function getSubnavGroups({
     { key: "filters-family", items: familyItems },
     { key: `filters-options:${activeFilterFamily}`, items: optionItems },
   ];
+}
+
+function CollectionIndexIsland({
+  collections,
+  error,
+  loading,
+  onOpenCollection,
+}: {
+  collections: CollectionIndexItem[];
+  error: string | null;
+  loading: boolean;
+  onOpenCollection: (collectionId: string) => void;
+}) {
+  return (
+    <section className="collection-index-island" aria-label="collections index">
+      <div className="collection-index-island__header">
+        <span>Collections</span>
+        <small>{loading ? "loading" : `${collections.length} ${collections.length === 1 ? "set" : "sets"}`}</small>
+      </div>
+
+      {error ? <p className="collection-index-island__status">{error}</p> : null}
+      {loading ? <p className="collection-index-island__status">Loading collections.</p> : null}
+      {!loading && !error && collections.length === 0 ? (
+        <p className="collection-index-island__status">No collections yet.</p>
+      ) : null}
+
+      {!loading && !error && collections.length > 0 ? (
+        <div className="collection-index-island__list">
+          {collections.map((collection) => (
+            <button
+              className="collection-index-island__row"
+              key={collection.id}
+              type="button"
+              onClick={() => onOpenCollection(collection.id)}
+            >
+              <span>
+                <strong>{collection.name}</strong>
+                {collection.description ? <small>{collection.description}</small> : null}
+              </span>
+              <em>
+                {formatCollectionCount(collection.pieceCount)} · {collection.kindSummary}
+              </em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function formatCollectionCount(count: number) {
+  return `${count} ${count === 1 ? "item" : "items"}`;
 }
 
 function PrimaryCell({
