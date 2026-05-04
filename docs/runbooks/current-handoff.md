@@ -10,6 +10,8 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 
 ## Latest Accepted Result
 
+- Latest collection index checkpoint:
+  - Commit: `544dab7 Implement collection index from archive nav`
 - Latest import/filter checkpoint:
   - Commit: `6cb8f67 Improve Spotlight import and archive filters`
 - Latest card add-to-collection checkpoint:
@@ -29,6 +31,7 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 - Current archive surface includes:
   - centered fixed pill navigation with live dot, Index, Views, Filters, and Settings shell
   - centered secondary pill row for Index/View/Filter choices
+  - Index exposes a Collections mode that lists existing collections and routes rows to `/collections/:collectionId`
   - Gallery grid with `2-8` column controls
   - Spotlight-style bottom search/import dock
   - simplified archive cards with equal preview rhythm, below-thumbnail truncated labels, and hover-only action affordances
@@ -73,6 +76,13 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 - `node --check pocketbase/pb_hooks/item_cards.pb.js` passed after the import/filter checkpoint.
 - `npm run typecheck` passed after the import/filter checkpoint.
 - `npm run build` passed after the import/filter checkpoint.
+- `node --check pocketbase/pb_hooks/item_collection.pb.js` passed after the collection index checkpoint.
+- `npm run typecheck` passed after the collection index checkpoint.
+- `npm run build` passed after the collection index checkpoint.
+- `GET /api/vita/collection-index?workspace_id=seed:ws001` returned `200`.
+- `GET /api/vita/collection-detail?workspace_id=seed:ws001&collection_id=seed:col001` returned `200`.
+- `GET /api/vita/collection-options?workspace_id=seed:ws001&item_id=seed:img004` returned `200`.
+- `http://127.0.0.1:5173/collections/seed%3Acol001` returned `200`.
 - `http://127.0.0.1:5173/?format=pdf` returned `200`.
 - `http://127.0.0.1:5173/?source=arena` returned `200`.
 - `GET /api/vita/item-cards?workspace_id=seed:ws001&source=pinterest&q=vita-import-classification-test` returned `200` with `source: pinterest`.
@@ -121,40 +131,38 @@ Do not sweep these into UI commits. Review them separately before staging.
 
 ## Next Task
 
-Implement the first collection management/index slice.
+Implement the first collection hygiene slice.
 
 Recommended next slice:
 
-- expose Collections from the existing `Index` top-nav surface
-- list existing collections with counts and concise metadata
-- route collection rows/cards to the existing `/collections/:collectionId` surface
-- keep rename/delete/deeper collection management out of this slice
+- allow removing an item from a collection from the collection/detail context
+- expose clearer collection membership controls where the item is already attached
+- keep collection rename/delete/deeper collection management out of this slice
 
 ## In-Scope Files For Next Slice
 
 - `src/App.tsx`
 - `src/data/pocketBaseItemCollection.ts`
 - `pocketbase/pb_hooks/item_collection.pb.js`
-- `src/components/nav/PillNav.tsx` if Index needs a collection entry/control
-- `src/styles.css` for the narrow collection index surface styling
+- `src/components/items/ItemDetail.tsx` if the removal control belongs in detail
+- `src/styles.css` for narrow membership-control styling
 
 ## Out-Of-Scope Files For Next Slice
 
 - schema and migration files unless a concrete runtime blocker is proven
 - seed fixture content
-- existing item-detail behavior
-- existing CollectionView behavior beyond routing entry points
+- collection rename/delete/deeper management
+- CollectionView redesign
 - unrelated nav/card polish
 - URL, note, local image, and local PDF import rewrites
 - `.DS_Store` files and `.claude/`
 
 ## Done-When Criteria
 
-The next collection index slice is done when:
+The next collection hygiene slice is done when:
 
-- Index exposes a Collections entry or mode
-- existing collections are visible with enough metadata to choose one
-- selecting a collection opens `/collections/:collectionId`
-- current card add-to-collection and item-detail collection behavior still work
+- an attached item can be removed from a collection through a clear UI affordance
+- already-attached collection memberships are easier to understand at a glance
+- current card add-to-collection, collection index, and item-detail collection behavior still work
 - `npm run typecheck` and `npm run build` pass
-- live-mode verification covers collection listing and collection navigation
+- live-mode verification covers collection membership removal and collection navigation
