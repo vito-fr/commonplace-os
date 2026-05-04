@@ -65,6 +65,13 @@ export type ItemDetailContent = {
     ogMetadata: Record<string, unknown> | null;
     contentType: string | null;
     fetchedAt: string | null;
+    asset: {
+      fileRef: string | null;
+      fileUrl: string | null;
+      originalName: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+    } | null;
   } | null;
 };
 
@@ -173,7 +180,25 @@ function normalizeBaseUrl(baseUrl: string) {
 }
 
 function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetail {
-  if (!item.content.image) {
+  const resolvedImage = item.content.image
+    ? {
+        ...item.content.image,
+        fileRef: resolvePocketBaseFileUrl(baseUrl, item.content.image.fileRef),
+      }
+    : null;
+  const resolvedLink = item.content.link
+    ? {
+        ...item.content.link,
+        asset: item.content.link.asset
+          ? {
+              ...item.content.link.asset,
+              fileUrl: resolvePocketBaseFileUrl(baseUrl, item.content.link.asset.fileRef),
+            }
+          : null,
+      }
+    : null;
+
+  if (!resolvedImage && !resolvedLink) {
     return item;
   }
 
@@ -181,10 +206,8 @@ function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetai
     ...item,
     content: {
       ...item.content,
-      image: {
-        ...item.content.image,
-        fileRef: resolvePocketBaseFileUrl(baseUrl, item.content.image.fileRef),
-      },
+      image: resolvedImage,
+      link: resolvedLink,
     },
   };
 }

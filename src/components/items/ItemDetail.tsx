@@ -730,6 +730,23 @@ function renderHero(item: ItemDetail) {
   }
 
   if (item.type === "link") {
+    const pdfUrl = getPdfUrl(item);
+
+    if (pdfUrl) {
+      return (
+        <div className="item-detail__pdf-hero">
+          <iframe
+            className="item-detail__pdf-frame"
+            src={pdfUrl}
+            title={item.title ?? item.content.link?.asset?.originalName ?? "PDF preview"}
+          />
+          <a className="text-button" href={pdfUrl} target="_blank" rel="noreferrer">
+            Open PDF
+          </a>
+        </div>
+      );
+    }
+
     return (
       <div className="item-detail__link-hero">
         <span className="detail-muted">link</span>
@@ -739,6 +756,19 @@ function renderHero(item: ItemDetail) {
   }
 
   return <div className="item-detail__media-placeholder">image pending</div>;
+}
+
+function getPdfUrl(item: ItemDetail) {
+  if (item.type !== "link" || item.content.link?.contentType !== "pdf") {
+    return null;
+  }
+
+  if (item.content.link.asset?.fileUrl) {
+    return item.content.link.asset.fileUrl;
+  }
+
+  const url = item.content.link.url;
+  return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
 function DetailSectionGroup({

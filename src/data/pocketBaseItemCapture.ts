@@ -26,6 +26,14 @@ export type ItemImageCaptureCreate = {
   actor?: string;
 };
 
+export type ItemPdfCaptureCreate = {
+  workspaceId: string;
+  type: "pdf";
+  file: File;
+  sourceExternalId?: string;
+  actor?: string;
+};
+
 export type ItemCaptureCreateResult = {
   created: boolean;
   item: {
@@ -65,11 +73,13 @@ export type ItemUrlCaptureCreateResult = {
 };
 
 export type ItemImageCaptureCreateResult = ItemCaptureCreateResult;
+export type ItemPdfCaptureCreateResult = ItemCaptureCreateResult;
 
 export type ItemCaptureWriter = {
   captureNote(change: ItemCaptureCreate): Promise<ItemCaptureCreateResult>;
   captureUrl(change: ItemUrlCaptureCreate): Promise<ItemUrlCaptureCreateResult>;
   captureImage(change: ItemImageCaptureCreate): Promise<ItemImageCaptureCreateResult>;
+  capturePdf(change: ItemPdfCaptureCreate): Promise<ItemPdfCaptureCreateResult>;
 };
 
 export type PocketBaseItemCaptureWriterOptions = {
@@ -139,39 +149,70 @@ export function createPocketBaseItemCaptureWriter({
       return payload;
     },
     async captureImage(change) {
-      const formData = new FormData();
-      formData.set("workspace_id", change.workspaceId);
-      formData.set("type", change.type);
-      formData.set("file", change.file);
-
-      if (change.sourceExternalId) {
-        formData.set("source_external_id", change.sourceExternalId);
-      }
-
-      if (change.actor) {
-        formData.set("actor", change.actor);
-      }
-
-      const response = await fetcher(buildCaptureUrl(baseUrl, endpointPath), {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-        body: formData,
+      return captureFile({
+        baseUrl,
+        endpointPath,
+        fetcher,
+        change,
+        failureLabel: "image",
       });
-
-      if (!response.ok) {
-        throw new Error(`PocketBase image capture write failed with HTTP ${response.status}`);
-      }
-
-      const payload = (await response.json()) as ItemImageCaptureCreateResult;
-      if (!payload.item || typeof payload.created !== "boolean") {
-        throw new Error("PocketBase image capture response must include { created, item }");
-      }
-
-      return payload;
+    },
+    async capturePdf(change) {
+      return captureFile({
+        baseUrl,
+        endpointPath,
+        fetcher,
+        change,
+        failureLabel: "PDF",
+      });
     },
   };
+}
+
+async function captureFile({
+  baseUrl,
+  change,
+  endpointPath,
+  failureLabel,
+  fetcher,
+}: {
+  baseUrl: string;
+  change: ItemImageCaptureCreate | ItemPdfCaptureCreate;
+  endpointPath: string;
+  failureLabel: string;
+  fetcher: Fetcher;
+}) {
+  const formData = new FormData();
+  formData.set("workspace_id", change.workspaceId);
+  formData.set("type", change.type);
+  formData.set("file", change.file);
+
+  if (change.sourceExternalId) {
+    formData.set("source_external_id", change.sourceExternalId);
+  }
+
+  if (change.actor) {
+    formData.set("actor", change.actor);
+  }
+
+  const response = await fetcher(buildCaptureUrl(baseUrl, endpointPath), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`PocketBase ${failureLabel} capture write failed with HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as ItemCaptureCreateResult;
+  if (!payload.item || typeof payload.created !== "boolean") {
+    throw new Error(`PocketBase ${failureLabel} capture response must include { created, item }`);
+  }
+
+  return payload;
 }
 
 function buildCaptureUrl(baseUrl: string, endpointPath: string) {

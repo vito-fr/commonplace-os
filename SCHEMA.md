@@ -132,6 +132,29 @@ Extension for `type='link'`.
 | content_type | TEXT | Nullable. CHECK(content_type IS NULL OR content_type IN ('article', 'video', 'pdf', 'audio', 'unknown')) |
 | fetched_at | TEXT | Nullable ISO 8601 UTC timestamp |
 
+### `item_assets`
+
+Stored files attached to an item. v0.1 uses this for local PDF source files while keeping the item itself as `type='link'` with `items_link.content_type='pdf'`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT NOT NULL | Primary key |
+| workspace_id | TEXT NOT NULL | FK -> workspaces(id) |
+| item_id | TEXT NOT NULL | FK -> items(id) |
+| role | TEXT NOT NULL | CHECK(role IN ('source_file')) |
+| file_ref | TEXT NOT NULL | PocketBase filesystem key |
+| original_name | TEXT NOT NULL | Original uploaded filename |
+| mime_type | TEXT NOT NULL | Uploaded file MIME type |
+| size_bytes | INTEGER | Nullable uploaded file size |
+| created_at | TEXT NOT NULL | ISO 8601 UTC |
+
+Constraints:
+- PRIMARY KEY (`id`)
+- UNIQUE (`item_id`, `role`)
+
+Indexes:
+- `idx_item_assets_workspace_item` on (`workspace_id`, `item_id`)
+
 ### `campaign_profiles`
 
 Extension for `type='campaign'`.

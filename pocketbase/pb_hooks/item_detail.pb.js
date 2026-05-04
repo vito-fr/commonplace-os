@@ -90,7 +90,11 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         link.url AS linkUrl,
         link.og_metadata AS linkOgMetadata,
         link.content_type AS linkContentType,
-        link.fetched_at AS linkFetchedAt
+        link.fetched_at AS linkFetchedAt,
+        asset.file_ref AS assetFileRef,
+        asset.original_name AS assetOriginalName,
+        asset.mime_type AS assetMimeType,
+        CASE WHEN asset.size_bytes IS NULL THEN NULL ELSE CAST(asset.size_bytes AS TEXT) END AS assetSizeBytes
       FROM items i
       LEFT JOIN sources s
         ON s.id = i.source_id
@@ -103,6 +107,10 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
+      LEFT JOIN item_assets asset
+        ON asset.item_id = i.id
+        AND asset.workspace_id = i.workspace_id
+        AND asset.role = 'source_file'
       WHERE i.workspace_id = {:workspaceId}
         AND i.id = {:itemId}
       LIMIT 1
@@ -142,6 +150,10 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       linkOgMetadata: nullString(),
       linkContentType: nullString(),
       linkFetchedAt: nullString(),
+      assetFileRef: nullString(),
+      assetOriginalName: nullString(),
+      assetMimeType: nullString(),
+      assetSizeBytes: nullString(),
     },
     { workspaceId, itemId },
   );
@@ -342,6 +354,14 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
             ogMetadata: parseJson(row.linkOgMetadata, null),
             contentType: nullableString(row.linkContentType),
             fetchedAt: nullableString(row.linkFetchedAt),
+            asset: nullableString(row.assetFileRef)
+              ? {
+                  fileRef: nullableString(row.assetFileRef),
+                  originalName: nullableString(row.assetOriginalName),
+                  mimeType: nullableString(row.assetMimeType),
+                  sizeBytes: nullableNumber(row.assetSizeBytes),
+                }
+              : null,
           }
         : null,
   };

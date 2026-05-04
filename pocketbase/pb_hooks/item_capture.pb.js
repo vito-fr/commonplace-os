@@ -39,6 +39,10 @@ routerAdd("GET", "/api/vita/imported-file", (e) => {
       return "image/avif";
     }
 
+    if (lower.endsWith(".pdf")) {
+      return "application/pdf";
+    }
+
     return "application/octet-stream";
   }
 
@@ -81,8 +85,8 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   const actor = optionalString(body.actor) || "system";
   let uploadedFile = null;
 
-  if (!["note", "link", "image"].includes(type)) {
-    throw new BadRequestError("capture type must be note, link, or image");
+  if (!["note", "link", "image", "pdf"].includes(type)) {
+    throw new BadRequestError("capture type must be note, link, image, or pdf");
   }
 
   if (type === "note" && !noteBody) {
@@ -93,12 +97,12 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     throw new BadRequestError("url is required");
   }
 
-  if (type === "image") {
+  if (type === "image" || type === "pdf") {
     const uploadedFiles = e.findUploadedFiles("file");
     uploadedFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
   }
 
-  if (type === "image" && !uploadedFile) {
+  if ((type === "image" || type === "pdf") && !uploadedFile) {
     throw new BadRequestError("file is required");
   }
 
@@ -145,6 +149,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       return `capture:image:${timestamp}:${idSuffix()}`;
     }
 
+    if (itemType === "pdf") {
+      return `capture:pdf:${timestamp}:${idSuffix()}`;
+    }
+
     if (itemType === "link") {
       return `capture:link:${timestamp}:${idSuffix()}`;
     }
@@ -158,6 +166,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
   function imageExternalIdFor(timestamp) {
     return `local:image:${timestamp}:${idSuffix()}`;
+  }
+
+  function pdfExternalIdFor(fileName, fileSize) {
+    return `local:pdf:${safePathSegment(fileName)}:${fileSize || 0}`;
   }
 
   function eventIdFor(itemId, timestamp) {
@@ -222,18 +234,18 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return "unknown";
   }
 
-  function fileOriginalName(file) {
-    return sanitizeFileName(file.originalName || file.name || "imported-image");
+  function fileOriginalName(file, fallbackName) {
+    return sanitizeFileName(file.originalName || file.name || fallbackName, fallbackName);
   }
 
-  function sanitizeFileName(value) {
+  function sanitizeFileName(value, fallbackName) {
     const cleaned = String(value)
       .trim()
       .replace(/[/\\?%*:|"<>]/g, "-")
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-");
 
-    return cleaned || "imported-image";
+    return cleaned || fallbackName;
   }
 
   function safePathSegment(value) {
@@ -270,6 +282,16 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/${fileName}`;
   }
 
+  function pdfMimeTypeForFile(file, fileName) {
+    const uploadedType = typeof file.type === "string" ? file.type.toLowerCase() : "";
+
+    if (uploadedType === "application/pdf") {
+      return "application/pdf";
+    }
+
+    return fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "";
+  }
+
   let result = null;
 
   e.app.runInTransaction((txApp) => {
@@ -294,13 +316,14 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     let sourceExternalId = optionalString(body.source_external_id);
     let normalizedUrl = "";
     let linkContentType = null;
-    let imageFileName = "";
-    let imageFileRef = "";
-    let imageMimeType = "";
+    let assetFileName = "";
+    let assetFileRef = "";
+    let assetMimeType = "";
     let sourceKind = "manual";
     let sourceIdentifier = "manual";
     let sourceLabel = "Manual entries";
     let itemTitle = null;
+    let storedItemType = type;
 
     if (type === "link") {
       normalizedUrl = normalizeUrl(rawUrl);
@@ -310,10 +333,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       sourceLabel = sourceIdentifier;
       linkContentType = linkContentTypeFor(normalizedUrl);
     } else if (type === "image") {
-      imageFileName = fileOriginalName(uploadedFile);
-      imageMimeType = mimeTypeForFileName(imageFileName);
+      assetFileName = fileOriginalName(uploadedFile, "imported-image");
+      assetMimeType = mimeTypeForFileName(assetFileName);
 
-      if (!imageMimeType) {
+      if (!assetMimeType) {
         throw new BadRequestError("image file must be jpg, png, webp, gif, or avif");
       }
 
@@ -321,7 +344,22 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       sourceKind = "local";
       sourceIdentifier = "local";
       sourceLabel = "Local files";
-      itemTitle = imageFileName;
+      itemTitle = assetFileName;
+    } else if (type === "pdf") {
+      assetFileName = fileOriginalName(uploadedFile, "imported-document.pdf");
+      assetMimeType = pdfMimeTypeForFile(uploadedFile, assetFileName);
+
+      if (!assetMimeType) {
+        throw new BadRequestError("pdf file must be application/pdf or end with .pdf");
+      }
+
+      sourceExternalId = sourceExternalId || pdfExternalIdFor(assetFileName, uploadedFile.size);
+      sourceKind = "local";
+      sourceIdentifier = "local";
+      sourceLabel = "Local files";
+      linkContentType = "pdf";
+      itemTitle = assetFileName;
+      storedItemType = "link";
     } else {
       sourceExternalId = sourceExternalId || externalIdFor(now);
     }
@@ -440,13 +478,13 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         }
       }
 
-      if (type === "link") {
+      if (type === "link" || type === "pdf") {
         result = {
           created: false,
           item: {
             id: existing.id,
             workspaceId,
-            type,
+            type: storedItemType,
             status: existing.status,
             sourceId,
             sourceExternalId,
@@ -509,11 +547,11 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
     const itemId = itemIdFor(type, now);
     const eventId = eventIdFor(itemId, now);
-    if (type === "image") {
-      imageFileRef = imageFileKeyFor(workspaceId, itemId, imageFileName);
+    if (type === "image" || type === "pdf") {
+      assetFileRef = imageFileKeyFor(workspaceId, itemId, assetFileName);
       const filesystem = txApp.newFilesystem();
       try {
-        filesystem.uploadFile(uploadedFile, imageFileRef);
+        filesystem.uploadFile(uploadedFile, assetFileRef);
       } finally {
         filesystem.close();
       }
@@ -522,13 +560,13 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     const metadataBody = {
       source_id: sourceId,
       source_external_id: sourceExternalId,
-      capture_type: type === "link" ? "url" : type === "image" ? "local_image" : "manual_note",
+      capture_type: type === "link" ? "url" : type === "image" ? "local_image" : type === "pdf" ? "local_pdf" : "manual_note",
     };
 
-    if (type === "image") {
-      metadataBody.file_ref = imageFileRef;
-      metadataBody.mime_type = imageMimeType;
-      metadataBody.original_name = imageFileName;
+    if (type === "image" || type === "pdf") {
+      metadataBody.file_ref = assetFileRef;
+      metadataBody.mime_type = assetMimeType;
+      metadataBody.original_name = assetFileName;
       metadataBody.size = uploadedFile.size;
     }
 
@@ -558,7 +596,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           ) VALUES (
             {:itemId},
             {:workspaceId},
-            {:type},
+            {:storedItemType},
             'active',
             {:itemTitle},
             NULL,
@@ -575,7 +613,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           )
         `,
       )
-      .bind({ itemId, workspaceId, type, itemTitle, sourceId, sourceExternalId, now })
+      .bind({ itemId, workspaceId, storedItemType, itemTitle, sourceId, sourceExternalId, now })
       .execute();
 
     if (type === "note") {
@@ -596,7 +634,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         )
         .bind({ itemId, noteBody })
         .execute();
-    } else if (type === "link") {
+    } else if (type === "link" || type === "pdf") {
       txApp
         .db()
         .newQuery(
@@ -618,8 +656,12 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         )
         .bind({
           itemId,
-          normalizedUrl,
-          ogMetadata: JSON.stringify({ url: normalizedUrl }),
+          normalizedUrl: type === "pdf" ? assetFileRef : normalizedUrl,
+          ogMetadata: JSON.stringify(
+            type === "pdf"
+              ? { file_ref: assetFileRef, original_name: assetFileName }
+              : { url: normalizedUrl },
+          ),
           linkContentType,
           now,
         })
@@ -640,8 +682,8 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
               ocr_text
             ) VALUES (
               {:itemId},
-              {:imageFileRef},
-              {:imageMimeType},
+              {:assetFileRef},
+              {:assetMimeType},
               NULL,
               NULL,
               NULL,
@@ -650,7 +692,48 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
             )
           `,
         )
-        .bind({ itemId, imageFileRef, imageMimeType })
+        .bind({ itemId, assetFileRef, assetMimeType })
+        .execute();
+    }
+
+    if (type === "pdf") {
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO item_assets (
+              id,
+              workspace_id,
+              item_id,
+              role,
+              file_ref,
+              original_name,
+              mime_type,
+              size_bytes,
+              created_at
+            ) VALUES (
+              {:assetId},
+              {:workspaceId},
+              {:itemId},
+              'source_file',
+              {:assetFileRef},
+              {:assetFileName},
+              {:assetMimeType},
+              {:assetSize},
+              {:now}
+            )
+          `,
+        )
+        .bind({
+          assetId: `asset:${itemId}:source_file`,
+          workspaceId,
+          itemId,
+          assetFileRef,
+          assetFileName,
+          assetMimeType,
+          assetSize: uploadedFile.size,
+          now,
+        })
         .execute();
     }
 
@@ -685,7 +768,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       item: {
         id: itemId,
         workspaceId,
-        type,
+        type: storedItemType,
         status: "active",
         sourceId,
         sourceExternalId,

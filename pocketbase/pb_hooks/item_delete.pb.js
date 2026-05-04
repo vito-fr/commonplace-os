@@ -75,6 +75,14 @@ routerAdd("POST", "/api/vita/item-delete", (e) => {
         `,
       },
       {
+        key: "itemAssets",
+        sql: `
+          DELETE FROM item_assets
+          WHERE workspace_id = {:workspaceId}
+            AND item_id = {:itemId}
+        `,
+      },
+      {
         key: "aiAnnotations",
         sql: `
           DELETE FROM ai_annotations

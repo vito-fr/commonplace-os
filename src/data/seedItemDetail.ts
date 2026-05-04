@@ -123,6 +123,7 @@ function getSeedFixtureItemDetail({ workspaceId, itemId }: ItemDetailQuery): Ite
             ogMetadata: parseOgMetadata(link.og_metadata),
             contentType: link.content_type ?? null,
             fetchedAt: link.fetched_at ?? null,
+            asset: null,
           }
         : null,
     },
