@@ -1996,17 +1996,12 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 5px;
-  opacity: 0;
   pointer-events: none;
-  transform: translateY(-3px);
-  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .item-card:hover .item-card__actions,
 .item-card:focus-within .item-card__actions {
-  opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
 }
 
 .item-card__action-cell {
@@ -2017,18 +2012,55 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--card-pill-glass);
+  background: color-mix(in srgb, var(--nav-cell-material) 72%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 0;
   color: var(--color-ink);
   cursor: pointer;
+  opacity: 0;
   padding: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .item-card__action-cell:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+.item-card:hover .item-card__action-cell,
+.item-card:focus-within .item-card__action-cell {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.item-card__action-cell:hover {
+  opacity: 1;
+}
+
+.item-card:hover .item-card__action-cell:disabled,
+.item-card:focus-within .item-card__action-cell:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.item-card__more-control {
+  position: relative;
+  display: inline-flex;
+  order: 1;
+}
+
+.item-card__more-control::after {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  z-index: 4;
+  width: 100%;
+  height: 12px;
+  content: "";
 }
 
 .item-card__content {
@@ -2233,6 +2265,16 @@ select:focus-visible {
   color: var(--color-ai-pending);
 }
 
+.item-card__frame-tag[data-source="pinterest"] {
+  background: #e60023;
+  color: #ffffff;
+}
+
+.item-card__frame-tag[data-source="arena"] {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
 .item-card__label {
   position: relative;
   display: block;
@@ -2286,6 +2328,7 @@ select:focus-visible {
   display: block;
   width: 15px;
   height: 15px;
+  z-index: 2;
 }
 
 .item-card__plus-icon::before,
@@ -2317,13 +2360,133 @@ select:focus-visible {
 }
 
 .item-card__action-cell--add {
-  background: var(--card-pill-dark);
-  color: var(--color-paper);
+  order: 2;
+  overflow: visible;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--color-ink);
+  isolation: isolate;
+  opacity: 1;
+  transform: none;
+}
+
+/* Keep this filtered layer mounted so backdrop-filter does not snap on during hover transforms. */
+.item-card__action-cell--add::before {
+  position: absolute;
+  inset: -3px;
+  z-index: 0;
+  border-radius: 999px;
+  background: var(--nav-wrapper-material);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  content: "";
+  opacity: 0.001;
+  pointer-events: none;
+  transform: scale(0.88);
+  transition: opacity 180ms ease, transform 180ms ease;
+  will-change: opacity, transform;
+}
+
+.item-card__action-cell--add::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 999px;
+  background: var(--nav-cell-material);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.9);
+  transition: opacity 180ms ease, transform 180ms ease;
+  will-change: opacity, transform;
+}
+
+.item-card__action-cell--add .item-card__plus-icon {
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 180ms ease, transform 180ms ease;
+  will-change: opacity, transform;
+}
+
+.item-card:hover .item-card__action-cell--add::before,
+.item-card:focus-within .item-card__action-cell--add::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.item-card:hover .item-card__action-cell--add::after,
+.item-card:focus-within .item-card__action-cell--add::after,
+.item-card:hover .item-card__action-cell--add .item-card__plus-icon,
+.item-card:focus-within .item-card__action-cell--add .item-card__plus-icon {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .item-card__action-cell--more {
+  order: 1;
   background: var(--card-pill-glass);
   color: var(--color-ink);
+}
+
+.item-card__more-menu {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 118px;
+  gap: 3px;
+  border-radius: 18px;
+  background: var(--nav-wrapper-material);
+  padding: 4px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  isolation: isolate;
+  animation: card-action-menu-enter 180ms cubic-bezier(0.5, 0, 0, 1) both;
+}
+
+.item-card__more-menu-item {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 999px;
+  background: var(--nav-cell-material);
+  color: var(--color-ink);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  padding: 8px 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.item-card__more-menu-item:hover {
+  opacity: 0.82;
+}
+
+.item-card__more-menu-item:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+@keyframes card-action-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+    filter: blur(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
 }
 
 .masonry-grid {

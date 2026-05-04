@@ -274,6 +274,197 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return "unknown";
   }
 
+  function linkMetadataFor(value) {
+    const fallback = { url: value };
+
+    if (isDirectImageUrl(value)) {
+      return {
+        url: value,
+        title: fileTitleForUrl(value),
+        image: value,
+      };
+    }
+
+    try {
+      const response = $http.send({
+        method: "GET",
+        url: value,
+        timeout: 8,
+        headers: {
+          Accept: "text/html,application/xhtml+xml,image/avif,image/webp,image/*,*/*;q=0.8",
+          "User-Agent": "VitaArchiveBot/0.1 (+https://localhost)",
+        },
+      });
+
+      if (response.statusCode < 200 || response.statusCode >= 400) {
+        return fallback;
+      }
+
+      const contentType = headerValue(response.headers, "Content-Type").toLowerCase();
+      if (contentType.startsWith("image/")) {
+        return {
+          url: value,
+          title: fileTitleForUrl(value),
+          image: value,
+        };
+      }
+
+      if (contentType && !contentType.includes("html")) {
+        return fallback;
+      }
+
+      const html = String(toString(response.body || [])).slice(0, 300000);
+      const image = firstMetaContent(html, [
+        "og:image:secure_url",
+        "og:image",
+        "twitter:image",
+        "twitter:image:src",
+      ]);
+      const title =
+        firstMetaContent(html, ["og:title", "twitter:title"]) ||
+        titleTagContent(html) ||
+        "";
+      const description = firstMetaContent(html, [
+        "og:description",
+        "twitter:description",
+        "description",
+      ]);
+      const siteName = firstMetaContent(html, ["og:site_name", "application-name"]);
+      const metadata = { url: value };
+
+      if (title) {
+        metadata.title = title;
+      }
+
+      if (image) {
+        metadata.image = absoluteUrlFor(image, value);
+      }
+
+      if (description) {
+        metadata.description = description;
+      }
+
+      if (siteName) {
+        metadata.siteName = siteName;
+      }
+
+      return metadata;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function headerValue(headers, name) {
+    const lowerName = name.toLowerCase();
+
+    for (const key in headers) {
+      if (key.toLowerCase() === lowerName) {
+        const value = headers[key];
+        return Array.isArray(value) ? String(value[0] || "") : String(value || "");
+      }
+    }
+
+    return "";
+  }
+
+  function firstMetaContent(html, names) {
+    const tags = html.match(/<meta\b[^>]*>/gi) || [];
+
+    for (let tagIndex = 0; tagIndex < tags.length; tagIndex += 1) {
+      const tag = tags[tagIndex];
+      const property = attrValue(tag, "property") || attrValue(tag, "name");
+
+      if (!property) {
+        continue;
+      }
+
+      for (let nameIndex = 0; nameIndex < names.length; nameIndex += 1) {
+        if (property.toLowerCase() === names[nameIndex].toLowerCase()) {
+          const content = attrValue(tag, "content");
+          if (content) {
+            return normalizeMetadataText(content);
+          }
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function attrValue(tag, attrName) {
+    const quoted = tag.match(new RegExp(`${attrName}\\s*=\\s*([\"'])(.*?)\\1`, "i"));
+    if (quoted && quoted[2]) {
+      return decodeHtmlEntities(quoted[2]);
+    }
+
+    const unquoted = tag.match(new RegExp(`${attrName}\\s*=\\s*([^\\s>]+)`, "i"));
+    return unquoted && unquoted[1] ? decodeHtmlEntities(unquoted[1]) : "";
+  }
+
+  function titleTagContent(html) {
+    const match = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+    return match && match[1] ? normalizeMetadataText(match[1].replace(/<[^>]+>/g, "")) : "";
+  }
+
+  function normalizeMetadataText(value) {
+    return decodeHtmlEntities(value).replace(/\s+/g, " ").trim().slice(0, 500);
+  }
+
+  function decodeHtmlEntities(value) {
+    return String(value)
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, "\"")
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+  }
+
+  function absoluteUrlFor(value, baseUrl) {
+    const trimmed = String(value || "").trim();
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+
+    const origin = baseUrl.match(/^(https?:)\/\/([^/]+)/i);
+    if (!origin) {
+      return trimmed;
+    }
+
+    if (trimmed.startsWith("//")) {
+      return `${origin[1]}${trimmed}`;
+    }
+
+    if (trimmed.startsWith("/")) {
+      return `${origin[1]}//${origin[2]}${trimmed}`;
+    }
+
+    return `${baseUrl.replace(/\/[^/]*$/, "/")}${trimmed}`;
+  }
+
+  function isDirectImageUrl(value) {
+    const lower = value.toLowerCase();
+    const host = urlIdentifierFor(value);
+    const path = lower.replace(/[?#].*$/, "");
+
+    return (
+      host === "i.pinimg.com" ||
+      path.endsWith(".jpg") ||
+      path.endsWith(".jpeg") ||
+      path.endsWith(".png") ||
+      path.endsWith(".webp") ||
+      path.endsWith(".gif") ||
+      path.endsWith(".avif")
+    );
+  }
+
+  function fileTitleForUrl(value) {
+    const path = value.replace(/[?#].*$/, "").split("/");
+    const fileName = decodeHtmlEntities(path[path.length - 1] || "").replace(/[-_]+/g, " ").trim();
+    return fileName || urlIdentifierFor(value);
+  }
+
   function fileOriginalName(file, fallbackName) {
     return sanitizeFileName(file.originalName || file.name || fallbackName, fallbackName);
   }
@@ -332,6 +523,12 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "";
   }
 
+  let linkMetadata = null;
+
+  if (type === "link") {
+    linkMetadata = linkMetadataFor(normalizeUrl(rawUrl));
+  }
+
   let result = null;
 
   e.app.runInTransaction((txApp) => {
@@ -373,6 +570,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       sourceIdentifier = linkSource.identifier;
       sourceLabel = linkSource.label;
       linkContentType = linkContentTypeFor(normalizedUrl);
+      itemTitle = linkMetadata && linkMetadata.title ? linkMetadata.title : null;
     } else if (type === "image") {
       assetFileName = fileOriginalName(uploadedFile, "imported-image");
       assetMimeType = mimeTypeForFileName(assetFileName);
@@ -701,7 +899,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           ogMetadata: JSON.stringify(
             type === "pdf"
               ? { file_ref: assetFileRef, original_name: assetFileName }
-              : { url: normalizedUrl },
+              : linkMetadata || { url: normalizedUrl },
           ),
           linkContentType,
           now,

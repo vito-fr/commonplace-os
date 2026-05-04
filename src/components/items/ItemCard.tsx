@@ -1,4 +1,4 @@
-import { type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
 
 export type ItemCardActionAnchor = {
@@ -94,8 +94,22 @@ export function ItemCard({
   const ariaLabel = `Open ${primaryLabel}`;
   const relativeAddedTime = formatAddedTime(createdAt);
   const isPdf = type === "link" && linkContentType === "pdf";
-  const frameTags: Array<{ key: string; label: string; tone?: "warning" | "upload" | "collection" }> = [
-    { key: "source", label: formatLabel(source), tone: source === "local" ? "upload" : undefined },
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const downloadUrl = assetFileUrl ?? imageUrl;
+  const frameTags: Array<{
+    key: string;
+    label: string;
+    source?: string;
+    tone?: "warning" | "upload" | "collection";
+  }> = [
+    {
+      key: "source",
+      label: formatLabel(source),
+      source,
+      tone: source === "local" ? "upload" : undefined,
+    },
     {
       key: "type",
       label: isPdf ? "pdf" : formatLabel(type),
@@ -127,6 +141,39 @@ export function ItemCard({
     frameTags.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
   }
 
+  useEffect(() => {
+    if (!isMoreMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: globalThis.MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (moreButtonRef.current?.contains(target) || moreMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsMoreMenuOpen(false);
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMoreMenuOpen(false);
+        moreButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isMoreMenuOpen]);
+
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
       !onNavigate ||
@@ -156,6 +203,71 @@ export function ItemCard({
       width: rect.width,
     });
   };
+  const openMoreMenu = () => {
+    setIsMoreMenuOpen(true);
+  };
+  const closeMoreMenu = () => {
+    setIsMoreMenuOpen(false);
+  };
+  const keepMoreMenuOpen = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openMoreMenu();
+  };
+  const downloadItem = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!downloadUrl || typeof document === "undefined") {
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = getDownloadFilename(downloadUrl, primaryLabel, type, linkContentType);
+    anchor.rel = "noopener";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setIsMoreMenuOpen(false);
+  };
+  const editItem = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsMoreMenuOpen(false);
+
+    if (onNavigate) {
+      onNavigate(id);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.location.assign(itemHref);
+    }
+  };
+  const shareItem = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const shareUrl = getAbsoluteItemUrl(itemHref);
+
+    try {
+      const browserNavigator = typeof navigator !== "undefined" ? navigator : null;
+      if (browserNavigator && typeof browserNavigator.share === "function") {
+        await browserNavigator.share({
+          title: primaryLabel,
+          text: primaryLabel,
+          url: shareUrl,
+        });
+      } else if (browserNavigator?.clipboard) {
+        await browserNavigator.clipboard.writeText(shareUrl);
+      }
+
+      setIsMoreMenuOpen(false);
+    } catch {
+      // Native share can be cancelled; leave the menu open so the user can choose again.
+    }
+  };
 
   const resolvedCardClassName = [
     cardClassName,
@@ -177,6 +289,7 @@ export function ItemCard({
             {frameTags.map((item) => (
               <span
                 className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
+                data-source={item.source}
                 key={item.key}
               >
                 {item.label}
@@ -189,7 +302,58 @@ export function ItemCard({
           {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
         </span>
       </a>
-      <span className="item-card__actions" aria-label="card actions">
+      <span
+        className="item-card__actions"
+        aria-label="card actions"
+        onBlur={(event) => {
+          const nextTarget = event.relatedTarget;
+          if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+            setIsMoreMenuOpen(false);
+          }
+        }}
+      >
+        <span
+          className="item-card__more-control"
+          onPointerEnter={openMoreMenu}
+          onPointerLeave={closeMoreMenu}
+        >
+          <button
+            className="item-card__action-cell item-card__action-cell--more"
+            type="button"
+            onClick={keepMoreMenuOpen}
+            onFocus={openMoreMenu}
+            aria-label={`More actions for ${primaryLabel}`}
+            aria-haspopup="menu"
+            aria-expanded={isMoreMenuOpen}
+            ref={moreButtonRef}
+          >
+            <span className="item-card__dots-icon" />
+          </button>
+          {isMoreMenuOpen ? (
+            <div className="item-card__more-menu" role="menu" ref={moreMenuRef}>
+              <button
+                className="item-card__more-menu-item"
+                type="button"
+                role="menuitem"
+                disabled={!downloadUrl}
+                onClick={downloadItem}
+              >
+                Download
+              </button>
+              <button className="item-card__more-menu-item" type="button" role="menuitem" onClick={editItem}>
+                Edit
+              </button>
+              <button
+                className="item-card__more-menu-item"
+                type="button"
+                role="menuitem"
+                onClick={(event) => void shareItem(event)}
+              >
+                Share
+              </button>
+            </div>
+          ) : null}
+        </span>
         <button
           className="item-card__action-cell item-card__action-cell--add"
           type="button"
@@ -199,9 +363,6 @@ export function ItemCard({
         >
           <span className="item-card__plus-icon" aria-hidden="true" />
         </button>
-        <span className="item-card__action-cell item-card__action-cell--more" aria-hidden="true">
-          <span className="item-card__dots-icon" />
-        </span>
       </span>
     </article>
   );
@@ -309,14 +470,17 @@ function renderContent(
           src={previewUrl}
           title={title ?? ogTitle ?? "PDF preview"}
           tabIndex={-1}
+          scrolling="no"
         />
       </div>
     );
   }
 
+  const previewImageUrl = ogImageUrl || (isDirectImageUrl(url) ? url : null);
+
   return (
     <div className="item-card__link-preview">
-      {ogImageUrl ? <img className="item-card__image" src={ogImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
+      {previewImageUrl ? <img className="item-card__image" src={previewImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
     </div>
   );
 }
@@ -329,7 +493,43 @@ function buildPdfPreviewUrl(src: string, name: string) {
   const searchParams = new URLSearchParams();
   searchParams.set("src", src);
   searchParams.set("name", name);
+  searchParams.set("surface", "card");
   return `/pdf-preview?${searchParams.toString()}`;
+}
+
+function getAbsoluteItemUrl(itemHref: string) {
+  if (typeof window === "undefined") {
+    return itemHref;
+  }
+
+  return new URL(itemHref, window.location.origin).toString();
+}
+
+function getDownloadFilename(url: string, primaryLabel: string, type: ItemType, linkContentType: string | null) {
+  const fromUrl = getFilenameFromUrl(url);
+  if (fromUrl) {
+    return fromUrl;
+  }
+
+  const label = primaryLabel
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const extension = linkContentType === "pdf" ? "pdf" : type === "image" ? "jpg" : "txt";
+
+  return `${label || "archive-item"}.${extension}`;
+}
+
+function getFilenameFromUrl(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    const filename = decodeURIComponent(parsedUrl.pathname.split("/").filter(Boolean).at(-1) ?? "");
+
+    return filename.includes(".") ? filename : null;
+  } catch {
+    return null;
+  }
 }
 
 function getDomain(url: string | null) {
@@ -341,6 +541,29 @@ function getDomain(url: string | null) {
     return new URL(url).hostname;
   } catch {
     return url;
+  }
+}
+
+function isDirectImageUrl(url: string | null) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    const path = parsedUrl.pathname.toLowerCase();
+
+    return (
+      parsedUrl.hostname === "i.pinimg.com" ||
+      path.endsWith(".jpg") ||
+      path.endsWith(".jpeg") ||
+      path.endsWith(".png") ||
+      path.endsWith(".webp") ||
+      path.endsWith(".gif") ||
+      path.endsWith(".avif")
+    );
+  } catch {
+    return false;
   }
 }
 

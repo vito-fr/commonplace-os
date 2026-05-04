@@ -260,11 +260,31 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     }
   }
 
+  function isDirectImageUrl(value) {
+    const url = nullableString(value);
+    if (!url) {
+      return false;
+    }
+
+    const lower = url.toLowerCase().replace(/[?#].*$/, "");
+    return (
+      lower.includes("://i.pinimg.com/") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".gif") ||
+      lower.endsWith(".avif")
+    );
+  }
+
   const items = [];
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
     const openGraph = parseOpenGraph(row.ogMetadata);
+    const rowUrl = nullableString(row.url);
+    const fallbackImageUrl = !openGraph.image && isDirectImageUrl(rowUrl) ? rowUrl : null;
 
     items.push({
       id: row.id,
@@ -278,9 +298,9 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       imageUrl: nullableString(row.imageUrl),
       captionText: nullableString(row.captionText),
       noteParagraph: nullableString(row.noteParagraph),
-      url: nullableString(row.url),
+      url: rowUrl,
       linkContentType: nullableString(row.linkContentType),
-      ogImageUrl: openGraph.image,
+      ogImageUrl: openGraph.image || fallbackImageUrl,
       ogTitle: openGraph.title,
       assetFileUrl: nullableString(row.assetFileRef),
       assetMimeType: nullableString(row.assetMimeType),

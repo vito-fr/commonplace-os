@@ -223,9 +223,7 @@ export function App() {
   useEffect(() => {
     let isCurrent = true;
 
-    if (route.kind === "pdfPreview") {
-      setItems([]);
-      setReadError(null);
+    if (route.kind !== "grid") {
       setIsLoading(false);
       return () => {
         isCurrent = false;
@@ -244,7 +242,6 @@ export function App() {
       .catch((error: unknown) => {
         if (isCurrent) {
           console.error(error);
-          setItems([]);
           setReadError("Unable to load archive.");
         }
       })
@@ -1030,6 +1027,7 @@ export function App() {
       </main>
     );
   } else {
+    const showInitialArchiveLoading = isLoading && items.length === 0;
     const renderedItems = items.map((item) => ({
       ...item,
       activeFilters: itemCardFilters,
@@ -1049,12 +1047,11 @@ export function App() {
       <main className="app-shell app-shell--archive" aria-label="Vita archive">
         <h1 className="visually-hidden">Archive</h1>
         <section className="archive-canvas" aria-label="archive items">
-          {isLoading ? <ArchiveLoadingState filters={itemCardFilters} /> : null}
           <MasonryGrid
             items={renderedItems}
             density="comfortable"
             columns={galleryColumns}
-            loading={isLoading}
+            loading={showInitialArchiveLoading}
             emptyState={
               <ArchiveEmptyState
                 filters={itemCardFilters}
