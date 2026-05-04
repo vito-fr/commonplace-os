@@ -366,7 +366,7 @@ export function SpotlightDock({
             ref={inputRef}
             className="spotlight-dock__input"
             type="search"
-            placeholder="search archive"
+            placeholder="Search archive"
             value={value}
             onChange={(event) => onChange(event.target.value)}
             aria-label="search archive"

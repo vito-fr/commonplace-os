@@ -1,5 +1,6 @@
 import annotationsFixture from "../../seed/fixtures/14_ai_annotations.json";
 import captionsFixture from "../../seed/fixtures/05_items_caption.json";
+import collectionItemsFixture from "../../seed/fixtures/12_collection_items.json";
 import itemsFixture from "../../seed/fixtures/03_items.json";
 import linksFixture from "../../seed/fixtures/07_items_link.json";
 import notesFixture from "../../seed/fixtures/06_items_note.json";
@@ -19,6 +20,7 @@ type FixtureItem = {
   summary: string | null;
   source_id: string | null;
   rights_status: RightsStatus;
+  created_at: string;
 };
 
 type FixtureSource = {
@@ -52,6 +54,10 @@ type FixtureAnnotation = {
   review_status: string;
 };
 
+type FixtureCollectionItem = {
+  item_id: string;
+};
+
 const defaultProofItemIds = [
   "seed:img004",
   "seed:img005",
@@ -70,6 +76,7 @@ const notes = notesFixture as FixtureNote[];
 const links = linksFixture as FixtureLink[];
 const relationships = relationshipsFixture as FixtureRelationship[];
 const annotations = annotationsFixture as FixtureAnnotation[];
+const collectionItems = collectionItemsFixture as FixtureCollectionItem[];
 
 export const seedFixtureItemCardReader: ItemCardReader = {
   async listItemCards(query) {
@@ -127,7 +134,9 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       usageCount: relationships.filter(
         (relationship) => relationship.type === "used_in" && relationship.from_id === item.id,
       ).length,
+      collectionCount: collectionItems.filter((collectionItem) => collectionItem.item_id === item.id).length,
       title: item.title,
+      createdAt: item.created_at,
       captionText: caption?.body ?? null,
       noteParagraph: note?.body ?? null,
       url: link?.url ?? null,

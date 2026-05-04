@@ -138,6 +138,16 @@ export function PillNav(props: PillNavProps) {
     gsap.set(labels, {
       filter: "blur(5px)",
       opacity: 0,
+      x: (index) => {
+        const target = targetMetrics[index];
+        if (!target) {
+          return 0;
+        }
+
+        const targetCenter = target.left + target.width / 2;
+        const originCenter = originLeft + 12.5;
+        return targetCenter < originCenter ? 8 : -8;
+      },
     });
 
     timeline.to(cells, {
@@ -160,14 +170,15 @@ export function PillNav(props: PillNavProps) {
           const cell = labels[index]?.closest(".subnav-cell");
           return cell?.getAttribute("data-active") === "true" ? 0.58 : 1;
         },
-        duration: 0.24,
+        x: 0,
+        duration: 0.18,
         ease: "power2.out",
         stagger: {
-          amount: 0.22,
+          amount: 0.18,
           from: "center",
         },
       },
-      0.38,
+      0.34,
     );
 
     return () => {

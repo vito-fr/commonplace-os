@@ -126,7 +126,9 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       status: "",
       source: "",
       usageCount: 0,
+      collectionCount: 0,
       title: nullString(),
+      createdAt: "",
       imageUrl: nullString(),
       captionText: nullString(),
       noteParagraph: nullString(),
@@ -146,6 +148,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           i.type,
           i.status,
           COALESCE(s.kind, 'manual') AS source,
+          i.created_at AS createdAt,
           (
             SELECT COUNT(1)
             FROM relationships r
@@ -153,6 +156,14 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
               AND r.from_id = i.id
               AND r.type = 'used_in'
           ) AS usageCount,
+          (
+            SELECT COUNT(1)
+            FROM collection_items ci
+            INNER JOIN collections c
+              ON c.id = ci.collection_id
+              AND c.workspace_id = i.workspace_id
+            WHERE ci.item_id = i.id
+          ) AS collectionCount,
           i.title AS title,
           img.file_ref AS imageUrl,
           caption.body AS captionText,
@@ -232,7 +243,9 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       status: row.status,
       source: row.source,
       usageCount: row.usageCount,
+      collectionCount: row.collectionCount,
       title: nullableString(row.title),
+      createdAt: row.createdAt,
       imageUrl: nullableString(row.imageUrl),
       captionText: nullableString(row.captionText),
       noteParagraph: nullableString(row.noteParagraph),

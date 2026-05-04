@@ -15,6 +15,8 @@ export interface ItemCardProps {
   status: ItemStatus;
   source: string;
   usageCount: number;
+  collectionCount?: number;
+  createdAt?: string | null;
   title?: string | null;
   imageUrl?: string | null;
   captionText?: string | null;
@@ -41,6 +43,8 @@ export function ItemCard({
   status,
   source,
   usageCount,
+  collectionCount = 0,
+  createdAt = null,
   title = null,
   imageUrl = null,
   captionText = null,
@@ -61,10 +65,7 @@ export function ItemCard({
       activeFilters?.source ||
       activeFilters?.text?.trim(),
   );
-  const showType = hasActiveFilters && activeFilters?.type !== type;
   const showStatus = hasActiveFilters && activeFilters?.status !== status;
-  const showSource = hasActiveFilters && activeFilters?.source !== source;
-  const ariaLabel = title ? `Open ${title}` : `Open ${type} ${id}`;
   const cardClassName = [
     "item-card",
     isSelected ? "item-card--selected" : "",
@@ -73,31 +74,36 @@ export function ItemCard({
     .join(" ");
 
   const itemHref = detailHref ?? `/items/${encodeURIComponent(id)}`;
-  const primaryLabel = title ?? formatLabel(type);
-  const signalItems: Array<{ key: string; label: string; tone?: "warning" | "future" }> = [];
-
-  if (showType) {
-    signalItems.push({ key: "type", label: formatLabel(type) });
-  }
+  const primaryLabel = getPrimaryLabel({ type, title, url, ogTitle });
+  const ariaLabel = `Open ${primaryLabel}`;
+  const relativeAddedTime = formatAddedTime(createdAt);
+  const frameTags: Array<{ key: string; label: string; tone?: "warning" | "upload" | "collection" }> = [
+    { key: "source", label: formatLabel(source), tone: source === "local" ? "upload" : undefined },
+    { key: "type", label: formatLabel(type), tone: type === "image" && source === "local" ? "upload" : undefined },
+  ];
 
   if (showStatus) {
-    signalItems.push({ key: "status", label: formatLabel(status) });
-  }
-
-  if (showSource) {
-    signalItems.push({ key: "source", label: formatLabel(source) });
+    frameTags.push({ key: "status", label: formatLabel(status) });
   }
 
   if (usageCount > 0) {
-    signalItems.push({ key: "usage", label: `${usageCount} use${usageCount === 1 ? "" : "s"}` });
+    frameTags.push({ key: "usage", label: `${usageCount} use${usageCount === 1 ? "" : "s"}` });
+  }
+
+  if (collectionCount > 0) {
+    frameTags.push({
+      key: "collections",
+      label: `${collectionCount} collection${collectionCount === 1 ? "" : "s"}`,
+      tone: "collection",
+    });
   }
 
   if (hasPendingAIAnnotations) {
-    signalItems.push({ key: "ai", label: "ai pending", tone: "warning" });
+    frameTags.push({ key: "ai", label: "ai pending", tone: "warning" });
   }
 
   if (isRightsWarning(rightsStatus)) {
-    signalItems.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
+    frameTags.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
   }
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -117,33 +123,105 @@ export function ItemCard({
     onNavigate(id);
   };
 
+  const resolvedCardClassName = [
+    cardClassName,
+    relativeAddedTime ? "item-card--has-added-time" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <a
-      className={cardClassName}
+      className={resolvedCardClassName}
       href={itemHref}
       data-type={type}
       aria-label={ariaLabel}
       onClick={navigate}
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
-      <span className="item-card__actions" aria-hidden="true">
-        <span className="item-card__action-cell">+</span>
-        <span className="item-card__action-cell">...</span>
-      </span>
-      <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle)}</div>
-      <div className="item-card__pill-row">
-        <span className="item-card__pill item-card__pill--primary">{primaryLabel}</span>
-        {signalItems.map((item) => (
-          <span
-            className={`item-card__pill${item.tone === "warning" ? " item-card__pill--warning" : ""}${item.tone === "future" ? " item-card__pill--future" : ""}`}
-            key={item.key}
-          >
-            {item.label}
+      <div className="item-card__content">
+        {renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle)}
+        <span className="item-card__actions" aria-hidden="true">
+          <span className="item-card__action-cell item-card__action-cell--add">
+            <span className="item-card__plus-icon" />
           </span>
-        ))}
+          <span className="item-card__action-cell item-card__action-cell--more">
+            <span className="item-card__dots-icon" />
+          </span>
+        </span>
+        <span className="item-card__frame-tags" aria-hidden="true">
+          {frameTags.map((item) => (
+            <span
+              className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
+              key={item.key}
+            >
+              {item.label}
+            </span>
+          ))}
+        </span>
       </div>
+      <span className="item-card__label" title={primaryLabel}>
+        <span className="item-card__label-text">{primaryLabel}</span>
+        {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
+      </span>
     </a>
   );
+}
+
+function getPrimaryLabel({
+  ogTitle,
+  title,
+  type,
+  url,
+}: {
+  ogTitle: string | null;
+  title: string | null;
+  type: ItemType;
+  url: string | null;
+}) {
+  if (title) {
+    return title;
+  }
+
+  if (ogTitle) {
+    return ogTitle;
+  }
+
+  if (type === "link") {
+    return getDomain(url);
+  }
+
+  return formatLabel(type);
+}
+
+function formatAddedTime(createdAt: string | null) {
+  if (!createdAt) {
+    return null;
+  }
+
+  const timestamp = Date.parse(createdAt);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 31536000],
+    ["month", 2592000],
+    ["week", 604800],
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+
+  for (const [unit, seconds] of units) {
+    if (elapsedSeconds >= seconds) {
+      const value = Math.floor(elapsedSeconds / seconds);
+      return `added ${value} ${unit}${value === 1 ? "" : "s"} ago`;
+    }
+  }
+
+  return "added just now";
 }
 
 function renderContent(
@@ -183,7 +261,6 @@ function renderContent(
   return (
     <div className="item-card__link-preview">
       {ogImageUrl ? <img className="item-card__image" src={ogImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
-      {ogTitle ? <p className="item-card__link-title">{ogTitle}</p> : <p className="item-card__link-domain">{getDomain(url)}</p>}
     </div>
   );
 }

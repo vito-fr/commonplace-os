@@ -752,7 +752,7 @@ select:focus-visible {
   padding: 6px 10px;
   font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -0.015em;
   line-height: 1;
   outline: none;
@@ -1087,6 +1087,8 @@ select:focus-visible {
 
 .item-card {
   --card-pill-bg: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
+  --card-pill-glass: color-mix(in srgb, var(--color-paper) 78%, transparent);
+  --card-pill-dark: color-mix(in srgb, var(--color-ink) 92%, transparent);
   position: relative;
   display: block;
   min-height: 0;
@@ -1102,7 +1104,7 @@ select:focus-visible {
 }
 
 .item-card:hover {
-  opacity: 0.82;
+  opacity: 1;
 }
 
 .item-card:focus-visible,
@@ -1117,9 +1119,9 @@ select:focus-visible {
 
 .item-card__pending-ai {
   position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
   width: 6px;
   height: 6px;
   border-radius: 999px;
@@ -1128,45 +1130,64 @@ select:focus-visible {
 
 .item-card__actions {
   position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 2;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease;
+  transform: translateY(-3px);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .item-card:hover .item-card__actions,
 .item-card:focus-visible .item-card__actions {
   opacity: 1;
+  transform: translateY(0);
 }
 
 .item-card__action-cell {
+  position: relative;
   display: inline-flex;
-  width: 25px;
-  height: 25px;
+  width: 32px;
+  height: 32px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--card-pill-bg);
+  background: var(--card-pill-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--color-ink);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
 }
 
 .item-card__content {
+  position: relative;
   display: flex;
   min-height: 0;
-  margin: 0 0 7px;
+  margin: 0;
   aspect-ratio: 4 / 3;
   background: transparent;
   border-radius: 3px;
   overflow: hidden;
+}
+
+.item-card__content::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-ink) 18%, transparent), transparent 33%),
+    linear-gradient(to top, color-mix(in srgb, var(--color-ink) 18%, transparent), transparent 45%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.item-card:hover .item-card__content::after,
+.item-card:focus-visible .item-card__content::after {
+  opacity: 1;
 }
 
 .item-card__placeholder {
@@ -1264,43 +1285,152 @@ select:focus-visible {
   letter-spacing: 0.04em;
 }
 
-.item-card__pill-row {
+.item-card__frame-tags {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  z-index: 3;
   display: flex;
-  min-height: 25px;
-  align-items: center;
-  gap: 4px;
-  padding-right: 0;
   flex-wrap: wrap;
+  gap: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
-.item-card__pill {
+.item-card:hover .item-card__frame-tags,
+.item-card:focus-visible .item-card__frame-tags {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.item-card__frame-tag {
   display: inline-flex;
-  min-height: 25px;
+  min-height: 24px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--card-pill-bg);
+  background: var(--card-pill-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--color-ink);
-  padding: 6px 11px;
+  padding: 6px 10px;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1;
   white-space: nowrap;
 }
 
-.item-card__pill--primary {
-  background: var(--color-ink);
-  color: var(--color-paper);
+.item-card__frame-tag--upload {
+  background: color-mix(in srgb, #d7ff68 74%, var(--color-paper));
+  color: #1f2600;
 }
 
-.item-card__pill--warning {
+.item-card__frame-tag--collection {
+  background: color-mix(in srgb, #b8d8ff 76%, var(--color-paper));
+  color: #071f38;
+}
+
+.item-card__frame-tag--warning {
+  background: color-mix(in srgb, var(--color-ai-pending) 18%, var(--color-paper));
   color: var(--color-ai-pending);
 }
 
-.item-card__pill--future {
-  opacity: 0.38;
+.item-card__label {
+  position: relative;
+  display: block;
+  min-height: 24px;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.item-card__label-text,
+.item-card__label-time {
+  display: block;
+  overflow: hidden;
+  padding: 0 7px;
+  text-overflow: ellipsis;
+  transition: opacity 180ms ease, transform 180ms ease, filter 180ms ease;
+  white-space: nowrap;
+}
+
+.item-card__label-time {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(5px);
+  filter: blur(3px);
+}
+
+.item-card--has-added-time:hover .item-card__label-text,
+.item-card--has-added-time:focus-visible .item-card__label-text {
+  opacity: 0;
+  transform: translateY(-5px);
+  filter: blur(3px);
+}
+
+.item-card--has-added-time:hover .item-card__label-time,
+.item-card--has-added-time:focus-visible .item-card__label-time {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.item-card__plus-icon,
+.item-card__dots-icon {
+  position: relative;
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.item-card__plus-icon::before,
+.item-card__plus-icon::after {
+  position: absolute;
+  top: 7px;
+  left: 1px;
+  width: 13px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.item-card__plus-icon::after {
+  transform: rotate(90deg);
+}
+
+.item-card__dots-icon::before {
+  position: absolute;
+  top: 6px;
+  left: 1px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 5px 0 0 currentColor, 10px 0 0 currentColor;
+  content: "";
+}
+
+.item-card__action-cell--add {
+  background: var(--card-pill-dark);
+  color: var(--color-paper);
+}
+
+.item-card__action-cell--more {
+  background: var(--card-pill-glass);
+  color: var(--color-ink);
 }
 
 .masonry-grid {
