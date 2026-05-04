@@ -597,6 +597,169 @@ routerAdd("POST", "/api/vita/item-collection", (e) => {
   return e.json(200, result);
 });
 
+routerAdd("POST", "/api/vita/item-collection-remove", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    item_id: "",
+    collection_id: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const itemId = requiredString(body.item_id, "item_id");
+  const collectionId = requiredString(body.collection_id, "collection_id");
+  const actor = optionalString(body.actor) || "system";
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function nullableString(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "valid")) {
+      return value.valid ? value.string : null;
+    }
+
+    return value;
+  }
+
+  function queryAll(app, sql, shape, params) {
+    const rows = arrayOf(new DynamicModel(shape));
+    app.db().newQuery(sql).bind(params).all(rows);
+    return rows;
+  }
+
+  function eventIdFor(itemId, collectionId, timestamp) {
+    const suffix = Math.random().toString(36).slice(2, 10);
+    return `collection-remove:${itemId}:${collectionId}:${timestamp}:${suffix}`;
+  }
+
+  let result = null;
+
+  e.app.runInTransaction((txApp) => {
+    const membershipRows = queryAll(
+      txApp,
+      `
+        SELECT
+          c.id AS collectionId,
+          c.name,
+          c.description,
+          ci.item_id AS itemId,
+          ci.added_at AS addedAt,
+          ci.added_by AS addedBy
+        FROM collection_items ci
+        INNER JOIN collections c
+          ON c.id = ci.collection_id
+        INNER JOIN items i
+          ON i.id = ci.item_id
+          AND i.workspace_id = c.workspace_id
+        WHERE c.workspace_id = {:workspaceId}
+          AND c.id = {:collectionId}
+          AND ci.item_id = {:itemId}
+        LIMIT 1
+      `,
+      {
+        collectionId: "",
+        name: "",
+        description: nullString(),
+        itemId: "",
+        addedAt: "",
+        addedBy: "",
+      },
+      { workspaceId, collectionId, itemId },
+    );
+
+    if (membershipRows.length === 0) {
+      throw new NotFoundError("collection membership not found");
+    }
+
+    const now = new Date().toISOString();
+    const membership = membershipRows[0];
+    const eventId = eventIdFor(itemId, collectionId, now);
+    const metadata = JSON.stringify({
+      collection_id: collectionId,
+      collection_name: membership.name,
+    });
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          DELETE FROM collection_items
+          WHERE collection_id = {:collectionId}
+            AND item_id = {:itemId}
+        `,
+      )
+      .bind({ collectionId, itemId })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO item_events (
+            id,
+            workspace_id,
+            item_id,
+            event_type,
+            actor,
+            metadata,
+            created_at
+          ) VALUES (
+            {:eventId},
+            {:workspaceId},
+            {:itemId},
+            'collection_removed',
+            {:actor},
+            {:metadata},
+            {:now}
+          )
+        `,
+      )
+      .bind({ eventId, workspaceId, itemId, actor, metadata, now })
+      .execute();
+
+    result = {
+      membership: {
+        collectionId,
+        itemId,
+        addedAt: membership.addedAt,
+        addedBy: membership.addedBy,
+        removedAt: now,
+        removedBy: actor,
+        collection: {
+          id: collectionId,
+          name: membership.name,
+          description: nullableString(membership.description),
+        },
+      },
+      event: {
+        id: eventId,
+        eventType: "collection_removed",
+        createdAt: now,
+      },
+    };
+  });
+
+  return e.json(200, result);
+});
+
 routerAdd("POST", "/api/vita/collection-create", (e) => {
   const body = new DynamicModel({
     workspace_id: "",

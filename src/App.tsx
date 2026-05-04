@@ -606,6 +606,52 @@ export function App() {
     }
   };
 
+  const removeItemFromCollection = async ({ collectionId }: { collectionId: string }) => {
+    if (!detail || !isPocketBaseMode) {
+      return;
+    }
+
+    setIsCollectionAttaching(true);
+    setCollectionWriteError(null);
+
+    try {
+      await itemCollectionClient.removeCollection({
+        workspaceId,
+        itemId: detail.id,
+        collectionId,
+        actor: "system",
+      });
+
+      const collectionRefresh =
+        route.kind === "item" && route.returnCollectionId
+          ? itemCollectionClient.getCollectionDetail({
+              workspaceId,
+              collectionId: route.returnCollectionId,
+            })
+          : Promise.resolve(null);
+
+      const [nextDetail, nextCollectionOptions, nextItems, nextCollectionDetail] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCollectionClient.listCollectionOptions({ workspaceId, itemId: detail.id }),
+        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
+        collectionRefresh,
+      ]);
+
+      setDetail(nextDetail);
+      setCollectionOptions(nextCollectionOptions);
+      setItems(nextItems);
+      if (nextCollectionDetail) {
+        setCollectionDetail(nextCollectionDetail);
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionWriteError("Unable to remove collection.");
+      throw error;
+    } finally {
+      setIsCollectionAttaching(false);
+    }
+  };
+
   const openArchiveCardCollection = async (itemId: string, anchor: ItemCardActionAnchor) => {
     const item = items.find((candidate) => candidate.id === itemId);
 
@@ -976,6 +1022,7 @@ export function App() {
           relationshipActionError={relationshipWriteError}
           relationshipTargetOptions={relationshipTargetOptions}
           onAttachCollection={attachItemToCollection}
+          onRemoveCollection={removeItemFromCollection}
           collectionActionPending={isCollectionAttaching}
           collectionActionError={collectionWriteError}
           collectionOptions={collectionTargetOptions}

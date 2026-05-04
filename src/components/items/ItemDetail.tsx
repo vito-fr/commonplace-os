@@ -22,6 +22,10 @@ type CollectionAttachInput = {
   collectionId: string;
 };
 
+type CollectionRemoveInput = {
+  collectionId: string;
+};
+
 type ItemDetailRelationship = ItemDetail["relationships"][number];
 
 export type DetailArchiveNeighbor = {
@@ -59,6 +63,7 @@ export type ItemDetailViewProps = {
   relationshipActionError?: string | null;
   relationshipTargetOptions?: RelationshipTargetOption[];
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
+  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
   collectionActionPending?: boolean;
   collectionActionError?: string | null;
   collectionOptions?: CollectionOption[];
@@ -86,6 +91,7 @@ export function ItemDetailView({
   relationshipActionError = null,
   relationshipTargetOptions = [],
   onAttachCollection,
+  onRemoveCollection,
   collectionActionPending = false,
   collectionActionError = null,
   collectionOptions = [],
@@ -197,33 +203,12 @@ export function ItemDetailView({
                 />
               </CollapsibleAction>
               {item.collections.length > 0 ? (
-                <div className="tag-row">
-                  {item.collections.map((collection) => (
-                    <a
-                      className="tag-chip tag-chip--link"
-                      href={`/collections/${encodeURIComponent(collection.id)}`}
-                      key={collection.id}
-                      onClick={(event) => {
-                        if (
-                          !onOpenCollection ||
-                          event.defaultPrevented ||
-                          event.button !== 0 ||
-                          event.metaKey ||
-                          event.altKey ||
-                          event.ctrlKey ||
-                          event.shiftKey
-                        ) {
-                          return;
-                        }
-
-                        event.preventDefault();
-                        onOpenCollection(collection.id);
-                      }}
-                    >
-                      {collection.name}
-                    </a>
-                  ))}
-                </div>
+                <CollectionMembershipList
+                  collections={item.collections}
+                  onOpenCollection={onOpenCollection}
+                  onRemoveCollection={onRemoveCollection}
+                  pending={collectionActionPending}
+                />
               ) : !hasFit ? null : (
                 <DetailEmptyState label="Not in any collections yet." />
               )}
@@ -359,6 +344,69 @@ function CollectionMetaList({
         >
           {collection.name}
         </a>
+      ))}
+    </div>
+  );
+}
+
+function CollectionMembershipList({
+  collections,
+  onOpenCollection,
+  onRemoveCollection,
+  pending,
+}: {
+  collections: ItemDetail["collections"];
+  onOpenCollection?: (collectionId: string) => void;
+  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
+  pending: boolean;
+}) {
+  return (
+    <div className="collection-membership-list" aria-label="collection memberships">
+      {collections.map((collection) => (
+        <div className="collection-membership-row" key={collection.id}>
+          <div className="collection-membership-row__main">
+            <a
+              className="collection-membership-row__link"
+              href={`/collections/${encodeURIComponent(collection.id)}`}
+              onClick={(event) => {
+                if (
+                  !onOpenCollection ||
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.shiftKey
+                ) {
+                  return;
+                }
+
+                event.preventDefault();
+                onOpenCollection(collection.id);
+              }}
+            >
+              {collection.name}
+            </a>
+            <span className="detail-muted">
+              added {formatDate(collection.addedAt)}
+              {collection.addedBy ? ` by ${collection.addedBy}` : ""}
+            </span>
+          </div>
+          <button
+            className="collection-membership-row__remove"
+            disabled={pending || !onRemoveCollection}
+            type="button"
+            onClick={async () => {
+              try {
+                await onRemoveCollection?.({ collectionId: collection.id });
+              } catch {
+                // Parent owns the persisted write error message.
+              }
+            }}
+          >
+            {pending ? "Saving" : "Remove"}
+          </button>
+        </div>
       ))}
     </div>
   );

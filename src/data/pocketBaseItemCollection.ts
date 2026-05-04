@@ -85,6 +85,13 @@ export type ItemCollectionCreateAndAttach = {
   actor?: string;
 };
 
+export type ItemCollectionRemove = {
+  workspaceId: string;
+  itemId: string;
+  collectionId: string;
+  actor?: string;
+};
+
 export type ItemCollectionAttachResult = {
   membership: {
     collectionId: string;
@@ -114,12 +121,34 @@ export type ItemCollectionCreateAndAttachResult = ItemCollectionAttachResult & {
   };
 };
 
+export type ItemCollectionRemoveResult = {
+  membership: {
+    collectionId: string;
+    itemId: string;
+    addedAt: string;
+    addedBy: string;
+    removedAt: string;
+    removedBy: string;
+    collection: {
+      id: string;
+      name: string;
+      description: string | null;
+    };
+  };
+  event: {
+    id: string;
+    eventType: "collection_removed";
+    createdAt: string;
+  };
+};
+
 export type ItemCollectionClient = {
   getCollectionDetail(query: CollectionDetailQuery): Promise<CollectionDetail>;
   listCollectionIndex(query: CollectionIndexQuery): Promise<CollectionIndexItem[]>;
   listCollectionOptions(query: CollectionOptionsQuery): Promise<CollectionOption[]>;
   attachCollection(change: ItemCollectionAttach): Promise<ItemCollectionAttachResult>;
   createCollectionAndAttach(change: ItemCollectionCreateAndAttach): Promise<ItemCollectionCreateAndAttachResult>;
+  removeCollection(change: ItemCollectionRemove): Promise<ItemCollectionRemoveResult>;
 };
 
 export type PocketBaseItemCollectionClientOptions = {
@@ -129,6 +158,7 @@ export type PocketBaseItemCollectionClientOptions = {
   optionsEndpointPath?: string;
   attachEndpointPath?: string;
   createEndpointPath?: string;
+  removeEndpointPath?: string;
   fetcher?: Fetcher;
 };
 
@@ -151,6 +181,7 @@ export function createPocketBaseItemCollectionClient({
   optionsEndpointPath = "/api/vita/collection-options",
   attachEndpointPath = "/api/vita/item-collection",
   createEndpointPath = "/api/vita/collection-create",
+  removeEndpointPath = "/api/vita/item-collection-remove",
   fetcher = globalThis.fetch,
 }: PocketBaseItemCollectionClientOptions): ItemCollectionClient {
   return {
@@ -265,6 +296,33 @@ export function createPocketBaseItemCollectionClient({
 
       return payload;
     },
+
+    async removeCollection(change) {
+      const response = await fetcher(buildCollectionRemoveUrl(baseUrl, removeEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          item_id: change.itemId,
+          collection_id: change.collectionId,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase collection remove failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as ItemCollectionRemoveResult;
+      if (!payload.membership || !payload.event) {
+        throw new Error("PocketBase collection remove response must include { membership, event }");
+      }
+
+      return payload;
+    },
   };
 }
 
@@ -307,6 +365,10 @@ function buildCollectionAttachUrl(baseUrl: string, endpointPath: string) {
 }
 
 function buildCollectionCreateUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
+}
+
+function buildCollectionRemoveUrl(baseUrl: string, endpointPath: string) {
   return new URL(endpointPath, normalizeBaseUrl(baseUrl));
 }
 
