@@ -10,6 +10,8 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 
 ## Latest Accepted Result
 
+- Latest collection hygiene checkpoint:
+  - Commit: `08154fe Implement collection membership removal`
 - Latest collection index checkpoint:
   - Commit: `544dab7 Implement collection index from archive nav`
 - Latest import/filter checkpoint:
@@ -39,6 +41,7 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
   - card hover/focus label swap from title/filename to `added ... ago` when `createdAt` is available
   - card `+` opens an archive-level collection island anchored to the clicked card action
   - collection island can attach to existing collections or create a new collection and attach immediately
+  - item detail shows current collection memberships with per-collection removal controls
   - PDF link cards can render a same-origin first-page preview shell when an asset file is available
 - Current item-card read model includes:
   - `createdAt`
@@ -83,6 +86,9 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 - `GET /api/vita/collection-detail?workspace_id=seed:ws001&collection_id=seed:col001` returned `200`.
 - `GET /api/vita/collection-options?workspace_id=seed:ws001&item_id=seed:img004` returned `200`.
 - `http://127.0.0.1:5173/collections/seed%3Acol001` returned `200`.
+- `POST /api/vita/item-collection-remove` returned `200` with `eventType: collection_removed` during collection hygiene verification.
+- After temporary membership removal, `GET /api/vita/collection-options?workspace_id=seed:ws001&item_id=seed:img004` returned the temporary collection with `alreadyAttached: false`.
+- `http://127.0.0.1:5173/items/seed%3Aimg004` returned `200`.
 - `http://127.0.0.1:5173/?format=pdf` returned `200`.
 - `http://127.0.0.1:5173/?source=arena` returned `200`.
 - `GET /api/vita/item-cards?workspace_id=seed:ws001&source=pinterest&q=vita-import-classification-test` returned `200` with `source: pinterest`.
@@ -131,27 +137,28 @@ Do not sweep these into UI commits. Review them separately before staging.
 
 ## Next Task
 
-Implement the first collection hygiene slice.
+Implement the first collection management polish slice.
 
 Recommended next slice:
 
-- allow removing an item from a collection from the collection/detail context
-- expose clearer collection membership controls where the item is already attached
-- keep collection rename/delete/deeper collection management out of this slice
+- allow renaming a collection and editing its description from the Index > Collections surface
+- keep collection deletion separate unless explicitly requested
+- keep CollectionView layout and item import behavior unchanged
 
 ## In-Scope Files For Next Slice
 
 - `src/App.tsx`
 - `src/data/pocketBaseItemCollection.ts`
 - `pocketbase/pb_hooks/item_collection.pb.js`
-- `src/components/items/ItemDetail.tsx` if the removal control belongs in detail
-- `src/styles.css` for narrow membership-control styling
+- `src/components/nav/PillNav.tsx` if the collection index island owns edit entry points
+- `src/styles.css` for narrow collection-management styling
 
 ## Out-Of-Scope Files For Next Slice
 
 - schema and migration files unless a concrete runtime blocker is proven
 - seed fixture content
-- collection rename/delete/deeper management
+- collection deletion unless explicitly requested
+- deeper collection management beyond name/description edits
 - CollectionView redesign
 - unrelated nav/card polish
 - URL, note, local image, and local PDF import rewrites
@@ -159,10 +166,10 @@ Recommended next slice:
 
 ## Done-When Criteria
 
-The next collection hygiene slice is done when:
+The next collection management polish slice is done when:
 
-- an attached item can be removed from a collection through a clear UI affordance
-- already-attached collection memberships are easier to understand at a glance
-- current card add-to-collection, collection index, and item-detail collection behavior still work
+- a collection can be renamed from the Index > Collections surface
+- a collection description can be edited from the same surface
+- collection index, CollectionView navigation, card add-to-collection, and item-detail removal behavior still work
 - `npm run typecheck` and `npm run build` pass
-- live-mode verification covers collection membership removal and collection navigation
+- live-mode verification covers collection edit, collection listing, and collection navigation
