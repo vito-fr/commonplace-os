@@ -1,83 +1,90 @@
 # Current Handoff
 
-Last updated: 2026-04-29
+Last updated: 2026-05-04
 
 ## Current Phase
 
-M0.1 local planning-to-first-migration boundary.
+Personal archive v0.1 is past the initial schema/seed boundary and is now in live UI/product-surface iteration.
 
-The first schema migration has been written, runtime-verified, accepted as-is, and the documentation has been aligned and committed.
+The app has a working PocketBase-backed archive read path, item detail path, core write paths, first collection view, and the first Austen/Ridgeway-inspired archive UI shell. The current UI checkpoint is committed.
 
 ## Latest Accepted Result
 
-- Migration file accepted: `pocketbase/pb_migrations/0001_initial_schema.js`
-- Runtime verified under PocketBase v0.36.9 for macOS ARM64.
-- Documentation alignment committed:
-  - Commit: `3690778 Align schema and planning docs with accepted initial migration`
-- `SCHEMA.md` now mirrors the accepted migration.
-- `docs/runbooks/m0.1-plan.md` records the accepted decisions and runtime verification notes.
-
-## Approved Flags
-
-- F-1 approved: include `rights_status`, `rights_note`, and `rights_reviewed_at` in `items`.
-- F-2 approved: enforce symmetric relationship ordering with `trg_relationships_symmetric_ordering`, a `BEFORE INSERT` trigger.
-- F-3 approved: scaffold `embeddings` with `vector BLOB NOT NULL` placeholder storage.
-- F-4 approved: create `items_fts` with `content=''` and explicit sync triggers.
+- Latest UI checkpoint:
+  - Commit: `172afbf Checkpoint archive UI polish`
+- Prior nav checkpoint:
+  - Commit: `8e07f8d Refine Austen-style archive navigation`
+- Current archive surface includes:
+  - centered fixed pill navigation with live dot, Index, Views, Filters, Info, and Settings shell
+  - centered secondary pill row for Index/View/Filter/Info/Settings choices
+  - Gallery grid with `2-8` column controls
+  - Spotlight-style bottom search/import dock
+  - simplified archive cards with equal preview rhythm and hover-only action affordances
+- Product Sans is wired through local `@font-face` URLs, but the actual font files are not present yet:
+  - `src/assets/fonts/ProductSans-Regular.woff2`
+  - `src/assets/fonts/ProductSans-Bold.woff2`
 
 ## Verified Runtime Notes
 
-- PocketBase version used for verification: v0.36.9.
-- `0001_initial_schema.js` applies cleanly under PocketBase.
-- `PRAGMA foreign_keys` returned `1` under PocketBase.
-- `PRAGMA trusted_schema` returned `1` under PocketBase.
-- FTS insert/update/delete triggers worked under PocketBase.
-- Symmetric reverse-order relationship inserts were rejected with the expected trigger error.
-- The local macOS `sqlite3` CLI may default `trusted_schema` to `0`; CLI-only checks that fire FTS triggers should run `PRAGMA trusted_schema=ON`.
+- `npm run typecheck` passed after the UI checkpoint.
+- `npm run build` passed after the UI checkpoint.
+- `http://127.0.0.1:5173/` returned `200`.
+- `http://127.0.0.1:5173/?type=image` returned `200`.
+- Build currently warns that Product Sans font URLs do not resolve at build time; this is expected until local font files are supplied.
+- Live backend mode still requires PocketBase first, then Vite live mode:
+  - `npm run pb:serve`
+  - `npm run dev:live`
+- Without `VITE_ITEM_CARD_READER=pocketbase`, the frontend uses fixture mode and write/import surfaces remain limited.
+
+## Current Dirty Worktree Notes
+
+The UI checkpoint intentionally excluded unrelated dirty files:
+
+- `.DS_Store`
+- `docs/.DS_Store`
+- `.claude/`
+- `README.md`
+- `package.json`
+- `seed/README.md`
+- `seed/load.js`
+
+Do not sweep these into UI commits. Review them separately before staging.
 
 ## Next Task
 
-Commit or otherwise explicitly handle the accepted migration file:
+Start Track 2 import as a separate planned slice.
 
-- `pocketbase/pb_migrations/0001_initial_schema.js`
+Recommended next slice:
 
-After that, proceed to the seed specification / seed loader step from `docs/runbooks/m0.1-plan.md`.
+- design the unified import surface and backend ingestion path for URL, text note, local image/file, PDF, Pinterest, Are.na, and YouTube
+- keep the first implementation local/manual-first
+- preserve the existing `/api/vita/item-capture` path for text and URL
+- avoid schema changes unless a concrete ingestion incompatibility is proven
 
-## In-Scope Files
+## In-Scope Files For Next Slice
 
-For the immediate next task:
+- `src/components/spotlight/SpotlightDock.tsx`
+- `src/App.tsx`
+- `src/data/pocketBaseItemCapture.ts`
+- `pocketbase/pb_hooks/item_capture.pb.js`
+- `README.md` and/or `docs/runbooks/current-handoff.md` only if workflow docs need alignment
 
-- `pocketbase/pb_migrations/0001_initial_schema.js`
-- `docs/runbooks/current-handoff.md`
+## Out-Of-Scope Files For Next Slice
 
-For the next implementation step after the migration is committed:
-
-- `seed/README.md`
-- `seed/load.ts`
-- `seed/fixtures/*.json`
-- `docs/runbooks/m0.1-plan.md` as the source of truth for fixture coverage
-
-## Out-Of-Scope Files
-
-- Frontend files (`src/`, `package.json`, Vite/React config, component files)
-- Existing migration logic in `pocketbase/pb_migrations/0001_initial_schema.js` unless a concrete runtime incompatibility is proven
-- `SCHEMA.md` unless a later accepted migration changes the schema
-- `CONSTITUTION.md`
-- `AGENTS.md`
-- Files under `docs/decisions/`
-- Files under `docs/subagents/`
-- `.DS_Store` files
+- schema and migration files unless a concrete runtime blocker is proven
+- seed fixture content
+- existing item-detail behavior
+- CollectionView behavior
+- unrelated nav/card polish
+- `.DS_Store` files and `.claude/`
 
 ## Done-When Criteria
 
-Immediate handoff task is done when:
+The next Track 2 planning/implementation slice is done when:
 
-- `docs/runbooks/current-handoff.md` exists.
-- It captures the current phase, accepted migration result, approved flags, runtime notes, next task, scope boundaries, and done-when criteria.
-- No frontend files are changed.
-- No schema or migration logic is changed.
-
-Next migration-commit task is done when:
-
-- `pocketbase/pb_migrations/0001_initial_schema.js` is committed.
-- The commit excludes `.DS_Store` noise unless intentionally handled separately.
-- `git status --short` shows no unexpected staged files.
+- the import UX has one clear entry point from the Spotlight dock
+- text and URL capture continue to work in live PocketBase mode
+- file/media/PDF import is either implemented narrowly or clearly staged as unsupported
+- source metadata behavior is explicit for each supported input type
+- `npm run typecheck` and `npm run build` pass
+- live-mode startup and verification steps are documented if they change
