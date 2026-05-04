@@ -10,6 +10,8 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 
 ## Latest Accepted Result
 
+- Latest archive card/search/nav polish checkpoint:
+  - Commit: `06de7d6 Polish archive card metadata and controls`
 - Latest import checkpoint:
   - Commit: `553df61 Implement first local image import path`
 - Latest UI checkpoint:
@@ -21,7 +23,15 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
   - centered secondary pill row for Index/View/Filter/Info/Settings choices
   - Gallery grid with `2-8` column controls
   - Spotlight-style bottom search/import dock
-  - simplified archive cards with equal preview rhythm and hover-only action affordances
+  - simplified archive cards with equal preview rhythm, below-thumbnail truncated labels, and hover-only action affordances
+  - card hover/focus metadata tags inside the preview frame for source, kind, upload/local status, rights warning, and collection count
+  - card hover/focus label swap from title/filename to `added ... ago` when `createdAt` is available
+- Current item-card read model includes:
+  - `createdAt`
+  - `collectionCount`
+- Current search/nav polish includes:
+  - bottom search placeholder: `Search archive`
+  - nav pill text reveal refined to slide/blur inside the pill mask
 - Product Sans is wired through local `@font-face` URLs, but the actual font files are not present yet:
   - `src/assets/fonts/ProductSans-Regular.woff2`
   - `src/assets/fonts/ProductSans-Bold.woff2`
@@ -33,16 +43,18 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 
 ## Verified Runtime Notes
 
+- `node --check pocketbase/pb_hooks/item_cards.pb.js` passed after the archive card/search/nav polish checkpoint.
 - `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the image import checkpoint.
-- `npm run typecheck` passed after the image import checkpoint.
-- `npm run build` passed after the image import checkpoint.
+- `npm run typecheck` passed after the archive card/search/nav polish checkpoint.
+- `npm run build` passed after the archive card/search/nav polish checkpoint.
 - `http://127.0.0.1:5173/` returned `200`.
 - `http://127.0.0.1:5173/?type=image` returned `200`.
-- `GET /api/vita/item-cards?workspace_id=seed:ws001&type=image` returned `200`.
+- `GET /api/vita/item-cards?workspace_id=seed:ws001&type=image` returned `200` and includes `createdAt` plus `collectionCount`.
 - `GET /api/vita/item-detail?workspace_id=seed:ws001&item_id=<imported-image-id>` returned `200`.
 - `GET /api/vita/imported-file?key=<items_image.file_ref>` returned `200 image/png`.
-- Duplicate URL capture returned `200`.
+- Duplicate URL capture returned `200` with `created: false`.
 - Duplicate image capture returned `200` with `created: false`.
+- Note capture returned `200`.
 - Build currently warns that Product Sans font URLs do not resolve at build time; this is expected until local font files are supplied.
 - Live backend mode still requires PocketBase first, then Vite live mode:
   - `npm run pb:serve`
