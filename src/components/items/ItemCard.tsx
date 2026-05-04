@@ -1,6 +1,15 @@
 import { type MouseEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
 
+export type ItemCardActionAnchor = {
+  bottom: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
+};
+
 export type RightsStatus =
   | "unknown"
   | "reference_only"
@@ -37,6 +46,7 @@ export interface ItemCardProps {
     source?: string;
     text?: string;
   };
+  onAddToCollection?: (id: string, anchor: ItemCardActionAnchor) => void;
   onNavigate?: (id: string) => void;
 }
 
@@ -62,6 +72,7 @@ export function ItemCard({
   isSelected = false,
   detailHref,
   activeFilters,
+  onAddToCollection,
   onNavigate,
 }: ItemCardProps) {
   const hasActiveFilters = Boolean(
@@ -132,6 +143,19 @@ export function ItemCard({
     event.preventDefault();
     onNavigate(id);
   };
+  const addToCollection = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    onAddToCollection?.(id, {
+      bottom: rect.bottom,
+      height: rect.height,
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      width: rect.width,
+    });
+  };
 
   const resolvedCardClassName = [
     cardClassName,
@@ -141,40 +165,45 @@ export function ItemCard({
     .join(" ");
 
   return (
-    <a
+    <article
       className={resolvedCardClassName}
-      href={itemHref}
       data-type={type}
-      aria-label={ariaLabel}
-      onClick={navigate}
     >
-      {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
-      <div className="item-card__content">
-        {renderContent(type, title, imageUrl, captionText, noteParagraph, url, linkContentType, assetFileUrl, ogImageUrl, ogTitle)}
-        <span className="item-card__actions" aria-hidden="true">
-          <span className="item-card__action-cell item-card__action-cell--add">
-            <span className="item-card__plus-icon" />
+      <a className="item-card__link" href={itemHref} aria-label={ariaLabel} onClick={navigate}>
+        {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
+        <div className="item-card__content">
+          {renderContent(type, title, imageUrl, captionText, noteParagraph, url, linkContentType, assetFileUrl, ogImageUrl, ogTitle)}
+          <span className="item-card__frame-tags" aria-hidden="true">
+            {frameTags.map((item) => (
+              <span
+                className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
+                key={item.key}
+              >
+                {item.label}
+              </span>
+            ))}
           </span>
-          <span className="item-card__action-cell item-card__action-cell--more">
-            <span className="item-card__dots-icon" />
-          </span>
+        </div>
+        <span className="item-card__label" title={primaryLabel}>
+          <span className="item-card__label-text">{primaryLabel}</span>
+          {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
         </span>
-        <span className="item-card__frame-tags" aria-hidden="true">
-          {frameTags.map((item) => (
-            <span
-              className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
-              key={item.key}
-            >
-              {item.label}
-            </span>
-          ))}
+      </a>
+      <span className="item-card__actions" aria-label="card actions">
+        <button
+          className="item-card__action-cell item-card__action-cell--add"
+          type="button"
+          onClick={addToCollection}
+          aria-label={`Add ${primaryLabel} to collection`}
+          disabled={!onAddToCollection}
+        >
+          <span className="item-card__plus-icon" aria-hidden="true" />
+        </button>
+        <span className="item-card__action-cell item-card__action-cell--more" aria-hidden="true">
+          <span className="item-card__dots-icon" />
         </span>
-      </div>
-      <span className="item-card__label" title={primaryLabel}>
-        <span className="item-card__label-text">{primaryLabel}</span>
-        {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
       </span>
-    </a>
+    </article>
   );
 }
 

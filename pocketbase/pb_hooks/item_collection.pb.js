@@ -483,3 +483,191 @@ routerAdd("POST", "/api/vita/item-collection", (e) => {
 
   return e.json(200, result);
 });
+
+routerAdd("POST", "/api/vita/collection-create", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    item_id: "",
+    name: "",
+    description: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const itemId = requiredString(body.item_id, "item_id");
+  const name = requiredString(body.name, "name");
+  const description = optionalString(body.description) || null;
+  const actor = optionalString(body.actor) || "system";
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function nullableString(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "valid")) {
+      return value.valid ? value.string : null;
+    }
+
+    return value;
+  }
+
+  function queryAll(app, sql, shape, params) {
+    const rows = arrayOf(new DynamicModel(shape));
+    app.db().newQuery(sql).bind(params).all(rows);
+    return rows;
+  }
+
+  function idSuffix() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  function collectionIdFor(timestamp) {
+    return `collection:${timestamp}:${idSuffix()}`;
+  }
+
+  function eventIdFor(itemId, collectionId, timestamp) {
+    return `collection:${itemId}:${collectionId}:${timestamp}:${idSuffix()}`;
+  }
+
+  let result = null;
+
+  e.app.runInTransaction((txApp) => {
+    const itemRows = queryAll(
+      txApp,
+      `
+        SELECT id
+        FROM items
+        WHERE workspace_id = {:workspaceId}
+          AND id = {:itemId}
+        LIMIT 1
+      `,
+      { id: "" },
+      { workspaceId, itemId },
+    );
+
+    if (itemRows.length === 0) {
+      throw new NotFoundError("item not found");
+    }
+
+    const now = new Date().toISOString();
+    const collectionId = collectionIdFor(now);
+    const eventId = eventIdFor(itemId, collectionId, now);
+    const metadata = JSON.stringify({
+      collection_id: collectionId,
+      collection_name: name,
+    });
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO collections (
+            id,
+            workspace_id,
+            name,
+            description,
+            created_at
+          ) VALUES (
+            {:collectionId},
+            {:workspaceId},
+            {:name},
+            {:description},
+            {:now}
+          )
+        `,
+      )
+      .bind({ collectionId, workspaceId, name, description, now })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO collection_items (
+            collection_id,
+            item_id,
+            added_at,
+            added_by
+          ) VALUES (
+            {:collectionId},
+            {:itemId},
+            {:now},
+            {:actor}
+          )
+        `,
+      )
+      .bind({ collectionId, itemId, now, actor })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO item_events (
+            id,
+            workspace_id,
+            item_id,
+            event_type,
+            actor,
+            metadata,
+            created_at
+          ) VALUES (
+            {:eventId},
+            {:workspaceId},
+            {:itemId},
+            'collection_added',
+            {:actor},
+            {:metadata},
+            {:now}
+          )
+        `,
+      )
+      .bind({ eventId, workspaceId, itemId, actor, metadata, now })
+      .execute();
+
+    result = {
+      collection: {
+        id: collectionId,
+        workspaceId,
+        name,
+        description: nullableString(description),
+        createdAt: now,
+      },
+      membership: {
+        collectionId,
+        itemId,
+        addedAt: now,
+        addedBy: actor,
+        collection: {
+          id: collectionId,
+          name,
+          description: nullableString(description),
+        },
+      },
+      event: {
+        id: eventId,
+        eventType: "collection_added",
+        createdAt: now,
+      },
+    };
+  });
+
+  return e.json(200, result);
+});

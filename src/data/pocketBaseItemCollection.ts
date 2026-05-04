@@ -62,6 +62,14 @@ export type ItemCollectionAttach = {
   actor?: string;
 };
 
+export type ItemCollectionCreateAndAttach = {
+  workspaceId: string;
+  itemId: string;
+  name: string;
+  description?: string;
+  actor?: string;
+};
+
 export type ItemCollectionAttachResult = {
   membership: {
     collectionId: string;
@@ -81,10 +89,21 @@ export type ItemCollectionAttachResult = {
   };
 };
 
+export type ItemCollectionCreateAndAttachResult = ItemCollectionAttachResult & {
+  collection: {
+    id: string;
+    workspaceId: string;
+    name: string;
+    description: string | null;
+    createdAt: string;
+  };
+};
+
 export type ItemCollectionClient = {
   getCollectionDetail(query: CollectionDetailQuery): Promise<CollectionDetail>;
   listCollectionOptions(query: CollectionOptionsQuery): Promise<CollectionOption[]>;
   attachCollection(change: ItemCollectionAttach): Promise<ItemCollectionAttachResult>;
+  createCollectionAndAttach(change: ItemCollectionCreateAndAttach): Promise<ItemCollectionCreateAndAttachResult>;
 };
 
 export type PocketBaseItemCollectionClientOptions = {
@@ -92,6 +111,7 @@ export type PocketBaseItemCollectionClientOptions = {
   detailEndpointPath?: string;
   optionsEndpointPath?: string;
   attachEndpointPath?: string;
+  createEndpointPath?: string;
   fetcher?: Fetcher;
 };
 
@@ -108,6 +128,7 @@ export function createPocketBaseItemCollectionClient({
   detailEndpointPath = "/api/vita/collection-detail",
   optionsEndpointPath = "/api/vita/collection-options",
   attachEndpointPath = "/api/vita/item-collection",
+  createEndpointPath = "/api/vita/collection-create",
   fetcher = globalThis.fetch,
 }: PocketBaseItemCollectionClientOptions): ItemCollectionClient {
   return {
@@ -177,6 +198,34 @@ export function createPocketBaseItemCollectionClient({
 
       return payload;
     },
+
+    async createCollectionAndAttach(change) {
+      const response = await fetcher(buildCollectionCreateUrl(baseUrl, createEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          item_id: change.itemId,
+          name: change.name,
+          description: change.description,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase collection create failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as ItemCollectionCreateAndAttachResult;
+      if (!payload.collection || !payload.membership || !payload.event) {
+        throw new Error("PocketBase collection create response must include { collection, membership, event }");
+      }
+
+      return payload;
+    },
   };
 }
 
@@ -205,6 +254,10 @@ function buildCollectionOptionsUrl(
 }
 
 function buildCollectionAttachUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
+}
+
+function buildCollectionCreateUrl(baseUrl: string, endpointPath: string) {
   return new URL(endpointPath, normalizeBaseUrl(baseUrl));
 }
 
