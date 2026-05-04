@@ -6,11 +6,13 @@ Last updated: 2026-05-04
 
 Personal archive v0.1 is past the initial schema/seed boundary and is now in live UI/product-surface plus Track 2 import iteration.
 
-The app has a working PocketBase-backed archive read path, item detail path, core write paths, first collection view, Austen/Ridgeway-inspired archive UI shell, local image import, and local PDF import/reader path.
+The app has a working PocketBase-backed archive read path, item detail path, core write paths, first collection view, Austen/Ridgeway-inspired archive UI shell, local image/PDF import, and archive-card collection attach/create workflow.
 
 ## Latest Accepted Result
 
-- Latest nav/settings/search dock checkpoint:
+- Latest card add-to-collection checkpoint:
+  - Commit: `3ab6afb Implement card add-to-collection workflow`
+- Prior nav/settings/search dock checkpoint:
   - Commit: `4e58bc0 Polish nav settings and search dock`
 - Latest PDF import/reader checkpoint:
   - Commit: `90f1802 Implement local PDF import and reader`
@@ -30,6 +32,8 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
   - simplified archive cards with equal preview rhythm, below-thumbnail truncated labels, and hover-only action affordances
   - card hover/focus metadata tags inside the preview frame for source, kind, upload/local status, rights warning, and collection count
   - card hover/focus label swap from title/filename to `added ... ago` when `createdAt` is available
+  - card `+` opens an archive-level collection island anchored to the clicked card action
+  - collection island can attach to existing collections or create a new collection and attach immediately
   - PDF link cards can render a same-origin first-page preview shell when an asset file is available
 - Current item-card read model includes:
   - `createdAt`
@@ -56,8 +60,9 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 - `node --check pocketbase/pb_hooks/item_capture.pb.js` passed after the PDF checkpoint.
 - `node --check pocketbase/pb_hooks/item_detail.pb.js` passed after the PDF checkpoint.
 - `node --check pocketbase/pb_hooks/item_delete.pb.js` passed after the PDF checkpoint.
-- `npm run typecheck` passed after the latest nav/settings/search checkpoint.
-- `npm run build` passed after the latest nav/settings/search checkpoint.
+- `node --check pocketbase/pb_hooks/item_collection.pb.js` passed after the card collection checkpoint.
+- `npm run typecheck` passed after the latest card collection checkpoint.
+- `npm run build` passed after the latest card collection checkpoint.
 - `http://127.0.0.1:5173/` returned `200`.
 - `http://127.0.0.1:5173/?type=image` returned `200`.
 - `http://127.0.0.1:5173/pdf-preview?...` returned `200` for the same-origin PDF preview route.
@@ -67,6 +72,10 @@ The app has a working PocketBase-backed archive read path, item detail path, cor
 - Duplicate URL capture returned `200` with `created: false`.
 - Duplicate image capture returned `200` with `created: false`.
 - Note capture returned `200`.
+- `GET /api/vita/collection-options?workspace_id=seed:ws001&item_id=<item-id>` returned `200`.
+- `POST /api/vita/collection-create` returned a new collection, membership, and `collection_added` event.
+- Duplicate collection attach returned `400`.
+- Browser check confirmed card `+` opens the anchored collection island and card body still opens item detail.
 - Build currently warns that Product Sans font URLs do not resolve at build time; this is expected until local font files are supplied.
 - Live backend mode still requires PocketBase first, then Vite live mode:
   - `npm run pb:serve`
@@ -89,41 +98,40 @@ Do not sweep these into UI commits. Review them separately before staging.
 
 ## Next Task
 
-Implement the first collection creation/add-to-collection slice from the card `+` affordance.
+Implement the first collection management/index slice.
 
 Recommended next slice:
 
-- use the existing hover-only card `+` affordance as the entry point
-- add a narrow UI for creating a collection or attaching the selected item to an existing collection
-- preserve the current item detail collection-attach path
-- keep collection creation/add behavior focused on the archive card workflow only
+- expose Collections from the existing `Index` top-nav surface
+- list existing collections with counts and concise metadata
+- route collection rows/cards to the existing `/collections/:collectionId` surface
+- keep rename/delete/deeper collection management out of this slice
 
 ## In-Scope Files For Next Slice
 
 - `src/App.tsx`
-- `src/components/items/ItemCard.tsx`
 - `src/data/pocketBaseItemCollection.ts`
 - `pocketbase/pb_hooks/item_collection.pb.js`
-- collection creation endpoint/files only if no existing path can support creating a collection
-- `README.md` and/or `docs/runbooks/current-handoff.md` only if workflow docs need alignment
+- `src/components/nav/PillNav.tsx` if Index needs a collection entry/control
+- `src/styles.css` for the narrow collection index surface styling
 
 ## Out-Of-Scope Files For Next Slice
 
 - schema and migration files unless a concrete runtime blocker is proven
 - seed fixture content
 - existing item-detail behavior
-- CollectionView behavior
+- existing CollectionView behavior beyond routing entry points
 - unrelated nav/card polish
 - URL, note, local image, and local PDF import rewrites
 - `.DS_Store` files and `.claude/`
 
 ## Done-When Criteria
 
-The next collection slice is done when:
+The next collection index slice is done when:
 
-- an archive card can open the collection add/create surface from `+`
-- an item can be attached to an existing collection from the archive card flow
-- collection creation is implemented only if needed for the chosen flow
-- current item-detail collection behavior still works
+- Index exposes a Collections entry or mode
+- existing collections are visible with enough metadata to choose one
+- selecting a collection opens `/collections/:collectionId`
+- current card add-to-collection and item-detail collection behavior still work
 - `npm run typecheck` and `npm run build` pass
-- live-mode verification covers the card collection flow
+- live-mode verification covers collection listing and collection navigation
