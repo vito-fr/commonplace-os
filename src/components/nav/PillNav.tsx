@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useLayoutEffect,
   useRef,
@@ -9,7 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { ItemStatus, ItemType } from "../atoms";
-import type { ItemCardFilters, ItemSourceFilter } from "../../data/itemCardReader";
+import type { ItemCardFilters, ItemFormatFilter, ItemSourceFilter } from "../../data/itemCardReader";
 import { gsap } from "../../motion/MotionShell";
 
 export type PillNavPanel = "index" | "views" | "filters" | "settings";
@@ -17,7 +18,8 @@ export type PillNavPanel = "index" | "views" | "filters" | "settings";
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
-type FilterFamily = "state" | "kind" | "origin";
+type ArchiveFormatFilter = ItemFormatFilter | "all";
+type FilterFamily = "state" | "kind" | "origin" | "format";
 type SiteTheme = "light" | "dark";
 type SettingsSection = "appearance" | "gallery" | "shortcuts" | "import" | "system";
 export type ShortcutAction = "search" | "theme" | "galleryIncrease" | "galleryDecrease";
@@ -53,6 +55,7 @@ export type PillNavProps = {
   shortcutError: string | null;
   siteTheme: SiteTheme;
   onGalleryColumnsChange: (columns: number) => void;
+  onFormatChange: (format: ArchiveFormatFilter) => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
@@ -63,6 +66,7 @@ export type PillNavProps = {
   statusOptions: ArchiveStatusFilter[];
   typeOptions: ArchiveTypeFilter[];
   sourceOptions: ArchiveSourceFilter[];
+  formatOptions: ArchiveFormatFilter[];
 };
 
 type SubnavItem = {
@@ -89,6 +93,7 @@ export function PillNav(props: PillNavProps) {
     itemCount,
     loading,
     onClearFilters,
+    onFormatChange,
     onGalleryColumnsChange,
     onPanelChange,
     onSiteThemeChange,
@@ -104,8 +109,11 @@ export function PillNav(props: PillNavProps) {
     sourceOptions,
     statusOptions,
     typeOptions,
+    formatOptions,
   } = props;
   const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
+  const primaryGroupRef = useRef<HTMLDivElement | null>(null);
+  usePrimaryNavIntro(primaryGroupRef);
 
   const togglePanel = (panel: PillNavPanel) => {
     onPanelChange(activePanel === panel ? null : panel);
@@ -121,6 +129,7 @@ export function PillNav(props: PillNavProps) {
     filters,
     loading,
     onClearFilters,
+    onFormatChange,
     onSourceChange,
     onStatusChange,
     onTypeChange,
@@ -132,11 +141,13 @@ export function PillNav(props: PillNavProps) {
     sourceOptions,
     statusOptions,
     typeOptions,
+    formatOptions,
   });
 
   const nav = (
     <header className="pill-nav" aria-label="archive controls">
-      <div className="pill-nav__group" aria-label="primary archive controls">
+      <div className="pill-nav__group" ref={primaryGroupRef} aria-label="primary archive controls">
+        <span className="pill-nav__primary-membrane" aria-hidden="true" />
         <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
           <span className="live-logo-dot" aria-hidden="true" />
         </button>
@@ -179,6 +190,143 @@ export function PillNav(props: PillNavProps) {
   }
 
   return createPortal(nav, document.body);
+}
+
+function usePrimaryNavIntro(primaryGroupRef: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const group = primaryGroupRef.current;
+    if (!group) {
+      return;
+    }
+
+    const membrane = group.querySelector<HTMLElement>(".pill-nav__primary-membrane");
+    const cells = Array.from(group.querySelectorAll<HTMLElement>(".nav-cell"));
+    const labels = cells
+      .map((cell) => cell.querySelector<HTMLElement>(".nav-cell__text"))
+      .filter((label): label is HTMLElement => Boolean(label));
+
+    if (!membrane || cells.length === 0) {
+      return;
+    }
+
+    gsap.set(group, { clearProps: "width,height,position" });
+    gsap.set(membrane, { clearProps: "width,height,opacity,transform" });
+    gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform,opacity" });
+    gsap.set(labels, { clearProps: "opacity,filter,transform" });
+
+    const groupRect = group.getBoundingClientRect();
+    const targetMetrics = cells.map((cell) => {
+      const rect = cell.getBoundingClientRect();
+      return {
+        height: rect.height,
+        left: rect.left - groupRect.left,
+        top: rect.top - groupRect.top,
+        width: rect.width,
+      };
+    });
+    const originLeft = Math.max(0, Math.round(groupRect.width / 2 - 12.5));
+    const timeline = gsap.timeline();
+    const getAnimatedNumber = (element: HTMLElement, property: string, fallback: number) => {
+      const value = gsap.getProperty(element, property);
+      const parsed = typeof value === "number" ? value : parseFloat(String(value));
+
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const updateMembrane = () => {
+      let minLeft = Infinity;
+      let minTop = Infinity;
+      let maxRight = -Infinity;
+      let maxBottom = -Infinity;
+
+      cells.forEach((cell) => {
+        const left = getAnimatedNumber(cell, "left", 0);
+        const top = getAnimatedNumber(cell, "top", 0);
+        const width = getAnimatedNumber(cell, "width", cell.offsetWidth);
+        const height = getAnimatedNumber(cell, "height", cell.offsetHeight);
+
+        minLeft = Math.min(minLeft, left);
+        minTop = Math.min(minTop, top);
+        maxRight = Math.max(maxRight, left + width);
+        maxBottom = Math.max(maxBottom, top + height);
+      });
+
+      const padding = 4;
+      gsap.set(membrane, {
+        height: maxBottom - minTop + padding * 2,
+        opacity: 1,
+        transform: `translate3d(${minLeft - padding}px, ${minTop - padding}px, 0)`,
+        width: maxRight - minLeft + padding * 2,
+      });
+    };
+
+    gsap.set(group, {
+      height: groupRect.height,
+      position: "relative",
+      width: groupRect.width,
+    });
+    gsap.set(cells, {
+      left: originLeft,
+      opacity: 1,
+      position: "absolute",
+      top: (index) => targetMetrics[index]?.top ?? 0,
+      transformOrigin: "center center",
+      width: 25,
+      zIndex: (index) => cells.length - index,
+    });
+    updateMembrane();
+    gsap.set(labels, {
+      filter: "blur(5px)",
+      opacity: 0,
+      x: (index) => {
+        const target = targetMetrics[index];
+        if (!target) {
+          return 0;
+        }
+
+        const targetCenter = target.left + target.width / 2;
+        const originCenter = originLeft + 12.5;
+        return targetCenter < originCenter ? 8 : -8;
+      },
+    });
+
+    timeline.to(cells, {
+      height: (index) => targetMetrics[index]?.height ?? 25,
+      left: (index) => targetMetrics[index]?.left ?? 0,
+      width: (index) => targetMetrics[index]?.width ?? 25,
+      duration: 0.68,
+      ease: "expo.out",
+      onUpdate: updateMembrane,
+      stagger: {
+        amount: 0.28,
+        from: "center",
+      },
+    }, 0.02);
+
+    timeline.to(labels, {
+      filter: "blur(0px)",
+      opacity: 1,
+      x: 0,
+      duration: 0.18,
+      ease: "power2.out",
+      stagger: {
+        amount: 0.18,
+        from: "center",
+      },
+    }, 0.32);
+
+    timeline.eventCallback("onComplete", () => {
+      updateMembrane();
+      gsap.set(labels, { clearProps: "opacity,filter,transform" });
+    });
+
+    return () => {
+      timeline.kill();
+      gsap.set(group, { clearProps: "width,height,position" });
+      gsap.set(membrane, { clearProps: "width,height,opacity,transform" });
+      gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform,opacity" });
+      gsap.set(labels, { clearProps: "opacity,filter,transform" });
+    };
+  }, [primaryGroupRef]);
 }
 
 function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
@@ -423,6 +571,7 @@ function getSubnavGroups({
   filters,
   loading,
   onClearFilters,
+  onFormatChange,
   onSourceChange,
   onStatusChange,
   onTypeChange,
@@ -434,11 +583,13 @@ function getSubnavGroups({
   sourceOptions,
   statusOptions,
   typeOptions,
+  formatOptions,
 }: {
   activeFilterFamily: FilterFamily;
   filters: ItemCardFilters;
   loading: boolean;
   onClearFilters: () => void;
+  onFormatChange: (format: ArchiveFormatFilter) => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
@@ -450,6 +601,7 @@ function getSubnavGroups({
   sourceOptions: ArchiveSourceFilter[];
   statusOptions: ArchiveStatusFilter[];
   typeOptions: ArchiveTypeFilter[];
+  formatOptions: ArchiveFormatFilter[];
 }): SubnavGroup[] {
   if (panel === "index") {
     return [
@@ -532,6 +684,12 @@ function getSubnavGroups({
       active: activeFilterFamily === "origin",
       onClick: () => setActiveFilterFamily("origin"),
     },
+    {
+      key: "filter-format",
+      label: "Format",
+      active: activeFilterFamily === "format",
+      onClick: () => setActiveFilterFamily("format"),
+    },
   ];
 
   const optionItems =
@@ -551,13 +709,21 @@ function getSubnavGroups({
             disabled: loading,
             onClick: () => onTypeChange(option),
           }))
-        : sourceOptions.map<SubnavItem>((option) => ({
-            key: `origin:${option}`,
-            label: formatOriginOption(option),
-            active: (filters.source ?? "all") === option,
-            disabled: loading,
-            onClick: () => onSourceChange(option),
-          }));
+        : activeFilterFamily === "origin"
+          ? sourceOptions.map<SubnavItem>((option) => ({
+              key: `origin:${option}`,
+              label: formatOriginOption(option),
+              active: (filters.source ?? "all") === option,
+              disabled: loading,
+              onClick: () => onSourceChange(option),
+            }))
+          : formatOptions.map<SubnavItem>((option) => ({
+              key: `format:${option}`,
+              label: formatFormatOption(option),
+              active: (filters.format ?? "all") === option,
+              disabled: loading,
+              onClick: () => onFormatChange(option),
+            }));
 
   if (hasActiveFilters(filters)) {
     optionItems.push({
@@ -862,7 +1028,7 @@ function getCellStyle(index: number, label: string): NavCellStyle {
 }
 
 function hasActiveFilters(filters: ItemCardFilters): boolean {
-  return Boolean(filters.status || filters.type || filters.source || filters.text);
+  return Boolean(filters.status || filters.type || filters.source || filters.format || filters.text);
 }
 
 function formatStateOption(option: ArchiveStatusFilter): string {
@@ -883,6 +1049,14 @@ function formatOriginOption(option: ArchiveSourceFilter): string {
   }
 
   return option.replace("_", " ");
+}
+
+function formatFormatOption(option: ArchiveFormatFilter): string {
+  if (option === "all") {
+    return "Any format";
+  }
+
+  return option.toUpperCase() === option ? option : option.charAt(0).toUpperCase() + option.slice(1);
 }
 
 function getShortcutBindingFromEvent(event: KeyboardEvent): ShortcutBinding | null {

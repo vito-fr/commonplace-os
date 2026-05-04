@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { gsap } from "../../motion/MotionShell";
 import type { ShortcutBinding } from "../nav/PillNav";
@@ -9,6 +9,11 @@ export type SpotlightCaptureRequest =
   | { type: "image"; file: File }
   | { type: "pdf"; file: File };
 
+export type SpotlightCaptureResult = {
+  created: boolean;
+  label?: string;
+} | void;
+
 export type SpotlightDockProps = {
   value: string;
   onChange: (next: string) => void;
@@ -17,17 +22,29 @@ export type SpotlightDockProps = {
   captureError: string | null;
   captureNotice: string | null;
   searchShortcut: ShortcutBinding;
-  onCapture: (request: SpotlightCaptureRequest) => Promise<void> | void;
+  onCapture: (request: SpotlightCaptureRequest) => Promise<SpotlightCaptureResult> | SpotlightCaptureResult;
 };
 
 type DockMode = "search" | "import" | null;
-type ImportMode = "url" | "note" | "file";
+type ImportMode = "paste" | "files" | "sources";
+type ImportQueueStatus = "ready" | "importing" | "imported" | "duplicate" | "unsupported" | "failed";
+type ImportQueueItem = {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  status: ImportQueueStatus;
+  message: string;
+};
 
 const IDLE_WIDTH = 48;
 const IDLE_HEIGHT = 10;
-const DOCK_HEIGHT = 44;
-const SEARCH_WIDTH = 440;
-const SEARCH_CONTENT_WIDTH = 432;
+const DOCK_HEIGHT = 46;
+const SEARCH_WIDTH = 456;
+const SEARCH_CONTENT_WIDTH = 448;
+const MAX_BATCH_FILES = 20;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export function SpotlightDock({
   captureError,
@@ -40,9 +57,11 @@ export function SpotlightDock({
   value,
 }: SpotlightDockProps) {
   const [activeMode, setActiveMode] = useState<DockMode>(null);
-  const [importMode, setImportMode] = useState<ImportMode>("url");
+  const [importMode, setImportMode] = useState<ImportMode>("paste");
   const [importValue, setImportValue] = useState("");
-  const [fileNotice, setFileNotice] = useState<string | null>(null);
+  const [fileQueue, setFileQueue] = useState<ImportQueueItem[]>([]);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+  const [isQueueImporting, setIsQueueImporting] = useState(false);
   const dockRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputWrapRef = useRef<HTMLDivElement | null>(null);
@@ -53,6 +72,9 @@ export function SpotlightDock({
   const isSearchOpen = activeMode === "search";
   const isImportOpen = activeMode === "import";
   const isDockOpen = activeMode !== null;
+  const pastePreview = useMemo(() => getPastePreview(importValue), [importValue]);
+  const readyFileCount = fileQueue.filter((item) => item.status === "ready").length;
+  const isBusy = pendingCapture || isQueueImporting;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -115,6 +137,7 @@ export function SpotlightDock({
         filter: "blur(5px)",
         maxWidth: 0,
         opacity: 0,
+        width: 0,
       });
 
       timeline.to(dock, {
@@ -130,6 +153,7 @@ export function SpotlightDock({
           maxWidth: SEARCH_CONTENT_WIDTH,
           opacity: 1,
           filter: "blur(0px)",
+          width: SEARCH_CONTENT_WIDTH,
           duration: 0.28,
           ease: "power2.out",
         },
@@ -142,6 +166,7 @@ export function SpotlightDock({
         maxWidth: 0,
         opacity: 0,
         filter: "blur(4px)",
+        width: 0,
         duration: 0.16,
         ease: "power2.in",
       });
@@ -157,7 +182,6 @@ export function SpotlightDock({
         0.06,
       );
     }
-
   }, [isDockOpen]);
 
   useEffect(() => {
@@ -172,81 +196,110 @@ export function SpotlightDock({
   }, [isSearchOpen]);
 
   useEffect(() => {
-    if (isImportOpen) {
+    if (isImportOpen && importMode === "paste") {
       requestAnimationFrame(() => {
         importInputRef.current?.focus();
       });
     }
-  }, [isImportOpen]);
+  }, [importMode, isImportOpen]);
 
   const submitImport = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const input = importValue.trim();
 
     if (!isPocketBaseMode) {
+      setBatchNotice("Live mode required.");
       return;
     }
 
-    if (importMode === "file") {
-      setFileNotice("Drop or choose an image to import.");
+    if (importMode === "files") {
+      await importReadyFiles();
       return;
     }
 
+    if (importMode === "sources") {
+      return;
+    }
+
+    const input = importValue.trim();
     if (!input) {
       return;
     }
 
     try {
-      await onCapture(
-        importMode === "url"
-          ? { type: "link", url: input }
-          : { type: "note", body: input },
-      );
+      const request = pastePreview.kind === "note" ? { type: "note" as const, body: input } : { type: "link" as const, url: input };
+      const result = await onCapture(request);
       setImportValue("");
-      setFileNotice(null);
+      setBatchNotice(result?.created === false ? "Already in archive." : getPasteSuccessMessage(pastePreview));
     } catch {
       // App owns the persistent capture error message.
     }
   };
 
-  const captureFile = async (file: File | null) => {
-    if (!file) {
-      setFileNotice("File import is next. URL and note import are live.");
+  const importReadyFiles = async () => {
+    const readyItems = fileQueue.filter((item) => item.status === "ready");
+
+    if (readyItems.length === 0) {
+      setBatchNotice("Choose image or PDF files first.");
       return;
     }
 
-    setImportMode("file");
+    setIsQueueImporting(true);
+    setBatchNotice(`Importing ${readyItems.length} ${readyItems.length === 1 ? "file" : "files"}.`);
 
-    if (!file.type.startsWith("image/")) {
-      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    for (const item of readyItems) {
+      updateQueueItem(item.id, { status: "importing", message: "importing" });
 
-      if (!isPdf) {
-        setFileNotice(`${file.name} staged. Video and audio import are next.`);
-        return;
+      try {
+        const result = await onCapture(
+          isPdfFile(item.file)
+            ? { type: "pdf", file: item.file }
+            : { type: "image", file: item.file },
+        );
+        updateQueueItem(item.id, {
+          status: result?.created === false ? "duplicate" : "imported",
+          message: result?.created === false ? "already in archive" : "imported",
+        });
+      } catch {
+        updateQueueItem(item.id, { status: "failed", message: "failed" });
       }
     }
 
-    if (!isPocketBaseMode) {
-      setFileNotice("Live mode required.");
+    setIsQueueImporting(false);
+    setBatchNotice("File import complete.");
+  };
+
+  const queueFiles = (files: FileList | File[]) => {
+    const nextFiles = Array.from(files);
+
+    setImportMode("files");
+
+    if (nextFiles.length === 0) {
+      setBatchNotice("Choose image or PDF files first.");
       return;
     }
 
-    try {
-      setFileNotice(`Importing ${file.name}.`);
-      await onCapture(file.type.startsWith("image/") ? { type: "image", file } : { type: "pdf", file });
-      setFileNotice(null);
-    } catch {
-      // App owns the persistent capture error message.
+    if (nextFiles.length > MAX_BATCH_FILES) {
+      setBatchNotice(`Choose up to ${MAX_BATCH_FILES} files per batch.`);
+      return;
     }
+
+    setFileQueue(nextFiles.map(fileToQueueItem));
+    setBatchNotice(`${nextFiles.length} ${nextFiles.length === 1 ? "file" : "files"} staged.`);
   };
 
   const stageFileImport = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    void captureFile(event.dataTransfer.files.item(0));
+    queueFiles(event.dataTransfer.files);
   };
 
   const chooseFile = () => {
     fileInputRef.current?.click();
+  };
+
+  const updateQueueItem = (id: string, patch: Partial<ImportQueueItem>) => {
+    setFileQueue((currentQueue) =>
+      currentQueue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
   };
 
   const openSearch = () => {
@@ -278,89 +331,114 @@ export function SpotlightDock({
       {isImportOpen ? (
         <div className="spotlight-import-panel" ref={panelRef} role="dialog" aria-label="import to archive">
           <form className="spotlight-import-panel__form" onSubmit={submitImport}>
-            <div className="spotlight-import-panel__modes" aria-label="import type">
+            <div className="spotlight-import-panel__modes" aria-label="import mode">
               <button
                 className="spotlight-dock__cell"
-                data-active={importMode === "url" ? "true" : "false"}
+                data-active={importMode === "paste" ? "true" : "false"}
                 type="button"
-                onClick={() => setImportMode("url")}
+                onClick={() => setImportMode("paste")}
               >
-                URL
+                Paste
               </button>
               <button
                 className="spotlight-dock__cell"
-                data-active={importMode === "note" ? "true" : "false"}
+                data-active={importMode === "files" ? "true" : "false"}
                 type="button"
-                onClick={() => setImportMode("note")}
+                onClick={() => setImportMode("files")}
               >
-                Note
+                Files
               </button>
               <button
                 className="spotlight-dock__cell"
-                data-active={importMode === "file" ? "true" : "false"}
+                data-active={importMode === "sources" ? "true" : "false"}
                 type="button"
-                onClick={() => {
-                  setImportMode("file");
-                  chooseFile();
-                }}
+                onClick={() => setImportMode("sources")}
               >
-                File
+                Sources
               </button>
               <span className="spotlight-import-panel__hint">{getImportHint(importMode)}</span>
             </div>
-            {importMode === "url" || importMode === "note" ? (
-              <textarea
-                ref={importInputRef}
-                aria-label={importMode === "url" ? "URL to import" : "Text note to import"}
-                disabled={pendingCapture || !isPocketBaseMode}
-                name="spotlight-import"
-                onChange={(event) => setImportValue(event.target.value)}
-                placeholder={getImportPlaceholder(importMode, isPocketBaseMode)}
-                rows={importMode === "url" ? 2 : 4}
-                value={importValue}
-              />
-            ) : null}
-            <div
-              className={`spotlight-import-panel__drop${importMode === "file" ? " spotlight-import-panel__drop--active" : ""}`}
-              onClick={chooseFile}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={stageFileImport}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  chooseFile();
-                }
-              }}
-            >
-              Drop or choose image, media, or PDF
-              <span>images and PDFs import now</span>
+
+            <div className="spotlight-import-panel__body" data-mode={importMode}>
+              {importMode === "paste" ? (
+                <>
+                  <textarea
+                    ref={importInputRef}
+                    aria-label="paste URL or write note"
+                    disabled={isBusy || !isPocketBaseMode}
+                    name="spotlight-import"
+                    onChange={(event) => setImportValue(event.target.value)}
+                    placeholder={getPastePlaceholder(isPocketBaseMode)}
+                    rows={4}
+                    value={importValue}
+                  />
+                  <div className="spotlight-import-panel__preview" aria-live="polite">
+                    <span>{pastePreview.label}</span>
+                    <small>{pastePreview.detail}</small>
+                  </div>
+                </>
+              ) : null}
+
+              {importMode === "files" ? (
+                <>
+                  <div
+                    className="spotlight-import-panel__drop"
+                    onClick={chooseFile}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={stageFileImport}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        chooseFile();
+                      }
+                    }}
+                  >
+                    Drop or choose images and PDFs
+                    <span>{MAX_BATCH_FILES} files · 25MB each</span>
+                  </div>
+                  <FileQueueList queue={fileQueue} />
+                </>
+              ) : null}
+
+              {importMode === "sources" ? <SourceImportGuide /> : null}
             </div>
+
             <input
               ref={fileInputRef}
               className="visually-hidden"
               type="file"
               accept="image/*,application/pdf,video/*,audio/*"
+              multiple
               onChange={(event) => {
-                void captureFile(event.target.files?.item(0) ?? null);
+                if (event.target.files) {
+                  queueFiles(event.target.files);
+                }
                 event.currentTarget.value = "";
               }}
             />
+
             <div className="spotlight-import-panel__actions">
               <button
                 className="spotlight-dock__cell"
                 type="submit"
-                disabled={pendingCapture || !isPocketBaseMode || importMode === "file"}
+                disabled={
+                  isBusy ||
+                  !isPocketBaseMode ||
+                  importMode === "sources" ||
+                  (importMode === "paste" && !importValue.trim()) ||
+                  (importMode === "files" && readyFileCount === 0)
+                }
               >
-                {pendingCapture ? "Adding" : "Add"}
+                {isBusy ? "Adding" : importMode === "files" ? `Add ${readyFileCount || ""}`.trim() : "Add"}
               </button>
               <button className="spotlight-dock__cell" type="button" onClick={() => setActiveMode(null)}>
                 Close
               </button>
               {captureNotice ? <span className="spotlight-import-panel__meta">{captureNotice}</span> : null}
               {captureError ? <span className="spotlight-import-panel__error">{captureError}</span> : null}
-              {fileNotice ? <span className="spotlight-import-panel__meta">{fileNotice}</span> : null}
+              {batchNotice ? <span className="spotlight-import-panel__meta">{batchNotice}</span> : null}
             </div>
           </form>
         </div>
@@ -402,28 +480,206 @@ export function SpotlightDock({
   return createPortal(portal, document.body);
 }
 
-function getImportPlaceholder(importMode: ImportMode, isPocketBaseMode: boolean) {
-  if (!isPocketBaseMode) {
-    return "live mode required";
+function FileQueueList({ queue }: { queue: ImportQueueItem[] }) {
+  if (queue.length === 0) {
+    return (
+      <div className="spotlight-import-panel__queue spotlight-import-panel__queue--empty">
+        <span>Images and PDFs import now.</span>
+        <small>Video and audio stay staged for the next media slice.</small>
+      </div>
+    );
   }
 
-  if (importMode === "url") {
-    return "paste URL, Pinterest, Are.na, YouTube, or PDF link";
-  }
+  return (
+    <div className="spotlight-import-panel__queue" aria-label="files to import">
+      {queue.map((item) => (
+        <div className="spotlight-import-panel__queue-row" data-status={item.status} key={item.id}>
+          <span>{item.name}</span>
+          <small>
+            {formatFileSize(item.size)} · {item.message}
+          </small>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  return "write text note";
+function SourceImportGuide() {
+  return (
+    <div className="spotlight-import-panel__sources" aria-label="supported sources">
+      <SourceImportRow label="Pinterest" copy="Paste pin, board, or image URLs. They filter as Pinterest." />
+      <SourceImportRow label="Are.na" copy="Paste channel or block URLs. They filter as Are.na." />
+      <SourceImportRow label="YouTube" copy="Paste video URLs. They import as video links." />
+      <SourceImportRow label="APIs" copy="Account API import is deferred until URL capture proves the workflow." />
+    </div>
+  );
+}
+
+function SourceImportRow({ copy, label }: { copy: string; label: string }) {
+  return (
+    <div className="spotlight-import-panel__source-row">
+      <strong>{label}</strong>
+      <span>{copy}</span>
+    </div>
+  );
+}
+
+function getPastePlaceholder(isPocketBaseMode: boolean) {
+  return isPocketBaseMode ? "paste URL or write a note" : "live mode required";
 }
 
 function getImportHint(importMode: ImportMode) {
-  if (importMode === "url") {
-    return "link import";
+  if (importMode === "paste") {
+    return "URLs become links · text becomes notes";
   }
 
-  if (importMode === "note") {
-    return "manual note";
+  if (importMode === "files") {
+    return "images and PDFs import now";
   }
 
-  return "image upload";
+  return "platform URLs are classified";
+}
+
+function getPastePreview(value: string) {
+  const input = value.trim();
+
+  if (!input) {
+    return {
+      kind: "empty" as const,
+      label: "Ready for paste.",
+      detail: "Pinterest, Are.na, YouTube, PDFs, regular URLs, or text notes.",
+    };
+  }
+
+  const url = parseHttpUrl(input);
+  if (!url) {
+    return {
+      kind: "note" as const,
+      label: "Text note",
+      detail: "This will be added as a manual note.",
+    };
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (isPinterestHost(host)) {
+    return {
+      kind: "link" as const,
+      label: "Pinterest URL",
+      detail: "This will filter under Origin: Pinterest.",
+    };
+  }
+
+  if (isArenaHost(host)) {
+    return {
+      kind: "link" as const,
+      label: "Are.na URL",
+      detail: "This will filter under Origin: Are.na.",
+    };
+  }
+
+  if (isVideoHost(host)) {
+    return {
+      kind: "link" as const,
+      label: "Video URL",
+      detail: "This will import as a video link.",
+    };
+  }
+
+  if (url.pathname.toLowerCase().endsWith(".pdf")) {
+    return {
+      kind: "link" as const,
+      label: "PDF URL",
+      detail: "This will import as a PDF link.",
+    };
+  }
+
+  return {
+    kind: "link" as const,
+    label: "Web URL",
+    detail: `This will import from ${host}.`,
+  };
+}
+
+function getPasteSuccessMessage(preview: ReturnType<typeof getPastePreview>) {
+  if (preview.kind === "note") {
+    return "Added note.";
+  }
+
+  return `Imported ${preview.label.toLowerCase()}.`;
+}
+
+function parseHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function fileToQueueItem(file: File): ImportQueueItem {
+  const validation = validateImportFile(file);
+
+  return {
+    id: `${file.name}:${file.size}:${file.lastModified}:${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    status: validation.status,
+    message: validation.message,
+  };
+}
+
+function validateImportFile(file: File): Pick<ImportQueueItem, "status" | "message"> {
+  if (file.size > MAX_FILE_BYTES) {
+    return { status: "failed", message: "over 25MB limit" };
+  }
+
+  if (isImageFile(file)) {
+    return { status: "ready", message: "image ready" };
+  }
+
+  if (isPdfFile(file)) {
+    return { status: "ready", message: "PDF ready" };
+  }
+
+  return { status: "unsupported", message: "media import next" };
+}
+
+function isImageFile(file: File) {
+  return file.type.startsWith("image/");
+}
+
+function isPdfFile(file: File) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function isPinterestHost(host: string) {
+  return (
+    host === "pin.it" ||
+    host === "pinterest.com" ||
+    host.endsWith(".pinterest.com") ||
+    host === "pinimg.com" ||
+    host.endsWith(".pinimg.com")
+  );
+}
+
+function isArenaHost(host: string) {
+  return host === "are.na" || host.endsWith(".are.na");
+}
+
+function isVideoHost(host: string) {
+  return host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be" || host === "vimeo.com" || host.endsWith(".vimeo.com");
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)}MB`;
 }
 
 function matchesShortcut(event: KeyboardEvent, binding: ShortcutBinding) {

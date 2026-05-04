@@ -11,6 +11,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   const status = normalizedFilter(query.get("status"));
   const type = normalizedFilter(query.get("type"));
   const source = normalizedFilter(query.get("source"));
+  const format = normalizedFilter(query.get("format"));
   const textQuery = normalizedTextQuery(query.get("q"));
   const rawItemIds = query.get("item_ids");
   const itemIds = rawItemIds
@@ -24,6 +25,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   let statusFilter = "";
   let typeFilter = "";
   let sourceFilter = "";
+  let formatFilter = "";
   let textQueryFilter = "";
   let orderBy = "ORDER BY i.updated_at DESC, i.id ASC";
 
@@ -56,6 +58,18 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
     params.source = source;
     sourceFilter = "AND COALESCE(s.kind, 'manual') = {:source}";
+  }
+
+  if (format) {
+    if (!isKnownFormat(format)) {
+      throw new BadRequestError("format filter is invalid");
+    }
+
+    params.format = format;
+    formatFilter =
+      format === "website"
+        ? "AND i.type = 'link' AND COALESCE(link.content_type, 'unknown') IN ('website', 'unknown')"
+        : "AND i.type = 'link' AND link.content_type = {:format}";
   }
 
   if (textQuery) {
@@ -117,6 +131,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
 
   function isKnownSource(value) {
     return ["pinterest", "arena", "url", "local", "ios_capture", "manual"].includes(value);
+  }
+
+  function isKnownFormat(value) {
+    return ["pdf", "video", "website"].includes(value);
   }
 
   const rows = arrayOf(
@@ -205,6 +223,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ${statusFilter}
           ${typeFilter}
           ${sourceFilter}
+          ${formatFilter}
           ${textQueryFilter}
         ${orderBy}
       `,

@@ -8,7 +8,7 @@ import relationshipsFixture from "../../seed/fixtures/13_relationships.json";
 import sourcesFixture from "../../seed/fixtures/02_sources.json";
 import type { RightsStatus } from "../components/items";
 import type { ItemStatus, ItemType } from "../components/atoms";
-import type { ItemCardQuery, ItemCardReader, ItemSourceFilter } from "./itemCardReader";
+import type { ItemCardQuery, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./itemCardReader";
 
 type FixtureItem = {
   id: string;
@@ -42,6 +42,7 @@ type FixtureLink = {
   item_id: string;
   url: string;
   og_metadata: string | null;
+  content_type?: string | null;
 };
 
 type FixtureRelationship = {
@@ -110,6 +111,11 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
     const note = notes.find((row) => row.item_id === item.id);
     const link = links.find((row) => row.item_id === item.id);
     const ogMetadata = parseOgMetadata(link?.og_metadata ?? null);
+    const linkContentType = getLinkContentType(link);
+
+    if (filters?.format && !matchesFormatFilter(filters.format, item.type, linkContentType)) {
+      return [];
+    }
 
     if (
       filters?.text &&
@@ -140,6 +146,7 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       captionText: caption?.body ?? null,
       noteParagraph: note?.body ?? null,
       url: link?.url ?? null,
+      linkContentType,
       ogImageUrl: ogMetadata.image,
       ogTitle: ogMetadata.title,
       hasPendingAIAnnotations: annotations.some(
@@ -149,6 +156,26 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       onNavigate: () => undefined,
     };
   });
+}
+
+function getLinkContentType(link: FixtureLink | undefined) {
+  if (!link) {
+    return null;
+  }
+
+  return link.content_type ?? "website";
+}
+
+function matchesFormatFilter(format: ItemFormatFilter, itemType: ItemType, linkContentType: string | null) {
+  if (itemType !== "link") {
+    return false;
+  }
+
+  if (format === "website") {
+    return !linkContentType || linkContentType === "unknown" || linkContentType === "website";
+  }
+
+  return linkContentType === format;
 }
 
 function matchesTextQuery(query: string, values: Array<string | null | undefined>) {

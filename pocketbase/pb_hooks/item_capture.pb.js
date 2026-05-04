@@ -220,6 +220,46 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return match[1].toLowerCase();
   }
 
+  function linkSourceFor(value) {
+    const host = urlIdentifierFor(value);
+
+    if (isPinterestHost(host)) {
+      return {
+        kind: "pinterest",
+        identifier: "pinterest",
+        label: "Pinterest",
+      };
+    }
+
+    if (isArenaHost(host)) {
+      return {
+        kind: "arena",
+        identifier: "arena",
+        label: "Are.na",
+      };
+    }
+
+    return {
+      kind: "url",
+      identifier: host,
+      label: host,
+    };
+  }
+
+  function isPinterestHost(host) {
+    return (
+      host === "pin.it" ||
+      host === "pinterest.com" ||
+      host.endsWith(".pinterest.com") ||
+      host === "pinimg.com" ||
+      host.endsWith(".pinimg.com")
+    );
+  }
+
+  function isArenaHost(host) {
+    return host === "are.na" || host.endsWith(".are.na");
+  }
+
   function linkContentTypeFor(value) {
     const lower = value.toLowerCase();
 
@@ -328,9 +368,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     if (type === "link") {
       normalizedUrl = normalizeUrl(rawUrl);
       sourceExternalId = sourceExternalId || normalizedUrl;
-      sourceKind = "url";
-      sourceIdentifier = urlIdentifierFor(normalizedUrl);
-      sourceLabel = sourceIdentifier;
+      const linkSource = linkSourceFor(normalizedUrl);
+      sourceKind = linkSource.kind;
+      sourceIdentifier = linkSource.identifier;
+      sourceLabel = linkSource.label;
       linkContentType = linkContentTypeFor(normalizedUrl);
     } else if (type === "image") {
       assetFileName = fileOriginalName(uploadedFile, "imported-image");

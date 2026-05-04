@@ -5,7 +5,7 @@ import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid } from "./components/items";
 import type { ItemCardActionAnchor, ItemCardProps } from "./components/items";
 import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemDetail";
-import type { ItemCardFilters, ItemCardReader, ItemSourceFilter } from "./data/itemCardReader";
+import type { ItemCardFilters, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
   createPocketBaseItemCollectionClient,
@@ -33,10 +33,11 @@ type AppRoute =
   | { kind: "grid" }
   | { kind: "item"; itemId: string; returnCollectionId?: string }
   | { kind: "collection"; collectionId: string }
-  | { kind: "pdfPreview"; src: string; name?: string };
+  | { kind: "pdfPreview"; src: string; name?: string; surface?: "card" | "reader" };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
+type ArchiveFormatFilter = ItemFormatFilter | "all";
 type SiteTheme = "light" | "dark";
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
@@ -53,12 +54,17 @@ const typeFilterOptions: ArchiveTypeFilter[] = [
 ];
 const sourceFilterOptions: ArchiveSourceFilter[] = [
   "all",
+  "local",
+  "manual",
+  "url",
   "pinterest",
   "arena",
-  "url",
-  "local",
-  "ios_capture",
-  "manual",
+];
+const formatFilterOptions: ArchiveFormatFilter[] = [
+  "all",
+  "pdf",
+  "video",
+  "website",
 ];
 const minGalleryColumns = 2;
 const maxGalleryColumns = 8;
@@ -195,7 +201,7 @@ export function App() {
   useEffect(() => {
     const nextUrl =
       route.kind === "pdfPreview"
-        ? buildPdfPreviewRouteUrl(route.src, route.name)
+        ? buildPdfPreviewRouteUrl(route.src, route.name, route.surface)
         : route.kind === "item"
         ? buildItemDetailUrl(route.itemId, itemCardFilters, {
             returnCollectionId: route.returnCollectionId,
@@ -655,10 +661,12 @@ export function App() {
     setCaptureNotice(null);
 
     try {
+      let captureResult: { created: boolean };
+
       if (captureInput.type === "link") {
         const normalizedUrl = normalizeCaptureUrl(captureInput.url);
 
-        await itemCaptureWriter.captureUrl({
+        captureResult = await itemCaptureWriter.captureUrl({
           workspaceId,
           type: "link",
           url: normalizedUrl,
@@ -666,21 +674,21 @@ export function App() {
           actor: "system",
         });
       } else if (captureInput.type === "image") {
-        await itemCaptureWriter.captureImage({
+        captureResult = await itemCaptureWriter.captureImage({
           workspaceId,
           type: "image",
           file: captureInput.file,
           actor: "system",
         });
       } else if (captureInput.type === "pdf") {
-        await itemCaptureWriter.capturePdf({
+        captureResult = await itemCaptureWriter.capturePdf({
           workspaceId,
           type: "pdf",
           file: captureInput.file,
           actor: "system",
         });
       } else {
-        await itemCaptureWriter.captureNote({
+        captureResult = await itemCaptureWriter.captureNote({
           workspaceId,
           type: "note",
           body: captureInput.body,
@@ -699,8 +707,11 @@ export function App() {
             ? "Imported image."
             : captureInput.type === "pdf"
               ? "Imported PDF."
-              : "Added note.",
+            : "Added note.",
       );
+      return {
+        created: captureResult.created,
+      };
     } catch (error: unknown) {
       console.error(error);
       setCaptureError("Unable to import.");
@@ -728,6 +739,13 @@ export function App() {
     setItemCardFilters((currentFilters) => ({
       ...currentFilters,
       source: source === "all" ? undefined : source,
+    }));
+  };
+
+  const updateFormatFilter = (format: ArchiveFormatFilter) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      format: format === "all" ? undefined : format,
     }));
   };
 
@@ -818,6 +836,7 @@ export function App() {
         loading={isLoading}
         onClearFilters={clearArchiveFilters}
         onGalleryColumnsChange={updateGalleryColumns}
+        onFormatChange={updateFormatFilter}
         onPanelChange={setArchivePanel}
         onSiteThemeChange={setSiteTheme}
         onSourceChange={updateSourceFilter}
@@ -832,11 +851,18 @@ export function App() {
         statusOptions={statusFilterOptions}
         typeOptions={typeFilterOptions}
         sourceOptions={sourceFilterOptions}
+        formatOptions={formatFilterOptions}
       />
     ) : null;
 
   if (renderedRoute.kind === "pdfPreview") {
-    routeContent = <PdfPreview src={renderedRoute.src} name={renderedRoute.name ?? null} />;
+    routeContent = (
+      <PdfPreview
+        src={renderedRoute.src}
+        name={renderedRoute.name ?? null}
+        surface={renderedRoute.surface ?? "reader"}
+      />
+    );
   } else if (renderedRoute.kind === "collection") {
     routeContent = (
       <main className="app-shell" aria-label="Vita collection">
@@ -984,7 +1010,7 @@ function routeKey(r: AppRoute): string {
   }
 
   if (r.kind === "pdfPreview") {
-    return `pdf-preview:${r.src}`;
+    return `pdf-preview:${r.surface ?? "reader"}:${r.src}`;
   }
 
   return `item:${r.itemId}`;
@@ -1180,7 +1206,15 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function PdfPreview({ name, src }: { name: string | null; src: string }) {
+function PdfPreview({
+  name,
+  src,
+  surface,
+}: {
+  name: string | null;
+  src: string;
+  surface: "card" | "reader";
+}) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const label = name || "PDF preview";
@@ -1232,14 +1266,15 @@ function PdfPreview({ name, src }: { name: string | null; src: string }) {
   }, [src]);
 
   return (
-    <main className="pdf-preview-shell" aria-label={label}>
+    <main className="pdf-preview-shell" data-surface={surface} aria-label={label}>
       <div className="pdf-preview-shell__page">
         {objectUrl ? (
           <>
             <iframe
               className="pdf-preview-shell__frame"
-              src={`${objectUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
+              src={`${objectUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
               title={label}
+              scrolling="no"
             />
             <span className="pdf-preview-shell__badge" aria-hidden="true">
               <strong>PDF</strong>
@@ -1264,6 +1299,7 @@ function getRouteFromLocation(): AppRoute {
       kind: "pdfPreview",
       src: searchParams.get("src") ?? "",
       name: searchParams.get("name") ?? undefined,
+      surface: searchParams.get("surface") === "card" ? "card" : "reader",
     };
   }
 
@@ -1291,6 +1327,7 @@ function getFiltersFromLocation(): ItemCardFilters {
   const status = searchParams.get("status");
   const type = searchParams.get("type");
   const source = searchParams.get("source");
+  const format = searchParams.get("format");
   const text = searchParams.get("q")?.trim();
 
   if (isStatusFilter(status)) {
@@ -1303,6 +1340,10 @@ function getFiltersFromLocation(): ItemCardFilters {
 
   if (isSourceFilter(source)) {
     filters.source = source;
+  }
+
+  if (isFormatFilter(format)) {
+    filters.format = format;
   }
 
   if (text) {
@@ -1320,12 +1361,16 @@ function buildCollectionUrl(collectionId: string) {
   return `/collections/${encodeURIComponent(collectionId)}`;
 }
 
-function buildPdfPreviewRouteUrl(src: string, name?: string) {
+function buildPdfPreviewRouteUrl(src: string, name?: string, surface: "card" | "reader" = "reader") {
   const searchParams = new URLSearchParams();
   searchParams.set("src", src);
 
   if (name) {
     searchParams.set("name", name);
+  }
+
+  if (surface === "card") {
+    searchParams.set("surface", "card");
   }
 
   return `/pdf-preview?${searchParams.toString()}`;
@@ -1357,6 +1402,10 @@ function buildFilterSearch(
     searchParams.set("source", filters.source);
   }
 
+  if (filters.format) {
+    searchParams.set("format", filters.format);
+  }
+
   if (filters.text?.trim()) {
     searchParams.set("q", filters.text.trim());
   }
@@ -1370,7 +1419,7 @@ function buildFilterSearch(
 }
 
 function hasActiveFilters(filters: ItemCardFilters) {
-  return Boolean(filters.status || filters.type || filters.source || filters.text?.trim());
+  return Boolean(filters.status || filters.type || filters.source || filters.format || filters.text?.trim());
 }
 
 function formatFilterSummary(filters: ItemCardFilters) {
@@ -1431,6 +1480,10 @@ function getFilterSummaryItems(filters: ItemCardFilters) {
     parts.push({ label: "from", value: filters.source.replace("_", " ") });
   }
 
+  if (filters.format) {
+    parts.push({ label: "format", value: filters.format });
+  }
+
   if (filters.text?.trim()) {
     parts.push({ label: "words", value: `"${filters.text.trim()}"` });
   }
@@ -1448,6 +1501,10 @@ function isTypeFilter(value: string | null): value is ItemType {
 
 function isSourceFilter(value: string | null): value is ItemSourceFilter {
   return value !== null && value !== "all" && sourceFilterOptions.includes(value as ArchiveSourceFilter);
+}
+
+function isFormatFilter(value: string | null): value is ItemFormatFilter {
+  return value !== null && value !== "all" && formatFilterOptions.includes(value as ArchiveFormatFilter);
 }
 
 function captureSourceExternalId() {

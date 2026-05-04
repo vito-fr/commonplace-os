@@ -9,10 +9,13 @@ export type ItemSourceFilter =
   | "ios_capture"
   | "manual";
 
+export type ItemFormatFilter = "pdf" | "video" | "website";
+
 export type ItemCardFilters = {
   status?: ItemStatus;
   type?: ItemType;
   source?: ItemSourceFilter;
+  format?: ItemFormatFilter;
   text?: string;
 };
 
