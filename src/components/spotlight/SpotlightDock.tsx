@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "rea
 import { createPortal } from "react-dom";
 import { gsap } from "../../motion/MotionShell";
 
+export type SpotlightCaptureRequest =
+  | { type: "link"; url: string }
+  | { type: "note"; body: string };
+
 export type SpotlightDockProps = {
   value: string;
   onChange: (next: string) => void;
@@ -9,10 +13,11 @@ export type SpotlightDockProps = {
   pendingCapture: boolean;
   captureError: string | null;
   captureNotice: string | null;
-  onCapture: (body: string) => Promise<void> | void;
+  onCapture: (request: SpotlightCaptureRequest) => Promise<void> | void;
 };
 
 type DockMode = "search" | "import" | null;
+type ImportMode = "url" | "note" | "file";
 
 const IDLE_WIDTH = 48;
 const IDLE_HEIGHT = 10;
@@ -30,6 +35,7 @@ export function SpotlightDock({
   value,
 }: SpotlightDockProps) {
   const [activeMode, setActiveMode] = useState<DockMode>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("url");
   const [importValue, setImportValue] = useState("");
   const [fileNotice, setFileNotice] = useState<string | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
@@ -164,12 +170,25 @@ export function SpotlightDock({
     event.preventDefault();
     const input = importValue.trim();
 
-    if (!input || !isPocketBaseMode) {
+    if (!isPocketBaseMode) {
+      return;
+    }
+
+    if (importMode === "file") {
+      setFileNotice("File import is next. Add a URL or note for now.");
+      return;
+    }
+
+    if (!input) {
       return;
     }
 
     try {
-      await onCapture(input);
+      await onCapture(
+        importMode === "url"
+          ? { type: "link", url: input }
+          : { type: "note", body: input },
+      );
       setImportValue("");
       setFileNotice(null);
     } catch {
@@ -179,7 +198,14 @@ export function SpotlightDock({
 
   const stageFileImport = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    setFileNotice("File import is next. URL and note import are live.");
+    const file = event.dataTransfer.files.item(0);
+    if (!file) {
+      setFileNotice("File import is next. URL and note import are live.");
+      return;
+    }
+
+    setImportMode("file");
+    setFileNotice(`${file.name} staged. File import is next; no file was added.`);
   };
 
   const openSearch = () => {
@@ -211,26 +237,59 @@ export function SpotlightDock({
       {isImportOpen ? (
         <div className="spotlight-import-panel" ref={panelRef} role="dialog" aria-label="import to archive">
           <form className="spotlight-import-panel__form" onSubmit={submitImport}>
-            <textarea
-              ref={importInputRef}
-              aria-label="URL or text note"
-              disabled={pendingCapture || !isPocketBaseMode}
-              name="spotlight-import"
-              onChange={(event) => setImportValue(event.target.value)}
-              placeholder={isPocketBaseMode ? "paste URL or write text" : "live mode required"}
-              rows={3}
-              value={importValue}
-            />
+            <div className="spotlight-import-panel__modes" aria-label="import type">
+              <button
+                className="spotlight-dock__cell"
+                data-active={importMode === "url" ? "true" : "false"}
+                type="button"
+                onClick={() => setImportMode("url")}
+              >
+                URL
+              </button>
+              <button
+                className="spotlight-dock__cell"
+                data-active={importMode === "note" ? "true" : "false"}
+                type="button"
+                onClick={() => setImportMode("note")}
+              >
+                Note
+              </button>
+              <button
+                className="spotlight-dock__cell"
+                data-active={importMode === "file" ? "true" : "false"}
+                type="button"
+                onClick={() => setImportMode("file")}
+              >
+                File
+              </button>
+              <span className="spotlight-import-panel__hint">{getImportHint(importMode)}</span>
+            </div>
+            {importMode === "url" || importMode === "note" ? (
+              <textarea
+                ref={importInputRef}
+                aria-label={importMode === "url" ? "URL to import" : "Text note to import"}
+                disabled={pendingCapture || !isPocketBaseMode}
+                name="spotlight-import"
+                onChange={(event) => setImportValue(event.target.value)}
+                placeholder={getImportPlaceholder(importMode, isPocketBaseMode)}
+                rows={importMode === "url" ? 2 : 4}
+                value={importValue}
+              />
+            ) : null}
             <div
-              className="spotlight-import-panel__drop"
+              className={`spotlight-import-panel__drop${importMode === "file" ? " spotlight-import-panel__drop--active" : ""}`}
               onDragOver={(event) => event.preventDefault()}
               onDrop={stageFileImport}
             >
-              Drop image, media, or PDF
-              <span>file import next</span>
+              Drop image, media, or PDF here
+              <span>storage path next</span>
             </div>
             <div className="spotlight-import-panel__actions">
-              <button className="spotlight-dock__cell" type="submit" disabled={pendingCapture || !isPocketBaseMode}>
+              <button
+                className="spotlight-dock__cell"
+                type="submit"
+                disabled={pendingCapture || !isPocketBaseMode || importMode === "file"}
+              >
                 {pendingCapture ? "Adding" : "Add"}
               </button>
               <button className="spotlight-dock__cell" type="button" onClick={() => setActiveMode(null)}>
@@ -278,4 +337,28 @@ export function SpotlightDock({
   );
 
   return createPortal(portal, document.body);
+}
+
+function getImportPlaceholder(importMode: ImportMode, isPocketBaseMode: boolean) {
+  if (!isPocketBaseMode) {
+    return "live mode required";
+  }
+
+  if (importMode === "url") {
+    return "paste URL, Pinterest, Are.na, YouTube, or PDF link";
+  }
+
+  return "write text note";
+}
+
+function getImportHint(importMode: ImportMode) {
+  if (importMode === "url") {
+    return "link import";
+  }
+
+  if (importMode === "note") {
+    return "manual note";
+  }
+
+  return "local file staged";
 }

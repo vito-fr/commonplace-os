@@ -20,7 +20,7 @@ import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRel
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
 import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
-import { SpotlightDock } from "./components/spotlight/SpotlightDock";
+import { SpotlightDock, type SpotlightCaptureRequest } from "./components/spotlight/SpotlightDock";
 import { PillNav, type PillNavPanel } from "./components/nav/PillNav";
 
 type AppRoute =
@@ -474,7 +474,7 @@ export function App() {
     }
   };
 
-  const captureArchiveInput = async (rawInput: string) => {
+  const captureArchiveInput = async (captureInput: SpotlightCaptureRequest) => {
     if (!isPocketBaseMode) {
       return;
     }
@@ -484,14 +484,14 @@ export function App() {
     setCaptureNotice(null);
 
     try {
-      const captureInput = normalizeCaptureInput(rawInput);
-
       if (captureInput.type === "link") {
+        const normalizedUrl = normalizeCaptureUrl(captureInput.url);
+
         await itemCaptureWriter.captureUrl({
           workspaceId,
           type: "link",
-          url: captureInput.url,
-          sourceExternalId: captureInput.url,
+          url: normalizedUrl,
+          sourceExternalId: normalizedUrl,
           actor: "system",
         });
       } else {
@@ -984,23 +984,16 @@ function captureSourceExternalId() {
   return `manual:note:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeCaptureInput(rawInput: string):
-  | { type: "link"; url: string }
-  | { type: "note"; body: string } {
+function normalizeCaptureUrl(rawInput: string) {
   const value = rawInput.trim();
+  const url = new URL(value);
 
-  try {
-    const url = new URL(value);
-
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      url.hash = "";
-      return { type: "link", url: url.toString().replace(/\/$/, "") };
-    }
-  } catch {
-    // Non-URL input is captured as a note.
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Capture URL must use http or https.");
   }
 
-  return { type: "note", body: value };
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
 }
 
 function getInitialSiteTheme(): SiteTheme {
