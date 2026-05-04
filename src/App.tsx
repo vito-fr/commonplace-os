@@ -53,6 +53,8 @@ const sourceFilterOptions: ArchiveSourceFilter[] = [
   "ios_capture",
   "manual",
 ];
+const minGalleryColumns = 2;
+const maxGalleryColumns = 8;
 
 const workspaceId = "seed:ws001";
 const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
@@ -78,6 +80,7 @@ export function App() {
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
+  const [galleryColumns, setGalleryColumns] = useState(4);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [isLoading, setIsLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
@@ -546,6 +549,10 @@ export function App() {
     setItemCardFilters({});
   };
 
+  const updateGalleryColumns = (columns: number) => {
+    setGalleryColumns(Math.min(maxGalleryColumns, Math.max(minGalleryColumns, columns)));
+  };
+
   const routeRef = useRef<HTMLDivElement | null>(null);
   const previousRouteKeyRef = useRef<string>(routeKey(route));
   const [renderedRoute, setRenderedRoute] = useState<AppRoute>(route);
@@ -590,19 +597,16 @@ export function App() {
     renderedRoute.kind === "grid" ? (
       <PillNav
         activePanel={archivePanel}
-        captureError={captureError}
-        captureNotice={captureNotice}
         filters={itemCardFilters}
-        isPocketBaseMode={isPocketBaseMode}
+        galleryColumns={galleryColumns}
         itemCount={items.length}
         loading={isLoading}
-        onCapture={captureArchiveInput}
         onClearFilters={clearArchiveFilters}
+        onGalleryColumnsChange={updateGalleryColumns}
         onPanelChange={setArchivePanel}
         onSourceChange={updateSourceFilter}
         onStatusChange={updateStatusFilter}
         onTypeChange={updateTypeFilter}
-        pendingCapture={isCapturing}
         readError={readError}
         statusOptions={statusFilterOptions}
         typeOptions={typeFilterOptions}
@@ -694,6 +698,7 @@ export function App() {
           <MasonryGrid
             items={renderedItems}
             density="comfortable"
+            columns={galleryColumns}
             loading={isLoading}
             emptyState={
               <ArchiveEmptyState
@@ -715,7 +720,15 @@ export function App() {
       <div className="app-route-shell" ref={routeRef}>
         {routeContent}
       </div>
-      <SpotlightDock value={itemCardFilters.text ?? ""} onChange={updateTextFilter} />
+      <SpotlightDock
+        value={itemCardFilters.text ?? ""}
+        onChange={updateTextFilter}
+        isPocketBaseMode={isPocketBaseMode}
+        pendingCapture={isCapturing}
+        captureError={captureError}
+        captureNotice={captureNotice}
+        onCapture={captureArchiveInput}
+      />
     </>
   );
 }

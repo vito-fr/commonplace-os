@@ -1,12 +1,5 @@
-import { Fragment, type MouseEvent, type ReactNode } from "react";
-import {
-  SourceMark,
-  StatusIndicator,
-  TypeIndicator,
-  UsageBadge,
-  type ItemStatus,
-  type ItemType,
-} from "../atoms";
+import { type MouseEvent } from "react";
+import { type ItemStatus, type ItemType } from "../atoms";
 
 export type RightsStatus =
   | "unknown"
@@ -56,6 +49,7 @@ export function ItemCard({
   ogImageUrl = null,
   ogTitle = null,
   hasPendingAIAnnotations = false,
+  rightsStatus = null,
   isSelected = false,
   detailHref,
   activeFilters,
@@ -70,7 +64,7 @@ export function ItemCard({
   const showType = hasActiveFilters && activeFilters?.type !== type;
   const showStatus = hasActiveFilters && activeFilters?.status !== status;
   const showSource = hasActiveFilters && activeFilters?.source !== source;
-  const ariaLabel = title ? `Open ${title}` : `Open ${type} item ${id}`;
+  const ariaLabel = title ? `Open ${title}` : `Open ${type} ${id}`;
   const cardClassName = [
     "item-card",
     isSelected ? "item-card--selected" : "",
@@ -79,22 +73,31 @@ export function ItemCard({
     .join(" ");
 
   const itemHref = detailHref ?? `/items/${encodeURIComponent(id)}`;
-  const signalItems: Array<{ key: string; node: ReactNode }> = [];
+  const primaryLabel = title ?? formatLabel(type);
+  const signalItems: Array<{ key: string; label: string; tone?: "warning" | "future" }> = [];
 
   if (showType) {
-    signalItems.push({ key: "type", node: <TypeIndicator type={type} /> });
+    signalItems.push({ key: "type", label: formatLabel(type) });
   }
 
   if (showStatus) {
-    signalItems.push({ key: "status", node: <StatusIndicator status={status} /> });
+    signalItems.push({ key: "status", label: formatLabel(status) });
   }
 
   if (showSource) {
-    signalItems.push({ key: "source", node: <SourceMark source={source} /> });
+    signalItems.push({ key: "source", label: formatLabel(source) });
   }
 
   if (usageCount > 0) {
-    signalItems.push({ key: "usage", node: <UsageBadge count={usageCount} /> });
+    signalItems.push({ key: "usage", label: `${usageCount} use${usageCount === 1 ? "" : "s"}` });
+  }
+
+  if (hasPendingAIAnnotations) {
+    signalItems.push({ key: "ai", label: "ai pending", tone: "warning" });
+  }
+
+  if (isRightsWarning(rightsStatus)) {
+    signalItems.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
   }
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -118,21 +121,27 @@ export function ItemCard({
     <a
       className={cardClassName}
       href={itemHref}
+      data-type={type}
       aria-label={ariaLabel}
       onClick={navigate}
     >
       {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
+      <span className="item-card__actions" aria-hidden="true">
+        <span className="item-card__action-cell">+</span>
+        <span className="item-card__action-cell">...</span>
+      </span>
       <div className="item-card__content">{renderContent(type, title, imageUrl, captionText, noteParagraph, url, ogImageUrl, ogTitle)}</div>
-      {signalItems.length > 0 ? (
-        <div className="item-card__signal-row">
-          {signalItems.map((item, index) => (
-            <Fragment key={item.key}>
-              {index > 0 ? <span aria-hidden="true">·</span> : null}
-              {item.node}
-            </Fragment>
-          ))}
-        </div>
-      ) : null}
+      <div className="item-card__pill-row">
+        <span className="item-card__pill item-card__pill--primary">{primaryLabel}</span>
+        {signalItems.map((item) => (
+          <span
+            className={`item-card__pill${item.tone === "warning" ? " item-card__pill--warning" : ""}${item.tone === "future" ? " item-card__pill--future" : ""}`}
+            key={item.key}
+          >
+            {item.label}
+          </span>
+        ))}
+      </div>
     </a>
   );
 }
@@ -193,4 +202,12 @@ function getDomain(url: string | null) {
   } catch {
     return url;
   }
+}
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function isRightsWarning(rightsStatus: RightsStatus | string | null | undefined) {
+  return rightsStatus === "restricted" || rightsStatus === "expired";
 }
