@@ -46,6 +46,27 @@ npm run dev:live
 
 The frontend reads `VITE_ITEM_CARD_READER=pocketbase` from `npm run dev:live`. Without that env var the app uses fixture mode, and write surfaces show live-mode disabled states.
 
+### Viewing Uploaded Media
+
+Uploaded PocketBase media is only visible when both local servers are running and the frontend is in live mode:
+
+```sh
+npm run pb:serve
+npm run dev:live -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Plain `npm run dev` uses fixture mode by default. Fixture mode is useful for UI work, but it will not show media already uploaded into local PocketBase `pb_data`.
+
+### Backfill Image Dimensions
+
+Existing local image records with missing dimensions can be backfilled from stored files:
+
+```sh
+curl -X POST "http://127.0.0.1:8090/api/vita/backfill-image-dimensions?workspace_id=seed:ws001"
+```
+
+The backfill is idempotent by default. It skips records that already have both `width` and `height`, skips unreadable files, and does not delete, rewrite, or recreate media files.
+
 ---
 
 ## Migrations
