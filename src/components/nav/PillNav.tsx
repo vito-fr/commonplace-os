@@ -3,7 +3,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
-  useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -20,8 +20,9 @@ type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
 type ArchiveFormatFilter = ItemFormatFilter | "all";
-type IndexMode = "all" | "collections";
-type FilterFamily = "state" | "kind" | "origin" | "format";
+export type GalleryObjectMode = "all" | "items" | "collections";
+export type ArchiveViewMode = "gallery" | "masonry" | "list" | "graph";
+type FilterFamily = "state" | "kind" | "source" | "collection" | "more";
 type SiteTheme = "light" | "dark";
 type SettingsSection = "appearance" | "gallery" | "shortcuts" | "import" | "system";
 export type ShortcutAction = "search" | "theme" | "galleryIncrease" | "galleryDecrease";
@@ -32,7 +33,6 @@ export type ShortcutBinding = {
 };
 export type ShortcutBindings = Record<ShortcutAction, ShortcutBinding>;
 type NavCellStyle = CSSProperties & {
-  "--cell-width": string;
   "--cell-index": number;
 };
 
@@ -47,12 +47,13 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
 export type PillNavProps = {
   activePanel: PillNavPanel | null;
   collectionIndex: CollectionIndexItem[];
-  collectionIndexError: string | null;
-  collectionIndexLoading: boolean;
+  collectionCount: number;
+  itemCount: number;
   onPanelChange: (panel: PillNavPanel | null) => void;
   filters: ItemCardFilters;
   loading: boolean;
-  itemCount: number;
+  objectMode: GalleryObjectMode;
+  viewMode: ArchiveViewMode;
   galleryColumns: number;
   isPocketBaseMode: boolean;
   readError: string | null;
@@ -65,12 +66,13 @@ export type PillNavProps = {
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
   onClearFilters: () => void;
-  onOpenCollection: (collectionId: string) => void;
+  onCollectionFilterChange: (collection: string) => void;
+  onObjectModeChange: (mode: GalleryObjectMode) => void;
+  onViewModeChange: (mode: ArchiveViewMode) => void;
   onSourceChange: (source: ArchiveSourceFilter) => void;
   onStatusChange: (status: ArchiveStatusFilter) => void;
   onTypeChange: (type: ArchiveTypeFilter) => void;
   statusOptions: ArchiveStatusFilter[];
-  typeOptions: ArchiveTypeFilter[];
   sourceOptions: ArchiveSourceFilter[];
   formatOptions: ArchiveFormatFilter[];
 };
@@ -94,15 +96,16 @@ export function PillNav(props: PillNavProps) {
   const {
     activePanel,
     collectionIndex,
-    collectionIndexError,
-    collectionIndexLoading,
+    collectionCount,
     filters,
     galleryColumns,
     isPocketBaseMode,
     itemCount,
     loading,
     onClearFilters,
-    onOpenCollection,
+    onCollectionFilterChange,
+    onObjectModeChange,
+    onViewModeChange,
     onFormatChange,
     onGalleryColumnsChange,
     onPanelChange,
@@ -112,55 +115,53 @@ export function PillNav(props: PillNavProps) {
     onSourceChange,
     onStatusChange,
     onTypeChange,
+    objectMode,
+    viewMode,
     readError,
     shortcutBindings,
     shortcutError,
     siteTheme,
     sourceOptions,
     statusOptions,
-    typeOptions,
     formatOptions,
   } = props;
-  const [activeIndexMode, setActiveIndexMode] = useState<IndexMode>("all");
   const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
+  const [openFilterFamily, setOpenFilterFamily] = useState<FilterFamily | null>(null);
   const primaryGroupRef = useRef<HTMLDivElement | null>(null);
-  usePrimaryNavIntro(primaryGroupRef);
+  useMaskedPillRowIntro(primaryGroupRef, "primary:index|views|filters|settings");
 
   const togglePanel = (panel: PillNavPanel) => {
     onPanelChange(activePanel === panel ? null : panel);
   };
 
-  const resultLabel = readError
-    ? "Load error"
-    : loading
-      ? "Loading"
-      : `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
+  const openFilter = (family: FilterFamily) => {
+    setActiveFilterFamily(family);
+    setOpenFilterFamily((currentFamily) => (currentFamily === family ? null : family));
+  };
+
+  useEffect(() => {
+    if (activePanel !== "filters") {
+      setOpenFilterFamily(null);
+    }
+  }, [activePanel]);
+
   const subnavGroups = getSubnavGroups({
     activeFilterFamily,
-    activeIndexMode,
-    filters,
-    loading,
-    onClearFilters,
-    setActiveIndexMode,
-    onFormatChange,
-    onSourceChange,
-    onStatusChange,
-    onTypeChange,
+    collectionCount,
+    itemCount,
+    onObjectModeChange,
+    onViewModeChange,
     panel: activePanel,
     galleryColumns,
-    resultLabel,
+    objectMode,
+    viewMode,
     onGalleryColumnsChange,
-    setActiveFilterFamily,
-    sourceOptions,
-    statusOptions,
-    typeOptions,
-    formatOptions,
+    openFilter,
   });
 
   const nav = (
     <header className="pill-nav" aria-label="archive controls">
       <div className="pill-nav__group" ref={primaryGroupRef} aria-label="primary archive controls">
-        <span className="pill-nav__primary-membrane" aria-hidden="true" />
         <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
           <span className="live-logo-dot" aria-hidden="true" />
         </button>
@@ -196,14 +197,24 @@ export function PillNav(props: PillNavProps) {
         />
       ) : null}
 
-      {activePanel === "index" && activeIndexMode === "collections" ? (
-        <CollectionIndexIsland
-          collections={collectionIndex}
-          error={collectionIndexError}
-          loading={collectionIndexLoading}
-          onOpenCollection={onOpenCollection}
+      {activePanel === "filters" && openFilterFamily ? (
+        <FilterPopoverIsland
+          collectionIndex={collectionIndex}
+          family={openFilterFamily}
+          filters={filters}
+          formatOptions={formatOptions}
+          loading={loading}
+          onClose={() => setOpenFilterFamily(null)}
+          onCollectionFilterChange={onCollectionFilterChange}
+          onFormatChange={onFormatChange}
+          onSourceChange={onSourceChange}
+          onStatusChange={onStatusChange}
+          onTypeChange={onTypeChange}
+          sourceOptions={sourceOptions}
+          statusOptions={statusOptions}
         />
       ) : null}
+
     </header>
   );
 
@@ -214,362 +225,445 @@ export function PillNav(props: PillNavProps) {
   return createPortal(nav, document.body);
 }
 
-function usePrimaryNavIntro(primaryGroupRef: RefObject<HTMLDivElement | null>) {
+function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature: string) {
   useLayoutEffect(() => {
-    const group = primaryGroupRef.current;
-    if (!group) {
-      return;
-    }
-
-    const membrane = group.querySelector<HTMLElement>(".pill-nav__primary-membrane");
-    const cells = Array.from(group.querySelectorAll<HTMLElement>(".nav-cell"));
-    const labels = cells
-      .map((cell) => cell.querySelector<HTMLElement>(".nav-cell__text"))
-      .filter((label): label is HTMLElement => Boolean(label));
-
-    if (!membrane || cells.length === 0) {
-      return;
-    }
-
-    gsap.set(group, { clearProps: "width,height,position" });
-    gsap.set(membrane, { clearProps: "width,height,opacity,transform" });
-    gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform,opacity" });
-    gsap.set(labels, { clearProps: "opacity,filter,transform" });
-
-    const groupRect = group.getBoundingClientRect();
-    const targetMetrics = cells.map((cell) => {
-      const rect = cell.getBoundingClientRect();
-      return {
-        height: rect.height,
-        left: rect.left - groupRect.left,
-        top: rect.top - groupRect.top,
-        width: rect.width,
-      };
-    });
-    const originLeft = Math.max(0, Math.round(groupRect.width / 2 - 12.5));
-    const timeline = gsap.timeline();
-    const getAnimatedNumber = (element: HTMLElement, property: string, fallback: number) => {
-      const value = gsap.getProperty(element, property);
-      const parsed = typeof value === "number" ? value : parseFloat(String(value));
-
-      return Number.isFinite(parsed) ? parsed : fallback;
-    };
-    const updateMembrane = () => {
-      let minLeft = Infinity;
-      let minTop = Infinity;
-      let maxRight = -Infinity;
-      let maxBottom = -Infinity;
-
-      cells.forEach((cell) => {
-        const left = getAnimatedNumber(cell, "left", 0);
-        const top = getAnimatedNumber(cell, "top", 0);
-        const width = getAnimatedNumber(cell, "width", cell.offsetWidth);
-        const height = getAnimatedNumber(cell, "height", cell.offsetHeight);
-
-        minLeft = Math.min(minLeft, left);
-        minTop = Math.min(minTop, top);
-        maxRight = Math.max(maxRight, left + width);
-        maxBottom = Math.max(maxBottom, top + height);
-      });
-
-      const padding = 4;
-      gsap.set(membrane, {
-        height: maxBottom - minTop + padding * 2,
-        opacity: 1,
-        transform: `translate3d(${minLeft - padding}px, ${minTop - padding}px, 0)`,
-        width: maxRight - minLeft + padding * 2,
-      });
-    };
-
-    gsap.set(group, {
-      height: groupRect.height,
-      position: "relative",
-      width: groupRect.width,
-    });
-    gsap.set(cells, {
-      left: originLeft,
-      opacity: 1,
-      position: "absolute",
-      top: (index) => targetMetrics[index]?.top ?? 0,
-      transformOrigin: "center center",
-      width: 25,
-      zIndex: (index) => cells.length - index,
-    });
-    updateMembrane();
-    gsap.set(labels, {
-      filter: "blur(5px)",
-      opacity: 0,
-      x: (index) => {
-        const target = targetMetrics[index];
-        if (!target) {
-          return 0;
-        }
-
-        const targetCenter = target.left + target.width / 2;
-        const originCenter = originLeft + 12.5;
-        return targetCenter < originCenter ? 8 : -8;
-      },
-    });
-
-    timeline.to(cells, {
-      height: (index) => targetMetrics[index]?.height ?? 25,
-      left: (index) => targetMetrics[index]?.left ?? 0,
-      width: (index) => targetMetrics[index]?.width ?? 25,
-      duration: 0.68,
-      ease: "expo.out",
-      onUpdate: updateMembrane,
-      stagger: {
-        amount: 0.28,
-        from: "center",
-      },
-    }, 0.02);
-
-    timeline.to(labels, {
-      filter: "blur(0px)",
-      opacity: 1,
-      x: 0,
-      duration: 0.18,
-      ease: "power2.out",
-      stagger: {
-        amount: 0.18,
-        from: "center",
-      },
-    }, 0.32);
-
-    timeline.eventCallback("onComplete", () => {
-      updateMembrane();
-      gsap.set(labels, { clearProps: "opacity,filter,transform" });
-    });
-
-    return () => {
-      timeline.kill();
-      gsap.set(group, { clearProps: "width,height,position" });
-      gsap.set(membrane, { clearProps: "width,height,opacity,transform" });
-      gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform,opacity" });
-      gsap.set(labels, { clearProps: "opacity,filter,transform" });
-    };
-  }, [primaryGroupRef]);
-}
-
-function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const rowSignature = groups.map((group) => `${group.key}:${group.items.map((item) => item.label).join("|")}`).join("::");
-
-  const updateRowMembrane = useCallback(() => {
     const row = rowRef.current;
     if (!row) {
       return;
     }
 
-    const membrane = row.querySelector<HTMLElement>(".pill-nav__subnav-membrane");
-    const cells = Array.from(row.querySelectorAll<HTMLElement>(".subnav-cell"));
-    if (!membrane || cells.length === 0) {
-      return;
+    let cancelled = false;
+    let activeTweens: Array<{ kill: () => void }> = [];
+    const cells = Array.from(row.querySelectorAll<HTMLElement>(".nav-cell, .subnav-cell"));
+    const masks = Array.from(row.querySelectorAll<HTMLElement>(".nav-cell__text-mask"));
+    const revealTargets = masks
+      .map((mask, revealIndex) => {
+        const cell = mask.closest<HTMLElement>(".nav-cell, .subnav-cell");
+        const text = mask.querySelector<HTMLElement>(".nav-cell__text");
+        const cellIndex = cell ? cells.indexOf(cell) : -1;
+
+        return { cell, cellIndex, mask, revealIndex, text };
+      })
+      .filter((target): target is {
+        cell: HTMLElement;
+        cellIndex: number;
+        mask: HTMLElement;
+        revealIndex: number;
+        text: HTMLElement | null;
+      } => Boolean(target.cell) && target.cellIndex >= 0);
+    const debugMotionEnabled =
+      typeof window !== "undefined" &&
+      (new URLSearchParams(window.location.search).get("debugMotion") === "1" ||
+        window.location.hash.includes("debugMotion=1"));
+    const isDebugMotion = () => debugMotionEnabled;
+    const snapToDevicePixel = (value: number) => {
+      const ratio = window.devicePixelRatio || 1;
+      return Math.round(value * ratio) / ratio;
+    };
+    const getMeasuredRowWidth = (
+      fallbackWidth: number,
+      metrics: Array<{ left: number; width: number }>,
+    ) => {
+      if (metrics.length === 0) {
+        return fallbackWidth;
+      }
+
+      const rowStyles = window.getComputedStyle(row);
+      const horizontalPadding =
+        (parseFloat(rowStyles.paddingLeft) || 0) + (parseFloat(rowStyles.paddingRight) || 0);
+      const minLeft = Math.min(...metrics.map((metric) => metric.left));
+      const maxRight = Math.max(...metrics.map((metric) => metric.left + metric.width));
+
+      return snapToDevicePixel(Math.max(fallbackWidth, maxRight - minLeft + horizontalPadding));
+    };
+
+    const measure = () => {
+      masks.forEach((mask, index) => {
+        const text = mask.querySelector<HTMLElement>(".nav-cell__text");
+        const measurementTarget = mask.querySelector<HTMLElement>("[data-nav-measure-target]") ?? text;
+        const measuredWidth = Math.ceil(
+          measurementTarget?.getBoundingClientRect().width || measurementTarget?.scrollWidth || 0,
+        );
+        mask.style.setProperty("--text-width", `${measuredWidth}px`);
+        mask.style.setProperty("--cell-delay", `${index * 70}ms`);
+
+        if (isDebugMotion()) {
+          console.log("[DEBUG-pill-motion]", JSON.stringify({
+            cellIndex: index,
+            computedMaskWidth: window.getComputedStyle(mask).width,
+            label: text?.textContent?.trim() ?? "",
+            measuredWidth,
+            phase: "measure",
+          }));
+        }
+      });
+    };
+    const logMotionRects = (phase: string) => {
+      if (!isDebugMotion()) {
+        return;
+      }
+
+      const rects = cells.map((cell) => {
+        const rect = cell.getBoundingClientRect();
+
+        return {
+          h: snapToDevicePixel(rect.height),
+          label: cell.textContent?.trim() ?? "",
+          w: snapToDevicePixel(rect.width),
+          x: snapToDevicePixel(rect.x),
+          y: snapToDevicePixel(rect.y),
+        };
+      });
+      const targets = revealTargets.map(({ mask, revealIndex, text }) => {
+        const rect = mask.getBoundingClientRect();
+        const textStyle = text ? window.getComputedStyle(text) : null;
+
+        return {
+          filter: textStyle?.filter ?? "",
+          label: text?.textContent?.trim() ?? "",
+          maskWidth: snapToDevicePixel(rect.width),
+          opacity: textStyle?.opacity ?? "",
+          revealIndex,
+          transform: textStyle?.transform ?? "",
+        };
+      });
+      const rowRect = row.getBoundingClientRect();
+      const rowStyle = window.getComputedStyle(row);
+      const rowBeforeStyle = window.getComputedStyle(row, "::before");
+      const clipX = parseFloat(rowStyle.getPropertyValue("--nav-row-clip-x")) || 0;
+      console.log("[DEBUG-pill-motion-rects]", JSON.stringify({
+        phase,
+          row: {
+          backdropFilter:
+            rowBeforeStyle.backdropFilter ||
+            rowBeforeStyle.getPropertyValue("-webkit-backdrop-filter") ||
+            rowStyle.backdropFilter,
+          background: rowBeforeStyle.backgroundColor || rowStyle.backgroundColor,
+          clipX: snapToDevicePixel(clipX),
+          h: snapToDevicePixel(rowRect.height),
+          visibleW: snapToDevicePixel(Math.max(0, rowRect.width - clipX * 2)),
+          w: snapToDevicePixel(rowRect.width),
+          x: snapToDevicePixel(rowRect.x),
+          y: snapToDevicePixel(rowRect.y),
+        },
+        cells: rects,
+        targets,
+      }));
+    };
+    const clearEnterDelays = () => {
+      masks.forEach((mask) => {
+        mask.style.removeProperty("--cell-delay");
+      });
+    };
+    const clearRevealState = () => {
+      row.removeAttribute("data-entering");
+      row.removeAttribute("data-preparing");
+      row.removeAttribute("data-reveal-state");
+    };
+    const clearAnimatedStyles = () => {
+      gsap.set(row, { clearProps: "--nav-row-clip-x,clipPath,height,transform,width" });
+      gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
+      revealTargets.forEach(({ mask, text }) => {
+        gsap.set(mask, { clearProps: "width" });
+        if (text) {
+          gsap.set(text, { clearProps: "filter,opacity,transform,visibility" });
+        }
+      });
+    };
+    const transitionListeners: Array<() => void> = [];
+    if (isDebugMotion()) {
+      revealTargets.forEach(({ mask, revealIndex: index, text }) => {
+        const logTransition = (phase: "transitionstart" | "transitionend", event: TransitionEvent) => {
+          if (event.target !== mask && event.target !== text) {
+            return;
+          }
+
+          console.log("[DEBUG-pill-motion]", JSON.stringify({
+            cellIndex: index,
+            label: text?.textContent?.trim() ?? "",
+            phase,
+            propertyName: event.propertyName,
+            target: event.target === mask ? "mask" : "text",
+            width: window.getComputedStyle(mask).width,
+          }));
+        };
+        const onTransitionStart = (event: TransitionEvent) => logTransition("transitionstart", event);
+        const onTransitionEnd = (event: TransitionEvent) => logTransition("transitionend", event);
+
+        mask.addEventListener("transitionstart", onTransitionStart);
+        mask.addEventListener("transitionend", onTransitionEnd);
+        text?.addEventListener("transitionstart", onTransitionStart);
+        text?.addEventListener("transitionend", onTransitionEnd);
+        transitionListeners.push(() => {
+          mask.removeEventListener("transitionstart", onTransitionStart);
+          mask.removeEventListener("transitionend", onTransitionEnd);
+          text?.removeEventListener("transitionstart", onTransitionStart);
+          text?.removeEventListener("transitionend", onTransitionEnd);
+        });
+      });
+    }
+    const reveal = () => {
+      if (cancelled) {
+        return;
+      }
+
+      activeTweens.forEach((tween) => tween.kill());
+      activeTweens = [];
+      clearRevealState();
+      clearAnimatedStyles();
+      measure();
+      gsap.set(row, { clearProps: "height,transform,width" });
+      gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
+      revealTargets.forEach(({ mask, text }) => {
+        gsap.set(mask, { width: mask.style.getPropertyValue("--text-width") || "auto" });
+        if (text) {
+          gsap.set(text, { autoAlpha: 1, filter: "blur(0px)", x: 0 });
+        }
+      });
+      logMotionRects("enter-start");
+
+      const openRowRect = row.getBoundingClientRect();
+      const openRowHeight = snapToDevicePixel(openRowRect.height);
+      const openMetrics = cells.map((cell) => {
+        const rect = cell.getBoundingClientRect();
+        return {
+          height: snapToDevicePixel(rect.height),
+          left: snapToDevicePixel(rect.left - openRowRect.left),
+          top: snapToDevicePixel(rect.top - openRowRect.top),
+          width: snapToDevicePixel(rect.width),
+        };
+      });
+      let openRowWidth = getMeasuredRowWidth(snapToDevicePixel(openRowRect.width), openMetrics);
+
+      row.setAttribute("data-entering", "true");
+      row.setAttribute("data-preparing", "true");
+      row.setAttribute("data-reveal-state", "closed");
+
+      revealTargets.forEach(({ mask, revealIndex: index, text }) => {
+        gsap.killTweensOf([mask, text].filter(Boolean));
+        gsap.set(mask, { width: 0 });
+        if (text) {
+          gsap.set(text, { autoAlpha: 0.08, filter: "blur(4px)", x: -6 });
+        }
+      });
+
+      row.getBoundingClientRect();
+
+      const closedRowRect = row.getBoundingClientRect();
+      const closedRowHeight = snapToDevicePixel(closedRowRect.height);
+      const closedMetrics = cells.map((cell) => {
+        const rect = cell.getBoundingClientRect();
+        return {
+          height: snapToDevicePixel(rect.height),
+          left: snapToDevicePixel(rect.left - closedRowRect.left),
+          top: snapToDevicePixel(rect.top - closedRowRect.top),
+          width: snapToDevicePixel(rect.width),
+        };
+      });
+      const closedRowWidth = getMeasuredRowWidth(snapToDevicePixel(closedRowRect.width), closedMetrics);
+      const measuredTextWidthTotal = revealTargets.reduce((total, { mask }) => {
+        const width = parseFloat(mask.style.getPropertyValue("--text-width"));
+        return total + (Number.isFinite(width) ? width : 0);
+      }, 0);
+      openRowWidth = snapToDevicePixel(Math.max(openRowWidth, closedRowWidth + measuredTextWidthTotal));
+      const seedWidth = snapToDevicePixel(Math.max(closedRowHeight, closedMetrics[0]?.height ?? 27));
+      const seedHold = 0.07;
+      const splitDuration = 0.26;
+      const revealDuration = 0.5;
+      const splitStep = 0.042;
+      const revealStep = 0.06;
+      const centerIndex = (cells.length - 1) / 2;
+      const splitDelays = cells.map((_, index) => Math.abs(index - centerIndex) * splitStep);
+      const maxSplitDelay = splitDelays.reduce((maxDelay, delay) => Math.max(maxDelay, delay), 0);
+      const revealStart = seedHold + maxSplitDelay + splitDuration + 0.04;
+      const wrapperSplitDuration = splitDuration + maxSplitDelay;
+      const wrapperRevealDuration = revealDuration + Math.max(0, revealTargets.length - 1) * revealStep;
+
+      gsap.set(row, {
+        "--nav-row-clip-x": `${Math.max(0, (closedRowWidth - seedWidth) / 2)}px`,
+        height: closedRowHeight,
+        width: closedRowWidth,
+      });
+      cells.forEach((cell, index) => {
+        const closedMetric = closedMetrics[index];
+        if (!closedMetric) {
+          return;
+        }
+        const closedCenter = closedMetric.left + closedMetric.width / 2;
+        const splitOrigin = closedRowWidth / 2;
+
+        gsap.killTweensOf(cell);
+        gsap.set(cell, {
+          x: snapToDevicePixel(splitOrigin - closedCenter),
+          zIndex: cells.length - index,
+        });
+      });
+
+      row.removeAttribute("data-preparing");
+      row.setAttribute("data-reveal-state", "seed");
+      logMotionRects("seed");
+
+      const settle = () => {
+        if (cancelled) {
+          return;
+        }
+
+        clearEnterDelays();
+        gsap.set(row, { height: openRowHeight, width: openRowWidth });
+        revealTargets.forEach(({ mask, text }) => {
+          gsap.set(mask, { width: mask.style.getPropertyValue("--text-width") || "auto" });
+          if (text) {
+            gsap.set(text, { autoAlpha: 1, filter: "blur(0px)", x: 0 });
+          }
+        });
+        clearAnimatedStyles();
+        clearRevealState();
+        logMotionRects("enter-settled");
+      };
+
+      const timeline = gsap.timeline({
+        onComplete: settle,
+        paused: true,
+      });
+      activeTweens.push(timeline);
+
+      timeline.call(() => {
+        row.setAttribute("data-reveal-state", "split");
+      }, undefined, seedHold);
+      timeline.to(row, {
+        "--nav-row-clip-x": "0px",
+        autoRound: false,
+        duration: wrapperSplitDuration,
+        ease: "power3.out",
+      }, seedHold);
+      cells.forEach((cell, index) => {
+        const splitDelay = splitDelays[index] ?? 0;
+
+        timeline.to(cell, {
+          autoRound: false,
+          delay: 0,
+          duration: splitDuration,
+          ease: "power3.out",
+          x: 0,
+        }, seedHold + splitDelay);
+      });
+
+      timeline.call(() => {
+        row.setAttribute("data-reveal-state", "reveal");
+        gsap.set(row, {
+          "--nav-row-clip-x": "0px",
+          height: closedRowHeight,
+          width: closedRowWidth,
+        });
+        gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
+        revealTargets.forEach(({ mask, text }) => {
+          gsap.set(mask, { width: 0 });
+          if (text) {
+            gsap.set(text, { autoAlpha: 0.08, filter: "blur(4px)", x: -6 });
+          }
+        });
+        logMotionRects("reveal-ready");
+      }, undefined, revealStart);
+
+      timeline.to(row, {
+        autoRound: false,
+        duration: wrapperRevealDuration,
+        ease: "power3.out",
+        height: openRowHeight,
+        width: openRowWidth,
+      }, revealStart);
+
+      revealTargets.forEach(({ mask, revealIndex: index, text }) => {
+        const measurementTarget = mask.querySelector<HTMLElement>("[data-nav-measure-target]") ?? text;
+        const measuredWidth =
+          parseFloat(mask.style.getPropertyValue("--text-width")) ||
+          Math.ceil(measurementTarget?.getBoundingClientRect().width || measurementTarget?.scrollWidth || 0);
+        const startAt = revealStart + index * revealStep;
+
+        timeline.to(mask, {
+          autoRound: false,
+          duration: revealDuration,
+          ease: "power3.out",
+          onComplete: () => {
+            if (isDebugMotion()) {
+              console.log("[DEBUG-pill-motion]", JSON.stringify({
+                cellIndex: index,
+                label: text?.textContent?.trim() ?? "",
+                phase: "gsap-end",
+                width: window.getComputedStyle(mask).width,
+              }));
+            }
+          },
+          onStart: () => {
+            if (isDebugMotion()) {
+              console.log("[DEBUG-pill-motion]", JSON.stringify({
+                cellIndex: index,
+                label: text?.textContent?.trim() ?? "",
+                measuredWidth,
+                phase: "gsap-start",
+              }));
+            }
+          },
+          width: measuredWidth,
+        }, startAt);
+        if (text) {
+          timeline.to(text, {
+            autoAlpha: 1,
+            duration: revealDuration,
+            ease: "power3.out",
+            filter: "blur(0px)",
+            x: 0,
+          }, startAt);
+        }
+      });
+      if (isDebugMotion()) {
+        [0, 0.06, 0.14, 0.24, 0.36, 0.52, 0.76, 1].forEach((sampleTime) => {
+          timeline.call(() => {
+            logMotionRects(`sample:${sampleTime.toFixed(2)}`);
+          }, undefined, sampleTime);
+        });
+      }
+      timeline.play(0);
+    };
+
+    reveal();
+
+    if (document.fonts) {
+      document.fonts.ready.then(() => {
+        if (!cancelled) {
+          measure();
+        }
+      });
     }
 
-    const rowRect = row.getBoundingClientRect();
-    let minLeft = Infinity;
-    let minTop = Infinity;
-    let maxRight = -Infinity;
-    let maxBottom = -Infinity;
+    return () => {
+      cancelled = true;
+      activeTweens.forEach((tween) => tween.kill());
+      clearRevealState();
+      clearEnterDelays();
+      clearAnimatedStyles();
+      transitionListeners.forEach((remove) => remove());
+    };
+  }, [rowRef, signature]);
+}
 
-    cells.forEach((cell) => {
-      const rect = cell.getBoundingClientRect();
-
-      minLeft = Math.min(minLeft, rect.left - rowRect.left);
-      minTop = Math.min(minTop, rect.top - rowRect.top);
-      maxRight = Math.max(maxRight, rect.right - rowRect.left);
-      maxBottom = Math.max(maxBottom, rect.bottom - rowRect.top);
-    });
-
-    const padding = 4;
-    gsap.set(membrane, {
-      height: maxBottom - minTop + padding * 2,
-      opacity: 1,
-      transform: `translate3d(${minLeft - padding}px, ${minTop - padding}px, 0)`,
-      width: maxRight - minLeft + padding * 2,
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    updateRowMembrane();
-    const frame = requestAnimationFrame(updateRowMembrane);
-
-    return () => cancelAnimationFrame(frame);
-  }, [rowSignature, updateRowMembrane]);
-
+function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
   return (
-    <div className="pill-nav__subnav-row" ref={rowRef}>
-      <span className="pill-nav__subnav-membrane" aria-hidden="true" />
+    <div className="pill-nav__subnav-row">
       {groups.map((group) => (
-        <AnimatedSubnavGroup key={group.key} groupKey={group.key} items={group.items} onFrame={updateRowMembrane} />
+        <AnimatedSubnavGroup key={group.key} groupKey={group.key} items={group.items} />
       ))}
     </div>
   );
 }
 
-function AnimatedSubnavGroup({
-  groupKey,
-  items,
-  onFrame,
-}: {
-  groupKey: string;
-  items: SubnavItem[];
-  onFrame?: () => void;
-}) {
+function AnimatedSubnavGroup({ groupKey, items }: { groupKey: string; items: SubnavItem[] }) {
   const subnavGroupRef = useRef<HTMLDivElement | null>(null);
-  const animationSignature = items.map((item) => item.label).join("|");
-
-  useLayoutEffect(() => {
-    const group = subnavGroupRef.current;
-    if (!group || items.length === 0) {
-      return;
-    }
-
-    const membrane = group.querySelector<HTMLElement>(".pill-subnav__membrane");
-    const cells = Array.from(group.querySelectorAll<HTMLElement>(".subnav-cell"));
-    const labels = cells
-      .map((cell) => cell.querySelector<HTMLElement>(".nav-cell__text"))
-      .filter((label): label is HTMLElement => Boolean(label));
-
-    gsap.killTweensOf([group, membrane, ...cells, ...labels].filter(Boolean));
-    gsap.set(group, { clearProps: "width,height,position" });
-    if (membrane) {
-      gsap.set(membrane, { clearProps: "left,top,width,height,opacity,transform" });
-    }
-    gsap.set(cells, { clearProps: "position,left,top,width,height,zIndex,transform" });
-    gsap.set(labels, { clearProps: "opacity,filter,transform" });
-
-    const groupRect = group.getBoundingClientRect();
-    const targetMetrics = cells.map((cell) => {
-      const rect = cell.getBoundingClientRect();
-      return {
-        height: rect.height,
-        left: rect.left - groupRect.left,
-        top: rect.top - groupRect.top,
-        width: rect.width,
-      };
-    });
-    const originLeft = Math.max(0, Math.round(groupRect.width / 2 - 12.5));
-    const timeline = gsap.timeline();
-    const getAnimatedNumber = (element: HTMLElement, property: string, fallback: number) => {
-      const value = gsap.getProperty(element, property);
-      const parsed = typeof value === "number" ? value : parseFloat(String(value));
-
-      return Number.isFinite(parsed) ? parsed : fallback;
-    };
-    const updateMembrane = () => {
-      if (!membrane || cells.length === 0) {
-        return;
-      }
-
-      let minLeft = Infinity;
-      let minTop = Infinity;
-      let maxRight = -Infinity;
-      let maxBottom = -Infinity;
-
-      cells.forEach((cell) => {
-        const left = getAnimatedNumber(cell, "left", 0);
-        const top = getAnimatedNumber(cell, "top", 0);
-        const width = getAnimatedNumber(cell, "width", cell.offsetWidth);
-        const height = getAnimatedNumber(cell, "height", cell.offsetHeight);
-
-        minLeft = Math.min(minLeft, left);
-        minTop = Math.min(minTop, top);
-        maxRight = Math.max(maxRight, left + width);
-        maxBottom = Math.max(maxBottom, top + height);
-      });
-
-      const padding = 4;
-      gsap.set(membrane, {
-        height: maxBottom - minTop + padding * 2,
-        left: minLeft - padding,
-        opacity: 1,
-        top: minTop - padding,
-        width: maxRight - minLeft + padding * 2,
-      });
-      onFrame?.();
-    };
-
-    gsap.set(group, {
-      height: groupRect.height,
-      position: "relative",
-      width: groupRect.width,
-    });
-    gsap.set(cells, {
-      filter: "none",
-      left: originLeft,
-      opacity: 1,
-      position: "absolute",
-      top: (index) => targetMetrics[index]?.top ?? 0,
-      transformOrigin: "center center",
-      width: 25,
-      zIndex: (index) => cells.length - index,
-    });
-    updateMembrane();
-    onFrame?.();
-
-    gsap.set(labels, {
-      filter: "blur(5px)",
-      opacity: 0,
-      x: (index) => {
-        const target = targetMetrics[index];
-        if (!target) {
-          return 0;
-        }
-
-        const targetCenter = target.left + target.width / 2;
-        const originCenter = originLeft + 12.5;
-        return targetCenter < originCenter ? 8 : -8;
-      },
-    });
-
-    timeline.to(cells, {
-      height: (index) => targetMetrics[index]?.height ?? 25,
-      left: (index) => targetMetrics[index]?.left ?? 0,
-      width: (index) => targetMetrics[index]?.width ?? 25,
-      duration: 0.68,
-      ease: "expo.out",
-      onUpdate: updateMembrane,
-      stagger: {
-        amount: 0.28,
-        from: "center",
-      },
-    }, 0.03);
-
-    timeline.to(
-      labels,
-      {
-        filter: "blur(0px)",
-        opacity: (index) => {
-          const cell = labels[index]?.closest(".subnav-cell");
-          return cell?.getAttribute("data-active") === "true" ? 0.58 : 1;
-        },
-        x: 0,
-        duration: 0.18,
-        ease: "power2.out",
-        stagger: {
-          amount: 0.18,
-          from: "center",
-        },
-      },
-      0.34,
-    );
-
-    timeline.eventCallback("onComplete", () => {
-      updateMembrane();
-      onFrame?.();
-      gsap.set(labels, { clearProps: "opacity,filter,transform" });
-    });
-
-    return () => {
-      timeline.kill();
-    };
-  }, [animationSignature, groupKey, items.length, onFrame]);
+  const animationSignature = `${groupKey}:${items.map((item) => item.key).join("|")}`;
+  useMaskedPillRowIntro(subnavGroupRef, animationSignature);
 
   return (
     <div className="pill-subnav__group" ref={subnavGroupRef}>
-      <span className="pill-subnav__membrane" aria-hidden="true" />
       {items.map((item, index) => (
         <SubnavCell
           key={item.key}
@@ -588,68 +682,81 @@ function AnimatedSubnavGroup({
   );
 }
 
+function IndexNavControl({ count, label }: { count: number; label: string }) {
+  const countLabel = String(count);
+  const countStyle = {
+    "--index-count-width": `calc(${Math.max(countLabel.length, 1)}ch + 14px)`,
+  } as CSSProperties;
+
+  return (
+    <span className="index-nav-control" aria-label={`${label}: ${countLabel}`}>
+      <span className="index-nav-control__label" data-nav-measure-target="true">
+        {label}
+      </span>
+      <span className="index-nav-control__extras" style={countStyle} aria-hidden="true">
+        <span className="index-nav-control__divider" aria-hidden="true" />
+        <span className="index-nav-control__count">{countLabel}</span>
+      </span>
+    </span>
+  );
+}
+
 function getSubnavGroups({
   activeFilterFamily,
-  activeIndexMode,
-  filters,
-  loading,
-  onClearFilters,
-  onFormatChange,
-  onSourceChange,
-  onStatusChange,
-  onTypeChange,
+  collectionCount,
+  itemCount,
+  onObjectModeChange,
   galleryColumns,
   onGalleryColumnsChange,
+  onViewModeChange,
+  objectMode,
+  viewMode,
   panel,
-  resultLabel,
-  setActiveIndexMode,
-  setActiveFilterFamily,
-  sourceOptions,
-  statusOptions,
-  typeOptions,
-  formatOptions,
+  openFilter,
 }: {
   activeFilterFamily: FilterFamily;
-  activeIndexMode: IndexMode;
-  filters: ItemCardFilters;
-  loading: boolean;
-  onClearFilters: () => void;
-  onFormatChange: (format: ArchiveFormatFilter) => void;
-  onSourceChange: (source: ArchiveSourceFilter) => void;
-  onStatusChange: (status: ArchiveStatusFilter) => void;
-  onTypeChange: (type: ArchiveTypeFilter) => void;
+  collectionCount: number;
+  itemCount: number;
+  onObjectModeChange: (mode: GalleryObjectMode) => void;
   galleryColumns: number;
   onGalleryColumnsChange: (columns: number) => void;
+  onViewModeChange: (mode: ArchiveViewMode) => void;
+  objectMode: GalleryObjectMode;
+  viewMode: ArchiveViewMode;
   panel: PillNavPanel | null;
-  resultLabel: string;
-  setActiveIndexMode: (mode: IndexMode) => void;
-  setActiveFilterFamily: (family: FilterFamily) => void;
-  sourceOptions: ArchiveSourceFilter[];
-  statusOptions: ArchiveStatusFilter[];
-  typeOptions: ArchiveTypeFilter[];
-  formatOptions: ArchiveFormatFilter[];
+  openFilter: (family: FilterFamily) => void;
 }): SubnavGroup[] {
   if (panel === "index") {
+    const allCount = itemCount + collectionCount;
+
     return [
       {
-        key: "index",
-        items: [
+      key: "index",
+      items: [
           {
-            key: "all-items",
-            label: "All items",
-            active: activeIndexMode === "all",
-            onClick: () => {
-              setActiveIndexMode("all");
-              onClearFilters();
-            },
+            key: "all-objects",
+            label: "All",
+            active: objectMode === "all",
+            className: "subnav-cell--index-count",
+            node: <IndexNavControl count={allCount} label="All" />,
+            onClick: () => onObjectModeChange("all"),
+          },
+          {
+            key: "items",
+            label: "Items",
+            active: objectMode === "items",
+            className: "subnav-cell--index-count",
+            node: <IndexNavControl count={itemCount} label="Items" />,
+            onClick: () => onObjectModeChange("items"),
           },
           {
             key: "collections",
             label: "Collections",
-            active: activeIndexMode === "collections",
-            onClick: () => setActiveIndexMode("collections"),
+            active: objectMode === "collections",
+            className: "subnav-cell--index-count",
+            node: <IndexNavControl count={collectionCount} label="Collections" />,
+            onClick: () => onObjectModeChange("collections"),
           },
-          { key: "result-count", label: resultLabel },
         ],
       },
     ];
@@ -662,36 +769,61 @@ function getSubnavGroups({
         items: [
           {
             key: "gallery-control",
-            label: "Gallery | + -",
-            active: true,
+            label: "Gallery",
+            active: viewMode === "gallery",
             className: "subnav-cell--gallery-control",
             node: (
               <span className="gallery-nav-control" aria-label={`Gallery columns: ${galleryColumns}`} title={`${galleryColumns} columns`}>
-                <span>Gallery</span>
-                <span className="gallery-nav-control__divider" aria-hidden="true" />
                 <button
-                  className="gallery-nav-control__step"
+                  className="gallery-nav-control__label"
                   type="button"
-                  disabled={galleryColumns >= 8}
-                  onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
-                  aria-label={`show more gallery columns, currently ${galleryColumns}`}
+                  data-nav-measure-target="true"
+                  onClick={() => onViewModeChange("gallery")}
                 >
-                  <span className="gallery-nav-control__icon gallery-nav-control__icon--plus" aria-hidden="true" />
+                  Gallery
                 </button>
-                <button
-                  className="gallery-nav-control__step"
-                  type="button"
-                  disabled={galleryColumns <= 2}
-                  onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
-                  aria-label={`show fewer gallery columns, currently ${galleryColumns}`}
-                >
-                  <span className="gallery-nav-control__icon gallery-nav-control__icon--minus" aria-hidden="true" />
-                </button>
+                <span className="gallery-nav-control__extras">
+                  <span className="gallery-nav-control__divider" aria-hidden="true" />
+                  <button
+                    className="gallery-nav-control__step"
+                    type="button"
+                    disabled={galleryColumns >= 8}
+                    onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
+                    aria-label={`show more gallery columns, currently ${galleryColumns}`}
+                  >
+                    <span className="gallery-nav-control__icon gallery-nav-control__icon--plus" aria-hidden="true" />
+                  </button>
+                  <button
+                    className="gallery-nav-control__step"
+                    type="button"
+                    disabled={galleryColumns <= 2}
+                    onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
+                    aria-label={`show fewer gallery columns, currently ${galleryColumns}`}
+                  >
+                    <span className="gallery-nav-control__icon gallery-nav-control__icon--minus" aria-hidden="true" />
+                  </button>
+                </span>
               </span>
             ),
           },
-          { key: "list", label: "List", disabled: true },
-          { key: "graph", label: "Graph", disabled: true },
+          {
+            key: "masonry",
+            label: "Masonry",
+            active: viewMode === "masonry",
+            onClick: () => onViewModeChange("masonry"),
+          },
+          {
+            key: "list",
+            label: "List",
+            active: viewMode === "list",
+            onClick: () => onViewModeChange("list"),
+          },
+          {
+            key: "graph",
+            label: "Graph",
+            active: viewMode === "graph",
+            onClick: () => onViewModeChange("graph"),
+          },
         ],
       },
     ];
@@ -710,120 +842,304 @@ function getSubnavGroups({
       key: "filter-state",
       label: "State",
       active: activeFilterFamily === "state",
-      onClick: () => setActiveFilterFamily("state"),
+      onClick: () => openFilter("state"),
     },
     {
       key: "filter-kind",
       label: "Kind",
       active: activeFilterFamily === "kind",
-      onClick: () => setActiveFilterFamily("kind"),
+      onClick: () => openFilter("kind"),
     },
     {
-      key: "filter-origin",
-      label: "Origin",
-      active: activeFilterFamily === "origin",
-      onClick: () => setActiveFilterFamily("origin"),
+      key: "filter-source",
+      label: "Source",
+      active: activeFilterFamily === "source",
+      onClick: () => openFilter("source"),
     },
     {
-      key: "filter-format",
-      label: "Format",
-      active: activeFilterFamily === "format",
-      onClick: () => setActiveFilterFamily("format"),
+      key: "filter-collection",
+      label: "Collection",
+      active: activeFilterFamily === "collection",
+      onClick: () => openFilter("collection"),
+    },
+    {
+      key: "filter-more",
+      label: "More",
+      active: activeFilterFamily === "more",
+      onClick: () => openFilter("more"),
     },
   ];
 
-  const optionItems =
-    activeFilterFamily === "state"
-      ? statusOptions.map<SubnavItem>((option) => ({
-          key: `state:${option}`,
-          label: formatStateOption(option),
-          active: (filters.status ?? "all") === option,
-          disabled: loading,
-          onClick: () => onStatusChange(option),
-        }))
-      : activeFilterFamily === "kind"
-        ? typeOptions.map<SubnavItem>((option) => ({
-            key: `kind:${option}`,
-            label: formatKindOption(option),
-            active: (filters.type ?? "all") === option,
-            disabled: loading,
-            onClick: () => onTypeChange(option),
-          }))
-        : activeFilterFamily === "origin"
-          ? sourceOptions.map<SubnavItem>((option) => ({
-              key: `origin:${option}`,
-              label: formatOriginOption(option),
-              active: (filters.source ?? "all") === option,
-              disabled: loading,
-              onClick: () => onSourceChange(option),
-            }))
-          : formatOptions.map<SubnavItem>((option) => ({
-              key: `format:${option}`,
-              label: formatFormatOption(option),
-              active: (filters.format ?? "all") === option,
-              disabled: loading,
-              onClick: () => onFormatChange(option),
-            }));
-
-  if (hasActiveFilters(filters)) {
-    optionItems.push({
-      key: "clear",
-      label: "Clear",
-      onClick: onClearFilters,
-    });
-  }
-
-  return [
-    { key: "filters-family", items: familyItems },
-    { key: `filters-options:${activeFilterFamily}`, items: optionItems },
-  ];
+  return [{ key: "filters-family", items: familyItems }];
 }
 
-function CollectionIndexIsland({
-  collections,
-  error,
+function FilterPopoverIsland({
+  collectionIndex,
+  family,
+  filters,
+  formatOptions,
   loading,
-  onOpenCollection,
+  onClose,
+  onCollectionFilterChange,
+  onFormatChange,
+  onSourceChange,
+  onStatusChange,
+  onTypeChange,
+  sourceOptions,
+  statusOptions,
 }: {
-  collections: CollectionIndexItem[];
-  error: string | null;
+  collectionIndex: CollectionIndexItem[];
+  family: FilterFamily;
+  filters: ItemCardFilters;
+  formatOptions: ArchiveFormatFilter[];
   loading: boolean;
-  onOpenCollection: (collectionId: string) => void;
+  onClose: () => void;
+  onCollectionFilterChange: (collection: string) => void;
+  onFormatChange: (format: ArchiveFormatFilter) => void;
+  onSourceChange: (source: ArchiveSourceFilter) => void;
+  onStatusChange: (status: ArchiveStatusFilter) => void;
+  onTypeChange: (type: ArchiveTypeFilter) => void;
+  sourceOptions: ArchiveSourceFilter[];
+  statusOptions: ArchiveStatusFilter[];
 }) {
-  return (
-    <section className="collection-index-island" aria-label="collections index">
-      <div className="collection-index-island__header">
-        <span>Collections</span>
-        <small>{loading ? "loading" : `${collections.length} ${collections.length === 1 ? "set" : "sets"}`}</small>
-      </div>
+  const islandRef = useRef<HTMLElement | null>(null);
+  const [collectionQuery, setCollectionQuery] = useState("");
+  const normalizedCollectionQuery = collectionQuery.trim().toLowerCase();
+  const visibleCollections = normalizedCollectionQuery
+    ? collectionIndex.filter((collection) =>
+        [collection.name, collection.description, collection.kindSummary]
+          .filter((part): part is string => Boolean(part))
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedCollectionQuery),
+      )
+    : collectionIndex;
 
-      {error ? <p className="collection-index-island__status">{error}</p> : null}
-      {loading ? <p className="collection-index-island__status">Loading collections.</p> : null}
-      {!loading && !error && collections.length === 0 ? (
-        <p className="collection-index-island__status">No collections yet.</p>
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (islandRef.current?.contains(target) || (target instanceof Element && target.closest(".pill-nav__subnav"))) {
+        return;
+      }
+
+      onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  const selectStatus = (status: ArchiveStatusFilter) => {
+    onStatusChange(status);
+    onClose();
+  };
+  const selectSource = (source: ArchiveSourceFilter) => {
+    onSourceChange(source);
+    onClose();
+  };
+  const selectFormat = (format: ArchiveFormatFilter) => {
+    onFormatChange(format);
+    onClose();
+  };
+  const selectCollection = (collection: string) => {
+    onCollectionFilterChange(collection);
+    onClose();
+  };
+  const selectKind = (option: { filterType: "type"; type: ArchiveTypeFilter } | { filterType: "format"; format: ArchiveFormatFilter }) => {
+    if (option.filterType === "format") {
+      onTypeChange("all");
+      onFormatChange(option.format);
+    } else {
+      onFormatChange("all");
+      onTypeChange(option.type);
+    }
+    onClose();
+  };
+
+  return (
+    <section className="filter-popover-island" data-family={family} ref={islandRef} aria-label={`${family} filter options`}>
+      <header className="filter-popover-island__header">
+        <span>{formatFilterFamilyLabel(family)}</span>
+        <button type="button" onClick={onClose}>Close</button>
+      </header>
+
+      {family === "state" ? (
+        <div className="filter-popover-island__list">
+          {statusOptions.map((option) => (
+            <FilterOptionRow
+              active={(filters.status ?? "all") === option}
+              disabled={loading}
+              key={option}
+              label={formatStateOption(option)}
+              onClick={() => selectStatus(option)}
+            />
+          ))}
+        </div>
       ) : null}
 
-      {!loading && !error && collections.length > 0 ? (
-        <div className="collection-index-island__list">
-          {collections.map((collection) => (
-            <button
-              className="collection-index-island__row"
-              key={collection.id}
-              type="button"
-              onClick={() => onOpenCollection(collection.id)}
-            >
-              <span>
-                <strong>{collection.name}</strong>
-                {collection.description ? <small>{collection.description}</small> : null}
-              </span>
-              <em>
-                {formatCollectionCount(collection.pieceCount)} · {collection.kindSummary}
-              </em>
-            </button>
+      {family === "kind" ? (
+        <div className="filter-popover-island__grid">
+          {getKindFilterOptions().map((option) => {
+            const active = option.filterType === "format"
+              ? filters.format === option.format
+              : option.type === "all"
+                ? !filters.type && !filters.format
+                : filters.type === option.type && !filters.format;
+            return (
+              <FilterOptionRow
+                active={active}
+                disabled={loading}
+                key={`kind:${option.key}`}
+                label={option.label}
+                onClick={() => selectKind(option)}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      {family === "source" ? (
+        <div className="filter-popover-island__grid">
+          {getSourceFilterOptions(sourceOptions).map((option) => (
+            <FilterOptionRow
+              active={(filters.source ?? "all") === option}
+              disabled={loading}
+              key={`source:${option}`}
+              label={formatSourceOption(option)}
+              onClick={() => selectSource(option)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {family === "collection" ? (
+        <div className="filter-popover-island__collections">
+          <input
+            autoFocus
+            aria-label="search collections"
+            onChange={(event) => setCollectionQuery(event.currentTarget.value)}
+            placeholder="Search collections"
+            type="search"
+            value={collectionQuery}
+          />
+          <div className="filter-popover-island__list filter-popover-island__list--collections">
+            <FilterOptionRow
+              active={!filters.collection}
+              disabled={loading}
+              label="All Collections"
+              onClick={() => selectCollection("all")}
+            />
+            <FilterOptionRow
+              active={filters.collection === "none"}
+              copy="Items that do not belong to a collection."
+              disabled={loading}
+              label="Uncollected"
+              onClick={() => selectCollection("none")}
+            />
+            {visibleCollections.map((collection) => (
+              <CollectionFilterRow
+                active={filters.collection === collection.id}
+                collection={collection}
+                disabled={loading}
+                key={collection.id}
+                onClick={() => selectCollection(collection.id)}
+              />
+            ))}
+            {visibleCollections.length === 0 ? (
+              <span className="filter-popover-island__empty">No collections match that search.</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {family === "more" ? (
+        <div className="filter-popover-island__grid">
+          {formatOptions.map((option) => (
+            <FilterOptionRow
+              active={(filters.format ?? "all") === option}
+              disabled={loading}
+              key={`format:${option}`}
+              label={formatTechnicalOption(option)}
+              onClick={() => selectFormat(option)}
+            />
           ))}
         </div>
       ) : null}
     </section>
+  );
+}
+
+function FilterOptionRow({
+  active,
+  copy,
+  disabled,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  copy?: string;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="filter-popover-island__option"
+      data-active={active ? "true" : "false"}
+      disabled={disabled}
+      type="button"
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      {copy ? <small>{copy}</small> : null}
+    </button>
+  );
+}
+
+function CollectionFilterRow({
+  active,
+  collection,
+  disabled,
+  onClick,
+}: {
+  active: boolean;
+  collection: CollectionIndexItem;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="filter-popover-island__collection-option"
+      data-active={active ? "true" : "false"}
+      disabled={disabled}
+      type="button"
+      onClick={onClick}
+    >
+      <span className="filter-popover-island__collection-preview" aria-hidden="true">
+        {collection.previewItems.slice(0, 3).map((item) => {
+          const imageUrl = item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl;
+          return imageUrl ? <img src={imageUrl} alt="" key={item.id} /> : <span key={item.id}>{getCollectionPreviewLabel(item.kind, item.format)}</span>;
+        })}
+      </span>
+      <span className="filter-popover-island__collection-copy">
+        <strong>{collection.name}</strong>
+        <small>{formatCollectionCount(collection.pieceCount)} · {collection.kindSummary}</small>
+      </span>
+    </button>
   );
 }
 
@@ -842,7 +1158,11 @@ function PrimaryCell({
 }) {
   return (
     <button className="nav-cell" data-active={active ? "true" : "false"} type="button" onClick={onClick} aria-expanded={active}>
-      <span className="nav-cell__text">{label}</span>
+      <span className="nav-cell__text-mask">
+        <span className="nav-cell__text-bleed">
+          <span className="nav-cell__text">{label}</span>
+        </span>
+      </span>
     </button>
   );
 }
@@ -1018,7 +1338,7 @@ function SettingsIsland({
           <div className="settings-island__section">
             <span className="settings-island__label">System</span>
             <span className="settings-island__note">
-              {readError ? "Archive read error" : "Archive connected"} · Product Sans files pending
+              {readError ? "Archive read error" : "Archive connected"} · Product Sans/system stack
             </span>
           </div>
         ) : null}
@@ -1078,7 +1398,13 @@ function SubnavCell({
   onClick?: () => void;
 }) {
   const style = getCellStyle(index, label);
-  const content = <span className="nav-cell__text">{node ?? children}</span>;
+  const content = (
+    <span className="nav-cell__text-mask">
+      <span className="nav-cell__text-bleed">
+        <span className="nav-cell__text">{node ?? children}</span>
+      </span>
+    </span>
+  );
   const classNames = ["subnav-cell", className].filter(Boolean).join(" ");
 
   if (onClick) {
@@ -1111,44 +1437,77 @@ function SubnavCell({
 }
 
 function getCellStyle(index: number, label: string): NavCellStyle {
-  const width = Math.min(148, Math.max(25, Math.round(label.length * 7.1 + 25)));
-
   return {
-    "--cell-width": `${width}px`,
     "--cell-index": index,
   };
 }
 
-function hasActiveFilters(filters: ItemCardFilters): boolean {
-  return Boolean(filters.status || filters.type || filters.source || filters.format || filters.text);
+function getKindFilterOptions(): Array<
+  | { filterType: "type"; key: ArchiveTypeFilter; label: string; type: ArchiveTypeFilter }
+  | { filterType: "format"; key: ArchiveFormatFilter; label: string; format: ArchiveFormatFilter }
+> {
+  return [
+    { filterType: "type", key: "all", label: "All Kinds", type: "all" },
+    { filterType: "type", key: "image", label: "Image", type: "image" },
+    { filterType: "type", key: "caption", label: "Caption", type: "caption" },
+    { filterType: "type", key: "note", label: "Note", type: "note" },
+    { filterType: "type", key: "link", label: "Link", type: "link" },
+    { filterType: "format", key: "pdf", label: "PDF", format: "pdf" },
+    { filterType: "format", key: "video", label: "Video", format: "video" },
+    { filterType: "format", key: "website", label: "Website", format: "website" },
+  ];
+}
+
+function getSourceFilterOptions(sourceOptions: ArchiveSourceFilter[]) {
+  return Array.from(new Set<ArchiveSourceFilter>(["all", ...sourceOptions]));
 }
 
 function formatStateOption(option: ArchiveStatusFilter): string {
-  return option === "all" ? "Any state" : option;
+  return option === "all" ? "All States" : option.charAt(0).toUpperCase() + option.slice(1);
 }
 
-function formatKindOption(option: ArchiveTypeFilter): string {
+function formatSourceOption(option: ArchiveSourceFilter): string {
   if (option === "all") {
-    return "All items";
+    return "All Sources";
   }
 
-  return option.charAt(0).toUpperCase() + option.slice(1);
-}
-
-function formatOriginOption(option: ArchiveSourceFilter): string {
-  if (option === "all") {
-    return "Any origin";
+  if (option === "arena") {
+    return "Are.na";
   }
 
-  return option.replace("_", " ");
+  return option.replace("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function formatFormatOption(option: ArchiveFormatFilter): string {
+function formatTechnicalOption(option: ArchiveFormatFilter): string {
   if (option === "all") {
-    return "Any format";
+    return "All Formats";
   }
 
   return option.toUpperCase() === option ? option : option.charAt(0).toUpperCase() + option.slice(1);
+}
+
+function formatTypeFilterLabel(type: ItemType) {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function formatFilterFamilyLabel(family: FilterFamily) {
+  if (family === "more") {
+    return "More";
+  }
+
+  return family.charAt(0).toUpperCase() + family.slice(1);
+}
+
+function getCollectionPreviewLabel(kind: string, format?: string | null) {
+  if (format === "pdf") {
+    return "PDF";
+  }
+
+  if (format === "video") {
+    return "video";
+  }
+
+  return kind.slice(0, 1).toUpperCase();
 }
 
 function getShortcutBindingFromEvent(event: KeyboardEvent): ShortcutBinding | null {

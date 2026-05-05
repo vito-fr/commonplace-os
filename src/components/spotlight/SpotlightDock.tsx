@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { gsap } from "../../motion/MotionShell";
 import type { ShortcutBinding } from "../nav/PillNav";
 
 export type SpotlightCaptureRequest =
@@ -38,11 +37,6 @@ type ImportQueueItem = {
   message: string;
 };
 
-const IDLE_WIDTH = 48;
-const IDLE_HEIGHT = 10;
-const DOCK_HEIGHT = 46;
-const SEARCH_WIDTH = 456;
-const SEARCH_CONTENT_WIDTH = 448;
 const MAX_BATCH_FILES = 20;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -64,14 +58,12 @@ export function SpotlightDock({
   const [isQueueImporting, setIsQueueImporting] = useState(false);
   const dockRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const inputWrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const importInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusSearchRef = useRef(false);
   const isSearchOpen = activeMode === "search";
   const isImportOpen = activeMode === "import";
-  const isDockOpen = activeMode !== null;
   const pastePreview = useMemo(() => getPastePreview(importValue), [importValue]);
   const readyFileCount = fileQueue.filter((item) => item.status === "ready").length;
   const isBusy = pendingCapture || isQueueImporting;
@@ -120,69 +112,6 @@ export function SpotlightDock({
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [activeMode]);
-
-  useEffect(() => {
-    const dock = dockRef.current;
-    const inputWrap = inputWrapRef.current;
-    if (!dock || !inputWrap) {
-      return;
-    }
-
-    gsap.killTweensOf([dock, inputWrap]);
-
-    if (isDockOpen) {
-      const timeline = gsap.timeline();
-
-      gsap.set(inputWrap, {
-        filter: "blur(5px)",
-        maxWidth: 0,
-        opacity: 0,
-        width: 0,
-      });
-
-      timeline.to(dock, {
-        width: SEARCH_WIDTH,
-        height: DOCK_HEIGHT,
-        duration: 0.5,
-        ease: "power3.inOut",
-      });
-
-      timeline.to(
-        inputWrap,
-        {
-          maxWidth: SEARCH_CONTENT_WIDTH,
-          opacity: 1,
-          filter: "blur(0px)",
-          width: SEARCH_CONTENT_WIDTH,
-          duration: 0.28,
-          ease: "power2.out",
-        },
-        0.24,
-      );
-    } else {
-      const timeline = gsap.timeline();
-
-      timeline.to(inputWrap, {
-        maxWidth: 0,
-        opacity: 0,
-        filter: "blur(4px)",
-        width: 0,
-        duration: 0.16,
-        ease: "power2.in",
-      });
-
-      timeline.to(
-        dock,
-        {
-          width: IDLE_WIDTH,
-          height: IDLE_HEIGHT,
-          duration: 0.34,
-          ease: "power3.inOut",
-        },
-        0.06,
-      );
-    }
-  }, [isDockOpen]);
 
   useEffect(() => {
     if (!isSearchOpen || !shouldFocusSearchRef.current) {
@@ -447,14 +376,13 @@ export function SpotlightDock({
       <div
         className={`spotlight-dock${isSearchOpen ? " spotlight-dock--search" : ""}${isImportOpen ? " spotlight-dock--import" : ""}`}
         ref={dockRef}
-        style={{ width: IDLE_WIDTH, height: IDLE_HEIGHT }}
         onMouseEnter={openSearch}
         onMouseLeave={closeSearch}
         onMouseDown={focusSearch}
         role="search"
         aria-label="archive search and import"
       >
-        <div className="spotlight-dock__input-wrap" ref={inputWrapRef} style={{ opacity: 0 }}>
+        <div className="spotlight-dock__input-wrap">
           <input
             ref={inputRef}
             className="spotlight-dock__input"
@@ -507,8 +435,8 @@ function FileQueueList({ queue }: { queue: ImportQueueItem[] }) {
 function SourceImportGuide() {
   return (
     <div className="spotlight-import-panel__sources" aria-label="supported sources">
-      <SourceImportRow label="Pinterest" copy="Paste pin, board, or image URLs. They filter as Pinterest." />
-      <SourceImportRow label="Are.na" copy="Paste channel or block URLs. They filter as Are.na." />
+      <SourceImportRow label="Pinterest" copy="Paste pin, profile, or image URLs. They filter as Pinterest." />
+      <SourceImportRow label="Are.na" copy="Paste Are.na URLs. They filter as Are.na." />
       <SourceImportRow label="YouTube" copy="Paste video URLs. They import as video links." />
       <SourceImportRow label="APIs" copy="Account API import is deferred until URL capture proves the workflow." />
     </div>
@@ -566,7 +494,7 @@ function getPastePreview(value: string) {
     return {
       kind: "link" as const,
       label: "Pinterest URL",
-      detail: "This will filter under Origin: Pinterest.",
+      detail: "This will filter under Source: Pinterest.",
     };
   }
 
@@ -574,7 +502,7 @@ function getPastePreview(value: string) {
     return {
       kind: "link" as const,
       label: "Are.na URL",
-      detail: "This will filter under Origin: Are.na.",
+      detail: "This will filter under Source: Are.na.",
     };
   }
 

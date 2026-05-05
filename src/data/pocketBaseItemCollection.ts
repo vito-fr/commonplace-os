@@ -34,8 +34,11 @@ export type CollectionDetailItem = {
   captionText: string | null;
   noteParagraph: string | null;
   url: string | null;
+  linkContentType: string | null;
   ogImageUrl: string | null;
   ogTitle: string | null;
+  assetFileUrl: string | null;
+  assetMimeType: string | null;
 };
 
 export type CollectionDetail = {
@@ -50,6 +53,20 @@ export type CollectionDetail = {
   items: CollectionDetailItem[];
 };
 
+export type CollectionPreviewItem = {
+  id: string;
+  title?: string | null;
+  kind: string;
+  format?: string | null;
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+  ogImageUrl?: string | null;
+  videoPosterUrl?: string | null;
+  textPreview?: string | null;
+  sourceUrl?: string | null;
+  source?: string | null;
+};
+
 export type CollectionIndexItem = {
   id: string;
   workspaceId: string;
@@ -59,6 +76,7 @@ export type CollectionIndexItem = {
   lastUpdatedAt: string;
   pieceCount: number;
   kindSummary: string;
+  previewItems: CollectionPreviewItem[];
 };
 
 export type CollectionIndexQuery = {
@@ -89,6 +107,14 @@ export type ItemCollectionRemove = {
   workspaceId: string;
   itemId: string;
   collectionId: string;
+  actor?: string;
+};
+
+export type CollectionUpdate = {
+  workspaceId: string;
+  collectionId: string;
+  name: string;
+  description: string | null;
   actor?: string;
 };
 
@@ -142,6 +168,10 @@ export type ItemCollectionRemoveResult = {
   };
 };
 
+export type CollectionUpdateResult = {
+  collection: CollectionIndexItem;
+};
+
 export type ItemCollectionClient = {
   getCollectionDetail(query: CollectionDetailQuery): Promise<CollectionDetail>;
   listCollectionIndex(query: CollectionIndexQuery): Promise<CollectionIndexItem[]>;
@@ -149,6 +179,7 @@ export type ItemCollectionClient = {
   attachCollection(change: ItemCollectionAttach): Promise<ItemCollectionAttachResult>;
   createCollectionAndAttach(change: ItemCollectionCreateAndAttach): Promise<ItemCollectionCreateAndAttachResult>;
   removeCollection(change: ItemCollectionRemove): Promise<ItemCollectionRemoveResult>;
+  updateCollection(change: CollectionUpdate): Promise<CollectionUpdateResult>;
 };
 
 export type PocketBaseItemCollectionClientOptions = {
@@ -159,6 +190,7 @@ export type PocketBaseItemCollectionClientOptions = {
   attachEndpointPath?: string;
   createEndpointPath?: string;
   removeEndpointPath?: string;
+  updateEndpointPath?: string;
   fetcher?: Fetcher;
 };
 
@@ -182,6 +214,7 @@ export function createPocketBaseItemCollectionClient({
   attachEndpointPath = "/api/vita/item-collection",
   createEndpointPath = "/api/vita/collection-create",
   removeEndpointPath = "/api/vita/item-collection-remove",
+  updateEndpointPath = "/api/vita/collection-update",
   fetcher = globalThis.fetch,
 }: PocketBaseItemCollectionClientOptions): ItemCollectionClient {
   return {
@@ -204,6 +237,7 @@ export function createPocketBaseItemCollectionClient({
         items: payload.collection.items.map((item) => ({
           ...item,
           imageUrl: resolvePocketBaseFileUrl(baseUrl, item.imageUrl),
+          assetFileUrl: resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl),
         })),
       };
     },
@@ -222,7 +256,15 @@ export function createPocketBaseItemCollectionClient({
         throw new Error("PocketBase collection index response must include { collections }");
       }
 
-      return payload.collections;
+      return payload.collections.map((collection) => ({
+        ...collection,
+        previewItems: (collection.previewItems ?? []).map((item) => ({
+          ...item,
+          thumbnailUrl: resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl),
+          imageUrl: resolvePocketBaseFileUrl(baseUrl, item.imageUrl),
+          videoPosterUrl: resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl),
+        })),
+      }));
     },
 
     async listCollectionOptions(query) {
@@ -323,6 +365,34 @@ export function createPocketBaseItemCollectionClient({
 
       return payload;
     },
+
+    async updateCollection(change) {
+      const response = await fetcher(buildCollectionUpdateUrl(baseUrl, updateEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          collection_id: change.collectionId,
+          name: change.name,
+          description: change.description,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase collection update failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as CollectionUpdateResult;
+      if (!payload.collection) {
+        throw new Error("PocketBase collection update response must include { collection }");
+      }
+
+      return payload;
+    },
   };
 }
 
@@ -369,6 +439,10 @@ function buildCollectionCreateUrl(baseUrl: string, endpointPath: string) {
 }
 
 function buildCollectionRemoveUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
+}
+
+function buildCollectionUpdateUrl(baseUrl: string, endpointPath: string) {
   return new URL(endpointPath, normalizeBaseUrl(baseUrl));
 }
 

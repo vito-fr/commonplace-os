@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { gsap, ScrollTrigger } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { CollectionView } from "./components/collections/CollectionView";
-import { MasonryGrid } from "./components/items";
-import type { ItemCardActionAnchor, ItemCardProps } from "./components/items";
+import { MasonryGrid, MasonryView } from "./components/items";
+import type { ArchiveObject, CollectionCardModel, ItemCardActionAnchor, ItemCardProps } from "./components/items";
 import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemDetail";
 import type { ItemCardFilters, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
@@ -24,6 +24,8 @@ import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
 import { SpotlightDock, type SpotlightCaptureRequest } from "./components/spotlight/SpotlightDock";
 import {
   PillNav,
+  type ArchiveViewMode,
+  type GalleryObjectMode,
   type PillNavPanel,
   type ShortcutAction,
   type ShortcutBinding,
@@ -76,6 +78,8 @@ const defaultShortcutBindings: ShortcutBindings = {
   galleryIncrease: { key: "+", alternateKeys: ["="] },
   galleryDecrease: { key: "-" },
 };
+const pocketBaseUnavailableTitle = "PocketBase is not running or cannot be reached.";
+const pocketBaseUnavailableCopy = "Run npm run pb:serve and refresh.";
 
 const workspaceId = "seed:ws001";
 const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
@@ -100,12 +104,19 @@ type CardCollectionIslandPosition = {
   left: number;
   top: number;
 };
+const itemCardSurfaceEvent = "vita:item-card-surface-open";
+type ItemCardSurfaceDetail = {
+  itemId: string;
+  surface: "actions" | "collection";
+};
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
+  const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
+  const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
   const [galleryColumns, setGalleryColumns] = useState(4);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
@@ -123,12 +134,17 @@ export function App() {
   const [isCollectionLoading, setIsCollectionLoading] = useState(false);
   const [collectionIndexError, setCollectionIndexError] = useState<string | null>(null);
   const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
+  const [collectionUpdateError, setCollectionUpdateError] = useState<string | null>(null);
+  const [isCollectionUpdating, setIsCollectionUpdating] = useState(false);
   const [cardCollectionItem, setCardCollectionItem] = useState<ItemCardProps | null>(null);
   const [cardCollectionAnchor, setCardCollectionAnchor] = useState<CardCollectionIslandPosition | null>(null);
   const [cardCollectionOptions, setCardCollectionOptions] = useState<CollectionOption[]>([]);
   const [isCardCollectionLoading, setIsCardCollectionLoading] = useState(false);
   const [isCardCollectionWriting, setIsCardCollectionWriting] = useState(false);
   const [cardCollectionError, setCardCollectionError] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [selectionWriteError, setSelectionWriteError] = useState<string | null>(null);
+  const [isSelectionWriting, setIsSelectionWriting] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isCollectionAttaching, setIsCollectionAttaching] = useState(false);
@@ -144,6 +160,8 @@ export function App() {
     const syncRoute = () => {
       setRoute(getRouteFromLocation());
       setItemCardFilters(getFiltersFromLocation());
+      setGalleryObjectMode(getGalleryObjectModeFromLocation());
+      setArchiveViewMode(getArchiveViewModeFromLocation());
     };
 
     window.addEventListener("popstate", syncRoute);
@@ -184,13 +202,13 @@ export function App() {
         return;
       }
 
-      if (route.kind === "grid" && matchesShortcut(event, shortcutBindings.galleryIncrease)) {
+      if (route.kind === "grid" && archiveViewMode === "gallery" && matchesShortcut(event, shortcutBindings.galleryIncrease)) {
         event.preventDefault();
         setGalleryColumns((currentColumns) => Math.min(maxGalleryColumns, currentColumns + 1));
         return;
       }
 
-      if (route.kind === "grid" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
+      if (route.kind === "grid" && archiveViewMode === "gallery" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
         event.preventDefault();
         setGalleryColumns((currentColumns) => Math.max(minGalleryColumns, currentColumns - 1));
       }
@@ -200,7 +218,7 @@ export function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [route.kind, shortcutBindings]);
+  }, [archiveViewMode, route.kind, shortcutBindings]);
 
   useEffect(() => {
     const nextUrl =
@@ -208,17 +226,19 @@ export function App() {
         ? buildPdfPreviewRouteUrl(route.src, route.name, route.surface)
         : route.kind === "item"
         ? buildItemDetailUrl(route.itemId, itemCardFilters, {
+            mode: galleryObjectMode,
+            view: archiveViewMode,
             returnCollectionId: route.returnCollectionId,
           })
         : route.kind === "collection"
-          ? buildCollectionUrl(route.collectionId)
-          : buildArchiveUrl(itemCardFilters);
+          ? `${buildCollectionUrl(route.collectionId)}${window.location.search}`
+          : buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode);
     const currentUrl = `${window.location.pathname}${window.location.search}`;
 
     if (currentUrl !== nextUrl) {
       window.history.replaceState(null, "", nextUrl);
     }
-  }, [itemCardFilters, route]);
+  }, [archiveViewMode, galleryObjectMode, itemCardFilters, route]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -242,7 +262,7 @@ export function App() {
       .catch((error: unknown) => {
         if (isCurrent) {
           console.error(error);
-          setReadError("Unable to load archive.");
+          setReadError(getReadableLoadError(error, "archive"));
         }
       })
       .finally(() => {
@@ -341,13 +361,36 @@ export function App() {
       setCardCollectionError(null);
       setIsCardCollectionLoading(false);
       setIsCardCollectionWriting(false);
+      setSelectedItemIds([]);
+      setSelectionWriteError(null);
+      setIsSelectionWriting(false);
     }
   }, [route.kind]);
 
   useEffect(() => {
-    let isCurrent = true;
+    if ((archiveViewMode === "list" || archiveViewMode === "graph") && selectedItemIds.length > 0) {
+      setSelectedItemIds([]);
+      setSelectionWriteError(null);
+    }
+  }, [archiveViewMode, selectedItemIds.length]);
 
-    if (route.kind !== "grid" || archivePanel !== "index") {
+  useEffect(() => {
+    setSelectedItemIds((currentSelection) => {
+      if (currentSelection.length === 0) {
+        return currentSelection;
+      }
+
+      const visibleItemIds = new Set(items.map((item) => item.id));
+      const nextSelection = currentSelection.filter((itemId) => visibleItemIds.has(itemId));
+      return nextSelection.length === currentSelection.length ? currentSelection : nextSelection;
+    });
+  }, [items]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const needsCollections = route.kind === "grid";
+
+    if (!needsCollections) {
       setCollectionIndexError(null);
       setIsCollectionIndexLoading(false);
       return () => {
@@ -357,7 +400,7 @@ export function App() {
 
     if (!isPocketBaseMode) {
       setCollectionIndex([]);
-      setCollectionIndexError("Collection index requires live archive mode.");
+      setCollectionIndexError(galleryObjectMode === "collections" ? "Collection index requires live archive mode." : null);
       setIsCollectionIndexLoading(false);
       return () => {
         isCurrent = false;
@@ -378,7 +421,7 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setCollectionIndex([]);
-          setCollectionIndexError("Unable to load collections.");
+          setCollectionIndexError(getReadableLoadError(error, "collections"));
         }
       })
       .finally(() => {
@@ -390,7 +433,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [archivePanel, route.kind]);
+  }, [galleryObjectMode, route.kind]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -427,7 +470,7 @@ export function App() {
         if (isCurrent) {
           console.error(error);
           setCollectionDetail(null);
-          setCollectionReadError("Unable to load collection.");
+          setCollectionReadError(getReadableLoadError(error, "collection"));
         }
       })
       .finally(() => {
@@ -442,7 +485,7 @@ export function App() {
   }, [route]);
 
   const openItemDetail = (itemId: string) => {
-    window.history.pushState(null, "", buildItemDetailUrl(itemId, itemCardFilters));
+    window.history.pushState(null, "", buildItemDetailUrl(itemId, itemCardFilters, { mode: galleryObjectMode, view: archiveViewMode }));
     setRoute({ kind: "item", itemId });
   };
 
@@ -466,13 +509,13 @@ export function App() {
       window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
       setRoute({ kind: "collection", collectionId: route.returnCollectionId });
     } else {
-      window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
+      window.history.pushState(null, "", buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode));
       setRoute({ kind: "grid" });
     }
   };
 
   const closeCollection = () => {
-    window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
+    window.history.pushState(null, "", buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode));
     setRoute({ kind: "grid" });
   };
 
@@ -531,7 +574,7 @@ export function App() {
         window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
         setRoute({ kind: "collection", collectionId: route.returnCollectionId });
       } else {
-        window.history.pushState(null, "", buildArchiveUrl(itemCardFilters));
+        window.history.pushState(null, "", buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode));
         setRoute({ kind: "grid" });
       }
     } catch (error: unknown) {
@@ -656,6 +699,14 @@ export function App() {
       return;
     }
 
+    if (cardCollectionItem?.id === itemId) {
+      closeArchiveCardCollection();
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent<ItemCardSurfaceDetail>(itemCardSurfaceEvent, {
+      detail: { itemId, surface: "collection" },
+    }));
     setCardCollectionItem(item);
     setCardCollectionAnchor(getCardCollectionIslandPosition(anchor));
     setCardCollectionOptions([]);
@@ -688,7 +739,243 @@ export function App() {
     setIsCardCollectionWriting(false);
   };
 
-  const attachArchiveCardToCollection = async (collectionId: string) => {
+  const refreshArchiveCollectionState = async () => {
+    const [nextItems, nextCollections] = await Promise.all([
+      itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
+      itemCollectionClient.listCollectionIndex({ workspaceId }),
+    ]);
+
+    setItems(nextItems);
+    setCollectionIndex(nextCollections);
+    return { nextCollections, nextItems };
+  };
+
+  const refreshCollectionWorkspaceState = async (collectionId: string) => {
+    const [nextCollection, nextItems, nextCollections] = await Promise.all([
+      itemCollectionClient.getCollectionDetail({ workspaceId, collectionId }),
+      itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
+      itemCollectionClient.listCollectionIndex({ workspaceId }),
+    ]);
+
+    setCollectionDetail(nextCollection);
+    setItems(nextItems);
+    setCollectionIndex(nextCollections);
+  };
+
+  const removeCollectionWorkspaceItems = async ({
+    collectionId,
+    itemIds,
+  }: {
+    collectionId: string;
+    itemIds: string[];
+  }) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    for (const itemId of itemIds) {
+      await itemCollectionClient.removeCollection({
+        workspaceId,
+        itemId,
+        collectionId,
+        actor: "system",
+      });
+    }
+
+    await refreshCollectionWorkspaceState(collectionId);
+  };
+
+  const addCollectionWorkspaceItemsToCollection = async ({
+    collectionId,
+    itemIds,
+    sourceCollectionId,
+  }: {
+    collectionId: string;
+    itemIds: string[];
+    sourceCollectionId: string;
+  }) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    let attachedCount = 0;
+    let failedCount = 0;
+
+    for (const itemId of itemIds) {
+      try {
+        await itemCollectionClient.attachCollection({
+          workspaceId,
+          itemId,
+          collectionId,
+          actor: "system",
+        });
+        attachedCount += 1;
+      } catch (error: unknown) {
+        console.error(error);
+        failedCount += 1;
+      }
+    }
+
+    await refreshCollectionWorkspaceState(sourceCollectionId);
+
+    if (attachedCount === 0 && failedCount > 0) {
+      throw new Error("Selected items are already in that collection or could not be added.");
+    }
+  };
+
+  const createCollectionFromCollectionWorkspaceItems = async ({
+    description,
+    itemIds,
+    name,
+    sourceCollectionId,
+  }: {
+    description: string | null;
+    itemIds: string[];
+    name: string;
+    sourceCollectionId: string;
+  }) => {
+    const [firstItemId, ...remainingItemIds] = itemIds;
+
+    if (!firstItemId) {
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    const result = await itemCollectionClient.createCollectionAndAttach({
+      workspaceId,
+      itemId: firstItemId,
+      name,
+      description: description ?? undefined,
+      actor: "system",
+    });
+
+    for (const itemId of remainingItemIds) {
+      await itemCollectionClient.attachCollection({
+        workspaceId,
+        itemId,
+        collectionId: result.collection.id,
+        actor: "system",
+      });
+    }
+
+    await refreshCollectionWorkspaceState(sourceCollectionId);
+  };
+
+  const toggleArchiveItemSelection = (itemId: string) => {
+    setSelectionWriteError(null);
+    closeArchiveCardCollection();
+    setSelectedItemIds((currentSelection) =>
+      currentSelection.includes(itemId)
+        ? currentSelection.filter((selectedItemId) => selectedItemId !== itemId)
+        : [...currentSelection, itemId],
+    );
+  };
+
+  const clearArchiveSelection = () => {
+    setSelectedItemIds([]);
+    setSelectionWriteError(null);
+  };
+
+  const addSelectedItemsToCollection = async (collectionId: string) => {
+    if (selectedItemIds.length === 0) {
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      setSelectionWriteError("Live archive mode required.");
+      return;
+    }
+
+    setIsSelectionWriting(true);
+    setSelectionWriteError(null);
+
+    let attachedCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (const itemId of selectedItemIds) {
+        try {
+          await itemCollectionClient.attachCollection({
+            workspaceId,
+            itemId,
+            collectionId,
+            actor: "system",
+          });
+          attachedCount += 1;
+        } catch (error: unknown) {
+          console.error(error);
+          failedCount += 1;
+        }
+      }
+
+      await refreshArchiveCollectionState();
+
+      if (attachedCount > 0) {
+        setSelectedItemIds([]);
+      } else if (failedCount > 0) {
+        setSelectionWriteError("Selected items are already in that collection or could not be added.");
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      setSelectionWriteError("Unable to add selected items.");
+    } finally {
+      setIsSelectionWriting(false);
+    }
+  };
+
+  const createCollectionFromSelectedItems = async ({
+    description,
+    name,
+  }: {
+    description: string | null;
+    name: string;
+  }) => {
+    const [firstItemId, ...remainingItemIds] = selectedItemIds;
+
+    if (!firstItemId) {
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      setSelectionWriteError("Live archive mode required.");
+      return;
+    }
+
+    setIsSelectionWriting(true);
+    setSelectionWriteError(null);
+
+    try {
+      const result = await itemCollectionClient.createCollectionAndAttach({
+        workspaceId,
+        itemId: firstItemId,
+        name,
+        description: description ?? undefined,
+        actor: "system",
+      });
+
+      for (const itemId of remainingItemIds) {
+        await itemCollectionClient.attachCollection({
+          workspaceId,
+          itemId,
+          collectionId: result.collection.id,
+          actor: "system",
+        });
+      }
+
+      await refreshArchiveCollectionState();
+      setSelectedItemIds([]);
+    } catch (error: unknown) {
+      console.error(error);
+      setSelectionWriteError("Unable to create collection from selection.");
+    } finally {
+      setIsSelectionWriting(false);
+    }
+  };
+
+  const toggleArchiveCardCollectionMembership = async (collectionId: string, alreadyAttached: boolean) => {
     if (!cardCollectionItem || !isPocketBaseMode) {
       return;
     }
@@ -696,19 +983,31 @@ export function App() {
     setIsCardCollectionWriting(true);
     setCardCollectionError(null);
     try {
-      await itemCollectionClient.attachCollection({
-        workspaceId,
-        itemId: cardCollectionItem.id,
-        collectionId,
-        actor: "system",
-      });
+      if (alreadyAttached) {
+        await itemCollectionClient.removeCollection({
+          workspaceId,
+          itemId: cardCollectionItem.id,
+          collectionId,
+          actor: "system",
+        });
+      } else {
+        await itemCollectionClient.attachCollection({
+          workspaceId,
+          itemId: cardCollectionItem.id,
+          collectionId,
+          actor: "system",
+        });
+      }
 
-      const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
-      setItems(nextItems);
-      closeArchiveCardCollection();
+      const [{ nextItems }, nextOptions] = await Promise.all([
+        refreshArchiveCollectionState(),
+        itemCollectionClient.listCollectionOptions({ workspaceId, itemId: cardCollectionItem.id }),
+      ]);
+      setCardCollectionItem(nextItems.find((item) => item.id === cardCollectionItem.id) ?? cardCollectionItem);
+      setCardCollectionOptions(nextOptions);
     } catch (error: unknown) {
       console.error(error);
-      setCardCollectionError("Unable to add to collection.");
+      setCardCollectionError(alreadyAttached ? "Unable to remove from collection." : "Unable to add to collection.");
     } finally {
       setIsCardCollectionWriting(false);
     }
@@ -736,14 +1035,73 @@ export function App() {
         actor: "system",
       });
 
-      const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
-      setItems(nextItems);
-      closeArchiveCardCollection();
+      const [{ nextItems }, nextOptions] = await Promise.all([
+        refreshArchiveCollectionState(),
+        itemCollectionClient.listCollectionOptions({ workspaceId, itemId: cardCollectionItem.id }),
+      ]);
+      setCardCollectionItem(nextItems.find((item) => item.id === cardCollectionItem.id) ?? cardCollectionItem);
+      setCardCollectionOptions(nextOptions);
     } catch (error: unknown) {
       console.error(error);
       setCardCollectionError("Unable to create collection.");
     } finally {
       setIsCardCollectionWriting(false);
+    }
+  };
+
+  const updateArchiveCollection = async ({
+    collectionId,
+    description,
+    name,
+  }: {
+    collectionId: string;
+    description: string | null;
+    name: string;
+  }) => {
+    if (!isPocketBaseMode) {
+      setCollectionUpdateError("Collection editing requires live archive mode.");
+      return;
+    }
+
+    setIsCollectionUpdating(true);
+    setCollectionUpdateError(null);
+
+    try {
+      const result = await itemCollectionClient.updateCollection({
+        workspaceId,
+        collectionId,
+        name,
+        description,
+        actor: "system",
+      });
+
+      setCollectionIndex((current) =>
+        current.map((collection) =>
+          collection.id === result.collection.id
+            ? {
+                ...collection,
+                ...result.collection,
+                previewItems: result.collection.previewItems.length > 0 ? result.collection.previewItems : collection.previewItems,
+              }
+            : collection,
+        ),
+      );
+      setCollectionDetail((current) =>
+        current?.id === result.collection.id
+          ? {
+              ...current,
+              name: result.collection.name,
+              description: result.collection.description,
+              lastUpdatedAt: result.collection.lastUpdatedAt,
+            }
+          : current,
+      );
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionUpdateError("Unable to update collection.");
+      throw error;
+    } finally {
+      setIsCollectionUpdating(false);
     }
   };
 
@@ -845,6 +1203,13 @@ export function App() {
     }));
   };
 
+  const updateCollectionFilter = (collection: string) => {
+    setItemCardFilters((currentFilters) => ({
+      ...currentFilters,
+      collection: collection === "all" ? undefined : collection,
+    }));
+  };
+
   const updateTextFilter = (text: string) => {
     setItemCardFilters((currentFilters) => ({
       ...currentFilters,
@@ -858,6 +1223,11 @@ export function App() {
 
   const updateGalleryColumns = (columns: number) => {
     setGalleryColumns(Math.min(maxGalleryColumns, Math.max(minGalleryColumns, columns)));
+  };
+
+  const updateArchiveViewMode = (mode: ArchiveViewMode) => {
+    setArchiveViewMode(mode);
+    setArchivePanel("views");
   };
 
   const updateShortcutBinding = (action: ShortcutAction, binding: ShortcutBinding) => {
@@ -879,6 +1249,39 @@ export function App() {
   const resetShortcutBindings = () => {
     setShortcutBindings(defaultShortcutBindings);
     setShortcutError(null);
+  };
+
+  const archiveSelectedItems = async () => {
+    if (selectedItemIds.length === 0) {
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      setSelectionWriteError("Live archive mode required.");
+      return;
+    }
+
+    setIsSelectionWriting(true);
+    setSelectionWriteError(null);
+
+    try {
+      for (const itemId of selectedItemIds) {
+        await itemStatusWriter.updateItemStatus({
+          workspaceId,
+          itemId,
+          nextStatus: "archived",
+          actor: "system",
+        });
+      }
+
+      await refreshArchiveCollectionState();
+      setSelectedItemIds([]);
+    } catch (error: unknown) {
+      console.error(error);
+      setSelectionWriteError("Unable to archive selected items.");
+    } finally {
+      setIsSelectionWriting(false);
+    }
   };
 
   const routeRef = useRef<HTMLDivElement | null>(null);
@@ -925,16 +1328,19 @@ export function App() {
     renderedRoute.kind === "grid" ? (
       <PillNav
         activePanel={archivePanel}
+        collectionCount={collectionIndex.length}
         collectionIndex={collectionIndex}
-        collectionIndexError={collectionIndexError}
-        collectionIndexLoading={isCollectionIndexLoading}
         filters={itemCardFilters}
         galleryColumns={galleryColumns}
-        isPocketBaseMode={isPocketBaseMode}
         itemCount={items.length}
+        viewMode={archiveViewMode}
+        isPocketBaseMode={isPocketBaseMode}
         loading={isLoading}
         onClearFilters={clearArchiveFilters}
-        onOpenCollection={openCollection}
+        objectMode={galleryObjectMode}
+        onCollectionFilterChange={updateCollectionFilter}
+        onObjectModeChange={setGalleryObjectMode}
+        onViewModeChange={updateArchiveViewMode}
         onGalleryColumnsChange={updateGalleryColumns}
         onFormatChange={updateFormatFilter}
         onPanelChange={setArchivePanel}
@@ -949,7 +1355,6 @@ export function App() {
         onShortcutChange={updateShortcutBinding}
         onShortcutReset={resetShortcutBindings}
         statusOptions={statusFilterOptions}
-        typeOptions={typeFilterOptions}
         sourceOptions={sourceFilterOptions}
         formatOptions={formatFilterOptions}
       />
@@ -968,10 +1373,14 @@ export function App() {
       <main className="app-shell" aria-label="Vita collection">
         <CollectionView
           collection={collectionDetail}
+          collectionIndex={collectionIndex}
           loading={isCollectionLoading}
           error={collectionReadError}
           onBack={closeCollection}
+          onAddItemsToCollection={addCollectionWorkspaceItemsToCollection}
+          onCreateCollectionFromItems={createCollectionFromCollectionWorkspaceItems}
           onOpenItem={openCollectionItemDetail}
+          onRemoveItemsFromCollection={removeCollectionWorkspaceItems}
         />
       </main>
     );
@@ -1033,34 +1442,76 @@ export function App() {
       activeFilters: itemCardFilters,
       ...(isPocketBaseMode
         ? {
-            detailHref: buildItemDetailUrl(item.id, itemCardFilters),
+            detailHref: buildItemDetailUrl(item.id, itemCardFilters, { mode: galleryObjectMode, view: archiveViewMode }),
+            isSelected: selectedItemIds.includes(item.id),
+            isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
             onNavigate: openItemDetail,
+            onSelectToggle: toggleArchiveItemSelection,
           }
         : {
+            isSelected: selectedItemIds.includes(item.id),
+            isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
             onNavigate: openItemDetail,
+            onSelectToggle: toggleArchiveItemSelection,
           }),
     }));
+    const renderedCollections = filterCollectionCards(collectionIndex, itemCardFilters).map((collection) =>
+      toCollectionCardModel(collection, openCollection),
+    );
+    const archiveObjects = buildArchiveObjects({
+      collections: renderedCollections,
+      items: renderedItems,
+      mode: galleryObjectMode,
+    });
+    const showInitialCollectionsLoading =
+      galleryObjectMode === "collections" && isCollectionIndexLoading && collectionIndex.length === 0;
+    const galleryLoading = showInitialArchiveLoading || showInitialCollectionsLoading;
 
     routeContent = (
       <main className="app-shell app-shell--archive" aria-label="Vita archive">
         <h1 className="visually-hidden">Archive</h1>
-        <section className="archive-canvas" aria-label="archive items">
-          <MasonryGrid
-            items={renderedItems}
-            density="comfortable"
-            columns={galleryColumns}
-            loading={showInitialArchiveLoading}
-            emptyState={
-              <ArchiveEmptyState
-                filters={itemCardFilters}
-                readError={readError}
-                onClearFilters={clearArchiveFilters}
-              />
-            }
-            ariaLabel="archive items"
-          />
+        <section className="archive-canvas" aria-label="archive objects">
+          {archiveViewMode === "gallery" ? (
+            <MasonryGrid
+              objects={archiveObjects}
+              density="comfortable"
+              columns={galleryColumns}
+              loading={galleryLoading}
+              emptyState={
+                <ArchiveEmptyState
+                  collectionError={collectionIndexError}
+                  objectMode={galleryObjectMode}
+                  filters={itemCardFilters}
+                  readError={readError}
+                  onClearFilters={clearArchiveFilters}
+                />
+              }
+              ariaLabel="archive objects"
+            />
+          ) : archiveViewMode === "masonry" ? (
+            <MasonryView
+              objects={archiveObjects}
+              loading={galleryLoading}
+              emptyState={
+                <ArchiveEmptyState
+                  collectionError={collectionIndexError}
+                  objectMode={galleryObjectMode}
+                  filters={itemCardFilters}
+                  readError={readError}
+                  onClearFilters={clearArchiveFilters}
+                />
+              }
+              ariaLabel="masonry archive objects"
+            />
+          ) : (
+            <ArchiveComingSoonState
+              viewMode={archiveViewMode}
+              objectMode={galleryObjectMode}
+              onBackToGallery={() => setArchiveViewMode("gallery")}
+            />
+          )}
         </section>
       </main>
     );
@@ -1079,10 +1530,23 @@ export function App() {
           options={cardCollectionOptions}
           loading={isCardCollectionLoading}
           pending={isCardCollectionWriting}
+          collectionIndex={collectionIndex}
           error={cardCollectionError}
-          onAttach={attachArchiveCardToCollection}
+          onToggle={toggleArchiveCardCollectionMembership}
           onClose={closeArchiveCardCollection}
           onCreate={createArchiveCardCollection}
+        />
+      ) : null}
+      {renderedRoute.kind === "grid" && (archiveViewMode === "gallery" || archiveViewMode === "masonry") && selectedItemIds.length > 0 ? (
+        <SelectionActionBar
+          collections={collectionIndex}
+          error={selectionWriteError}
+          pending={isSelectionWriting}
+          selectedCount={selectedItemIds.length}
+          onAddToCollection={addSelectedItemsToCollection}
+          onArchive={archiveSelectedItems}
+          onClear={clearArchiveSelection}
+          onCreate={createCollectionFromSelectedItems}
         />
       ) : null}
       {renderedRoute.kind !== "pdfPreview" ? (
@@ -1117,6 +1581,109 @@ function routeKey(r: AppRoute): string {
   return `item:${r.itemId}`;
 }
 
+function buildArchiveObjects({
+  collections,
+  items,
+  mode,
+}: {
+  collections: CollectionCardModel[];
+  items: ItemCardProps[];
+  mode: GalleryObjectMode;
+}): ArchiveObject[] {
+  if (mode === "items") {
+    return items.map((item) => ({ objectType: "item" as const, item }));
+  }
+
+  if (mode === "collections") {
+    return collections.map((collection) => ({ objectType: "collection" as const, collection }));
+  }
+
+  return [
+    ...collections.map((collection) => ({ objectType: "collection" as const, collection })),
+    ...items.map((item) => ({ objectType: "item" as const, item })),
+  ];
+}
+
+function toCollectionCardModel(
+  collection: CollectionIndexItem,
+  onNavigate: (collectionId: string) => void,
+): CollectionCardModel {
+  return {
+    id: collection.id,
+    name: collection.name,
+    description: collection.description,
+    pieceCount: collection.pieceCount,
+    kindSummary: collection.kindSummary,
+    lastUpdatedAt: collection.lastUpdatedAt,
+    previewItems: collection.previewItems,
+    href: buildCollectionUrl(collection.id),
+    onNavigate,
+  };
+}
+
+function filterCollectionCards(collections: CollectionIndexItem[], filters: ItemCardFilters) {
+  return collections.filter((collection) => collectionMatchesFilters(collection, filters));
+}
+
+function collectionMatchesFilters(collection: CollectionIndexItem, filters: ItemCardFilters) {
+  if (filters.collection === "none") {
+    return false;
+  }
+
+  if (filters.collection && collection.id !== filters.collection) {
+    return false;
+  }
+
+  if (filters.text?.trim()) {
+    const query = filters.text.trim().toLowerCase();
+    const haystack = [
+      collection.name,
+      collection.description,
+      collection.kindSummary,
+      ...collection.previewItems.map((item) => `${item.title ?? ""} ${item.textPreview ?? ""} ${item.sourceUrl ?? ""}`),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(query)) {
+      return false;
+    }
+  }
+
+  if (filters.type && !collectionHasKind(collection, filters.type)) {
+    return false;
+  }
+
+  if (filters.format && !collectionHasFormat(collection, filters.format)) {
+    return false;
+  }
+
+  if (filters.source && !collection.previewItems.some((item) => item.source === filters.source)) {
+    return false;
+  }
+
+  return true;
+}
+
+function collectionHasKind(collection: CollectionIndexItem, type: ItemType) {
+  const kindSummary = collection.kindSummary.toLowerCase();
+  if (kindSummary.includes(type)) {
+    return true;
+  }
+
+  return collection.previewItems.some((item) => item.kind === type);
+}
+
+function collectionHasFormat(collection: CollectionIndexItem, format: ItemFormatFilter) {
+  if (format === "website") {
+    return collection.previewItems.some(
+      (item) => item.kind === "link" && (!item.format || item.format === "website" || item.format === "unknown"),
+    );
+  }
+
+  return collection.previewItems.some((item) => item.format === format);
+}
+
 
 function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
   const filterSummary = formatFilterSummary(filters);
@@ -1132,23 +1699,40 @@ function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
 }
 
 function ArchiveEmptyState({
+  collectionError,
   filters,
+  objectMode,
   readError,
   onClearFilters,
 }: {
+  collectionError: string | null;
   filters: ItemCardFilters;
+  objectMode: GalleryObjectMode;
   readError: string | null;
   onClearFilters: () => void;
 }) {
   const hasFilters = hasActiveFilters(filters);
   const filterSummary = formatFilterSummary(filters);
+  const objectLabel = formatGalleryObjectModeLabel(objectMode);
 
   if (readError) {
+    const { copy, title } = getLoadErrorDisplay(readError);
     return (
       <div className="archive-state archive-state--error" role="alert">
         <span className="archive-state__kicker">load error</span>
-        <h2 className="archive-state__title">Archive could not be loaded.</h2>
-        <p className="archive-state__copy">{readError}</p>
+        <h2 className="archive-state__title">{title}</h2>
+        <p className="archive-state__copy">{copy}</p>
+      </div>
+    );
+  }
+
+  if (collectionError) {
+    const { copy, title } = getLoadErrorDisplay(collectionError);
+    return (
+      <div className="archive-state archive-state--error" role="alert">
+        <span className="archive-state__kicker">load error</span>
+        <h2 className="archive-state__title">{title}</h2>
+        <p className="archive-state__copy">{copy}</p>
       </div>
     );
   }
@@ -1156,56 +1740,167 @@ function ArchiveEmptyState({
   if (hasFilters) {
     return (
       <div className="archive-state">
-        <span className="archive-state__kicker">empty set</span>
-        <h2 className="archive-state__title">Nothing matches this archive set.</h2>
-        <p className="archive-state__copy">{filterSummary}</p>
+        <span className="archive-state__kicker">empty {objectLabel}</span>
+        <h2 className="archive-state__title">
+          {filters.text?.trim() ? "No results match this search." : `No ${objectLabel} match these filters.`}
+        </h2>
+        <p className="archive-state__copy">{filterSummary || "Clear the active filters to return to Gallery."}</p>
         <button className="text-button" type="button" onClick={onClearFilters}>
-          Clear narrow view
+          Clear filters
         </button>
+      </div>
+    );
+  }
+
+  if (objectMode === "collections") {
+    return (
+      <div className="archive-state">
+        <span className="archive-state__kicker">empty collections</span>
+        <h2 className="archive-state__title">No collections yet.</h2>
+        <p className="archive-state__copy">Select items in Gallery and create a collection to make it appear here.</p>
+      </div>
+    );
+  }
+
+  if (objectMode === "items") {
+    return (
+      <div className="archive-state">
+        <span className="archive-state__kicker">empty items</span>
+        <h2 className="archive-state__title">No items in Gallery yet.</h2>
+        <p className="archive-state__copy">Use Import to add notes, links, images, or PDFs.</p>
       </div>
     );
   }
 
   return (
     <div className="archive-state">
-      <span className="archive-state__kicker">empty archive</span>
-      <h2 className="archive-state__title">Archive has no items yet.</h2>
-      <p className="archive-state__copy">This workspace has nothing available to inspect.</p>
+      <span className="archive-state__kicker">empty Gallery</span>
+      <h2 className="archive-state__title">Gallery is empty.</h2>
+      <p className="archive-state__copy">Use Import to add archive items, then collect related pieces into Collections.</p>
+    </div>
+  );
+}
+
+function ArchiveComingSoonState({
+  objectMode,
+  onBackToGallery,
+  viewMode,
+}: {
+  objectMode: GalleryObjectMode;
+  onBackToGallery: () => void;
+  viewMode: Exclude<ArchiveViewMode, "gallery" | "masonry">;
+}) {
+  const isGraph = viewMode === "graph";
+
+  return (
+    <div className="archive-state archive-state--view">
+      <span className="archive-state__kicker">{viewMode} view</span>
+      <h2 className="archive-state__title">
+        {isGraph ? "Graph view is not built yet." : "List view is not built yet."}
+      </h2>
+      <p className="archive-state__copy">
+        {isGraph
+          ? "Graph will show relationships between archive items and Collections when that interaction is ready."
+          : `List will provide a compact scanner for ${formatGalleryObjectModeLabel(objectMode)} without changing the archive data model.`}
+      </p>
+      <button className="text-button" type="button" onClick={onBackToGallery}>
+        Back to Gallery
+      </button>
     </div>
   );
 }
 
 function CardCollectionIsland({
   anchor,
+  collectionIndex,
   error,
   item,
   loading,
-  onAttach,
   onClose,
   onCreate,
+  onToggle,
   options,
   pending,
 }: {
   anchor: CardCollectionIslandPosition | null;
+  collectionIndex: CollectionIndexItem[];
   error: string | null;
   item: ItemCardProps;
   loading: boolean;
-  onAttach: (collectionId: string) => void;
   onClose: () => void;
   onCreate: (input: { name: string; description: string | null }) => void;
+  onToggle: (collectionId: string, alreadyAttached: boolean) => void;
   options: CollectionOption[];
   pending: boolean;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [query, setQuery] = useState("");
+  const islandRef = useRef<HTMLElement | null>(null);
   const itemLabel = item.title ?? item.ogTitle ?? item.url ?? item.type;
   const canCreate = name.trim().length > 0 && !pending;
+  const normalizedQuery = query.trim().toLowerCase();
+  const enrichedOptions = options
+    .map((option) => ({
+      ...option,
+      index: collectionIndex.find((collection) => collection.id === option.id) ?? null,
+    }))
+    .filter((option) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [option.name, option.description, option.index?.kindSummary]
+        .filter((part): part is string => Boolean(part))
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery);
+    })
+    .sort((first, second) => Number(second.alreadyAttached) - Number(first.alreadyAttached) || first.name.localeCompare(second.name));
   const islandStyle = anchor
     ? ({
         "--card-collection-left": `${anchor.left}px`,
         "--card-collection-top": `${anchor.top}px`,
       } as CSSProperties)
     : undefined;
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (islandRef.current?.contains(target) || (target instanceof Element && target.closest(".item-card__action-cell--add"))) {
+        return;
+      }
+
+      onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    const onSurfaceOpen = (event: Event) => {
+      const detail = (event as CustomEvent<ItemCardSurfaceDetail>).detail;
+      if (!detail || detail.itemId === item.id && detail.surface === "collection") {
+        return;
+      }
+
+      onClose();
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener(itemCardSurfaceEvent, onSurfaceOpen);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(itemCardSurfaceEvent, onSurfaceOpen);
+    };
+  }, [item.id, onClose]);
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1218,6 +1913,8 @@ function CardCollectionIsland({
       name: name.trim(),
       description: description.trim() || null,
     });
+    setName("");
+    setDescription("");
   };
 
   return (
@@ -1225,6 +1922,7 @@ function CardCollectionIsland({
       className="card-collection-island"
       role="dialog"
       aria-label="add item to collection"
+      ref={islandRef}
       style={islandStyle}
     >
       <div className="card-collection-island__header">
@@ -1237,22 +1935,45 @@ function CardCollectionIsland({
         </button>
       </div>
 
+      <input
+        className="card-collection-island__search"
+        aria-label="search collections"
+        disabled={pending}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search collections"
+        type="search"
+        value={query}
+      />
+
       <div className="card-collection-island__options" aria-label="existing collections">
         {loading ? <span className="card-collection-island__status">Loading collections.</span> : null}
         {!loading && options.length === 0 ? (
           <span className="card-collection-island__status">No collections yet.</span>
         ) : null}
-        {options.map((collection) => (
+        {!loading && options.length > 0 && enrichedOptions.length === 0 ? (
+          <span className="card-collection-island__status">No collections match that search.</span>
+        ) : null}
+        {enrichedOptions.map((collection) => (
           <button
             className="card-collection-island__cell"
             data-attached={collection.alreadyAttached ? "true" : "false"}
-            disabled={pending || collection.alreadyAttached}
+            disabled={pending}
             key={collection.id}
             type="button"
-            onClick={() => onAttach(collection.id)}
+            onClick={() => onToggle(collection.id, collection.alreadyAttached)}
           >
-            {collection.name}
-            {collection.alreadyAttached ? " · added" : ""}
+            <span className="card-collection-island__preview" aria-hidden="true">
+              {collection.index?.previewItems.slice(0, 3).map((preview) => {
+                const imageUrl = preview.thumbnailUrl || preview.imageUrl || preview.ogImageUrl || preview.videoPosterUrl;
+                return imageUrl ? <img src={imageUrl} alt="" key={preview.id} /> : <span key={preview.id}>{preview.kind.slice(0, 1).toUpperCase()}</span>;
+              })}
+            </span>
+            <span className="card-collection-island__copy">
+              <strong>{collection.name}</strong>
+              <small>
+                {collection.alreadyAttached ? "Attached" : "Add"} · {collection.index ? `${collection.index.pieceCount} items · ${collection.index.kindSummary}` : "collection"}
+              </small>
+            </span>
           </button>
         ))}
       </div>
@@ -1278,6 +1999,129 @@ function CardCollectionIsland({
         </button>
       </form>
       {error ? <span className="card-collection-island__error">{error}</span> : null}
+    </section>
+  );
+}
+
+function SelectionActionBar({
+  collections,
+  error,
+  onAddToCollection,
+  onArchive,
+  onClear,
+  onCreate,
+  pending,
+  selectedCount,
+}: {
+  collections: CollectionIndexItem[];
+  error: string | null;
+  onAddToCollection: (collectionId: string) => void;
+  onArchive: () => void;
+  onClear: () => void;
+  onCreate: (input: { name: string; description: string | null }) => void;
+  pending: boolean;
+  selectedCount: number;
+}) {
+  const [activeAction, setActiveAction] = useState<"add" | "create" | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const canCreate = name.trim().length > 0 && !pending;
+  const selectedLabel = `${selectedCount} selected`;
+
+  const submitCreate = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canCreate) {
+      return;
+    }
+
+    onCreate({
+      name: name.trim(),
+      description: description.trim() || null,
+    });
+    setName("");
+    setDescription("");
+  };
+
+  return (
+    <section className="selection-action-bar" aria-label="selected item actions">
+      <div className="selection-action-bar__summary">
+        <strong>{selectedLabel}</strong>
+        <button
+          className="selection-action-bar__cell"
+          type="button"
+          disabled={pending}
+          data-active={activeAction === "add" ? "true" : "false"}
+          onClick={() => setActiveAction((current) => (current === "add" ? null : "add"))}
+        >
+          Add to collection
+        </button>
+        <button
+          className="selection-action-bar__cell"
+          type="button"
+          disabled={pending}
+          data-active={activeAction === "create" ? "true" : "false"}
+          onClick={() => setActiveAction((current) => (current === "create" ? null : "create"))}
+        >
+          Create collection
+        </button>
+        <button className="selection-action-bar__cell" type="button" disabled={pending} onClick={onArchive}>
+          Archive
+        </button>
+        <button className="selection-action-bar__cell" type="button" disabled={pending} onClick={onClear}>
+          Clear
+        </button>
+      </div>
+
+      {activeAction === "add" ? (
+        <div className="selection-action-bar__panel" aria-label="add selected to collection">
+          {collections.length === 0 ? <span className="selection-action-bar__empty">No collections yet.</span> : null}
+          {collections.map((collection) => (
+            <button
+              className="selection-action-bar__collection"
+              disabled={pending}
+              key={collection.id}
+              type="button"
+              onClick={() => onAddToCollection(collection.id)}
+            >
+              <span className="selection-action-bar__collection-preview" aria-hidden="true">
+                {collection.previewItems.slice(0, 3).map((preview) => {
+                  const imageUrl = preview.thumbnailUrl || preview.imageUrl || preview.ogImageUrl || preview.videoPosterUrl;
+                  return imageUrl ? <img src={imageUrl} alt="" key={preview.id} /> : <span key={preview.id}>{preview.kind.slice(0, 1).toUpperCase()}</span>;
+                })}
+              </span>
+              <span>
+                <strong>{collection.name}</strong>
+                <small>{collection.pieceCount} items · {collection.kindSummary}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {activeAction === "create" ? (
+        <form className="selection-action-bar__panel selection-action-bar__panel--create" onSubmit={submitCreate}>
+          <input
+            aria-label="new collection name for selected items"
+            disabled={pending}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="New collection"
+            value={name}
+          />
+          <input
+            aria-label="new collection description for selected items"
+            disabled={pending}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Description optional"
+            value={description}
+          />
+          <button className="selection-action-bar__cell" type="submit" disabled={!canCreate}>
+            {pending ? "Adding" : "Create"}
+          </button>
+        </form>
+      ) : null}
+
+      {error ? <span className="selection-action-bar__error">{error}</span> : null}
     </section>
   );
 }
@@ -1429,6 +2273,7 @@ function getFiltersFromLocation(): ItemCardFilters {
   const type = searchParams.get("type");
   const source = searchParams.get("source");
   const format = searchParams.get("format");
+  const collection = searchParams.get("collection")?.trim();
   const text = searchParams.get("q")?.trim();
 
   if (isStatusFilter(status)) {
@@ -1447,6 +2292,10 @@ function getFiltersFromLocation(): ItemCardFilters {
     filters.format = format;
   }
 
+  if (collection) {
+    filters.collection = collection === "all" ? undefined : collection;
+  }
+
   if (text) {
     filters.text = text;
   }
@@ -1454,8 +2303,22 @@ function getFiltersFromLocation(): ItemCardFilters {
   return filters;
 }
 
-function buildArchiveUrl(filters: ItemCardFilters) {
-  return `/${buildFilterSearch(filters)}`;
+function getGalleryObjectModeFromLocation(): GalleryObjectMode {
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  return mode === "items" || mode === "collections" ? mode : "all";
+}
+
+function getArchiveViewModeFromLocation(): ArchiveViewMode {
+  const view = new URLSearchParams(window.location.search).get("view");
+  return view === "masonry" || view === "list" || view === "graph" ? view : "gallery";
+}
+
+function buildArchiveUrl(
+  filters: ItemCardFilters,
+  mode: GalleryObjectMode = "all",
+  view: ArchiveViewMode = "gallery",
+) {
+  return `/${buildFilterSearch(filters, { mode, view })}`;
 }
 
 function buildCollectionUrl(collectionId: string) {
@@ -1480,16 +2343,24 @@ function buildPdfPreviewRouteUrl(src: string, name?: string, surface: "card" | "
 function buildItemDetailUrl(
   itemId: string,
   filters: ItemCardFilters,
-  options: { returnCollectionId?: string } = {},
+  options: { mode?: GalleryObjectMode; returnCollectionId?: string; view?: ArchiveViewMode } = {},
 ) {
   return `/items/${encodeURIComponent(itemId)}${buildFilterSearch(filters, options)}`;
 }
 
 function buildFilterSearch(
   filters: ItemCardFilters,
-  options: { returnCollectionId?: string } = {},
+  options: { mode?: GalleryObjectMode; returnCollectionId?: string; view?: ArchiveViewMode } = {},
 ) {
   const searchParams = new URLSearchParams();
+
+  if (options.mode && options.mode !== "all") {
+    searchParams.set("mode", options.mode);
+  }
+
+  if (options.view && options.view !== "gallery") {
+    searchParams.set("view", options.view);
+  }
 
   if (filters.status) {
     searchParams.set("status", filters.status);
@@ -1507,6 +2378,10 @@ function buildFilterSearch(
     searchParams.set("format", filters.format);
   }
 
+  if (filters.collection) {
+    searchParams.set("collection", filters.collection);
+  }
+
   if (filters.text?.trim()) {
     searchParams.set("q", filters.text.trim());
   }
@@ -1520,7 +2395,7 @@ function buildFilterSearch(
 }
 
 function hasActiveFilters(filters: ItemCardFilters) {
-  return Boolean(filters.status || filters.type || filters.source || filters.format || filters.text?.trim());
+  return Boolean(filters.status || filters.type || filters.source || filters.format || filters.collection || filters.text?.trim());
 }
 
 function formatFilterSummary(filters: ItemCardFilters) {
@@ -1533,6 +2408,18 @@ function formatArchiveContext(filters: ItemCardFilters) {
 
 function formatResultCount(itemCount: number) {
   return `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
+}
+
+function formatGalleryObjectModeLabel(mode: GalleryObjectMode) {
+  if (mode === "items") {
+    return "items";
+  }
+
+  if (mode === "collections") {
+    return "collections";
+  }
+
+  return "archive objects";
 }
 
 function getDetailArchiveFlow(items: ItemCardProps[], currentItemId: string): DetailArchiveFlow | null {
@@ -1578,11 +2465,15 @@ function getFilterSummaryItems(filters: ItemCardFilters) {
   }
 
   if (filters.source) {
-    parts.push({ label: "from", value: filters.source.replace("_", " ") });
+    parts.push({ label: "source", value: filters.source.replace("_", " ") });
   }
 
   if (filters.format) {
-    parts.push({ label: "format", value: filters.format });
+    parts.push({ label: "more", value: filters.format });
+  }
+
+  if (filters.collection) {
+    parts.push({ label: "collection", value: filters.collection === "none" ? "Uncollected" : filters.collection });
   }
 
   if (filters.text?.trim()) {
@@ -1626,6 +2517,44 @@ function normalizeCaptureUrl(rawInput: string) {
 
   url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function getReadableLoadError(error: unknown, surface: "archive" | "collection" | "collections") {
+  if (isApiUnreachableError(error)) {
+    return `${pocketBaseUnavailableTitle}\n${pocketBaseUnavailableCopy}`;
+  }
+
+  if (surface === "collections") {
+    return "Collections could not be loaded.\nRefresh the archive or check the PocketBase logs.";
+  }
+
+  if (surface === "collection") {
+    return "Collection could not be loaded.\nRefresh the page or check the PocketBase logs.";
+  }
+
+  return "Archive could not be loaded.\nRefresh the page or check the PocketBase logs.";
+}
+
+function getLoadErrorDisplay(message: string) {
+  const [title, ...copyParts] = message.split("\n");
+
+  return {
+    title: title || "Archive could not be loaded.",
+    copy: copyParts.join(" ") || "Refresh the page or check the PocketBase logs.",
+  };
+}
+
+function isApiUnreachableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("failed to fetch") ||
+    normalizedMessage.includes("fetch failed") ||
+    normalizedMessage.includes("load failed") ||
+    normalizedMessage.includes("network") ||
+    normalizedMessage.includes("econnrefused")
+  );
 }
 
 function getInitialShortcutBindings(): ShortcutBindings {

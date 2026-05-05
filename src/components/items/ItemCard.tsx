@@ -39,6 +39,7 @@ export interface ItemCardProps {
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
+  isCollectionPickerOpen?: boolean;
   detailHref?: string;
   activeFilters?: {
     status?: ItemStatus;
@@ -48,7 +49,14 @@ export interface ItemCardProps {
   };
   onAddToCollection?: (id: string, anchor: ItemCardActionAnchor) => void;
   onNavigate?: (id: string) => void;
+  onSelectToggle?: (id: string) => void;
 }
+
+const itemCardSurfaceEvent = "vita:item-card-surface-open";
+type ItemCardSurfaceDetail = {
+  itemId: string;
+  surface: "actions" | "collection";
+};
 
 export function ItemCard({
   id,
@@ -70,10 +78,12 @@ export function ItemCard({
   hasPendingAIAnnotations = false,
   rightsStatus = null,
   isSelected = false,
+  isCollectionPickerOpen = false,
   detailHref,
   activeFilters,
   onAddToCollection,
   onNavigate,
+  onSelectToggle,
 }: ItemCardProps) {
   const hasActiveFilters = Boolean(
     activeFilters?.status ||
@@ -95,6 +105,8 @@ export function ItemCard({
   const relativeAddedTime = formatAddedTime(createdAt);
   const isPdf = type === "link" && linkContentType === "pdf";
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isShareIslandOpen, setIsShareIslandOpen] = useState(false);
+  const [copiedShareAction, setCopiedShareAction] = useState<string | null>(null);
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const downloadUrl = assetFileUrl ?? imageUrl;
@@ -157,10 +169,12 @@ export function ItemCard({
       }
 
       setIsMoreMenuOpen(false);
+      setIsShareIslandOpen(false);
     };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsMoreMenuOpen(false);
+        setIsShareIslandOpen(false);
         moreButtonRef.current?.focus();
       }
     };
@@ -173,6 +187,21 @@ export function ItemCard({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [isMoreMenuOpen]);
+
+  useEffect(() => {
+    const onSurfaceOpen = (event: Event) => {
+      const detail = (event as CustomEvent<ItemCardSurfaceDetail>).detail;
+      if (!detail || detail.itemId === id && detail.surface === "actions") {
+        return;
+      }
+
+      setIsMoreMenuOpen(false);
+      setIsShareIslandOpen(false);
+    };
+
+    window.addEventListener(itemCardSurfaceEvent, onSurfaceOpen);
+    return () => window.removeEventListener(itemCardSurfaceEvent, onSurfaceOpen);
+  }, [id]);
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
@@ -203,16 +232,26 @@ export function ItemCard({
       width: rect.width,
     });
   };
-  const openMoreMenu = () => {
-    setIsMoreMenuOpen(true);
-  };
-  const closeMoreMenu = () => {
-    setIsMoreMenuOpen(false);
-  };
-  const keepMoreMenuOpen = (event: MouseEvent<HTMLButtonElement>) => {
+  const toggleSelection = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    openMoreMenu();
+    onSelectToggle?.(id);
+  };
+  const toggleMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    setIsMoreMenuOpen((currentlyOpen) => {
+      const nextOpen = !currentlyOpen;
+      if (nextOpen) {
+        window.dispatchEvent(new CustomEvent<ItemCardSurfaceDetail>(itemCardSurfaceEvent, {
+          detail: { itemId: id, surface: "actions" },
+        }));
+      } else {
+        setIsShareIslandOpen(false);
+      }
+      return nextOpen;
+    });
   };
   const downloadItem = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -245,29 +284,36 @@ export function ItemCard({
       window.location.assign(itemHref);
     }
   };
-  const shareItem = async (event: MouseEvent<HTMLButtonElement>) => {
+  const openShareIsland = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCopiedShareAction(null);
+    setIsShareIslandOpen((currentlyOpen) => !currentlyOpen);
+  };
+  const copyShareValue = async (shareAction: string, value: string | null) => {
+    if (!value) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedShareAction(shareAction);
+    } catch {
+      setCopiedShareAction("copy failed");
+    }
+  };
+  const openSourceUrl = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const shareUrl = getAbsoluteItemUrl(itemHref);
-
-    try {
-      const browserNavigator = typeof navigator !== "undefined" ? navigator : null;
-      if (browserNavigator && typeof browserNavigator.share === "function") {
-        await browserNavigator.share({
-          title: primaryLabel,
-          text: primaryLabel,
-          url: shareUrl,
-        });
-      } else if (browserNavigator?.clipboard) {
-        await browserNavigator.clipboard.writeText(shareUrl);
-      }
-
-      setIsMoreMenuOpen(false);
-    } catch {
-      // Native share can be cancelled; leave the menu open so the user can choose again.
+    if (!url || typeof window === "undefined") {
+      return;
     }
+
+    window.open(url, "_blank", "noopener,noreferrer");
   };
+  const shareUrl = getAbsoluteItemUrl(itemHref);
+  const markdownReference = `[${primaryLabel}](${shareUrl})`;
 
   const resolvedCardClassName = [
     cardClassName,
@@ -302,6 +348,16 @@ export function ItemCard({
           {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
         </span>
       </a>
+      <button
+        className="item-card__select"
+        type="button"
+        aria-label={`${isSelected ? "Deselect" : "Select"} ${primaryLabel}`}
+        aria-pressed={isSelected}
+        disabled={!onSelectToggle}
+        onClick={toggleSelection}
+      >
+        <span aria-hidden="true" />
+      </button>
       <span
         className="item-card__actions"
         aria-label="card actions"
@@ -309,19 +365,15 @@ export function ItemCard({
           const nextTarget = event.relatedTarget;
           if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
             setIsMoreMenuOpen(false);
+            setIsShareIslandOpen(false);
           }
         }}
       >
-        <span
-          className="item-card__more-control"
-          onPointerEnter={openMoreMenu}
-          onPointerLeave={closeMoreMenu}
-        >
+        <span className="item-card__more-control">
           <button
             className="item-card__action-cell item-card__action-cell--more"
             type="button"
-            onClick={keepMoreMenuOpen}
-            onFocus={openMoreMenu}
+            onClick={toggleMoreMenu}
             aria-label={`More actions for ${primaryLabel}`}
             aria-haspopup="menu"
             aria-expanded={isMoreMenuOpen}
@@ -347,10 +399,40 @@ export function ItemCard({
                 className="item-card__more-menu-item"
                 type="button"
                 role="menuitem"
-                onClick={(event) => void shareItem(event)}
+                onClick={openShareIsland}
+                aria-expanded={isShareIslandOpen}
               >
                 Share
               </button>
+              {isShareIslandOpen ? (
+                <div className="item-card__share-island" role="group" aria-label="share item">
+                  <button type="button" onClick={() => void copyShareValue("Item link", shareUrl)}>
+                    Copy item link
+                  </button>
+                  {url ? (
+                    <>
+                      <button type="button" onClick={() => void copyShareValue("Source URL", url)}>
+                        Copy source URL
+                      </button>
+                      <button type="button" onClick={openSourceUrl}>
+                        Open source
+                      </button>
+                    </>
+                  ) : null}
+                  <button type="button" onClick={() => void copyShareValue("Title", primaryLabel)}>
+                    Copy title
+                  </button>
+                  <button type="button" onClick={() => void copyShareValue("Markdown", markdownReference)}>
+                    Copy markdown
+                  </button>
+                  {downloadUrl ? (
+                    <button type="button" onClick={() => void copyShareValue("File URL", downloadUrl)}>
+                      Copy file URL
+                    </button>
+                  ) : null}
+                  {copiedShareAction ? <span>{copiedShareAction === "copy failed" ? "Copy failed" : `${copiedShareAction} copied`}</span> : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </span>
@@ -359,6 +441,8 @@ export function ItemCard({
           type="button"
           onClick={addToCollection}
           aria-label={`Add ${primaryLabel} to collection`}
+          aria-expanded={isCollectionPickerOpen}
+          data-active={isCollectionPickerOpen ? "true" : "false"}
           disabled={!onAddToCollection}
         >
           <span className="item-card__plus-icon" aria-hidden="true" />

@@ -1,10 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
-import { ItemCard, type ItemCardProps } from "./ItemCard";
+import type { ArchiveObject } from "./ArchiveObject";
+import { CollectionCard } from "./CollectionCard";
+import { ItemCard } from "./ItemCard";
 
 export type MasonryDensity = "comfortable" | "dense" | "editorial";
 
 export interface MasonryGridProps {
-  items: ItemCardProps[];
+  objects: ArchiveObject[];
   density: MasonryDensity;
   emptyState?: ReactNode;
   loading?: boolean;
@@ -20,7 +22,7 @@ type GalleryGridStyle = CSSProperties & {
 const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => `loading-${index}`);
 
 export function MasonryGrid({
-  items,
+  objects,
   density,
   emptyState = null,
   loading = false,
@@ -45,7 +47,7 @@ export function MasonryGrid({
     );
   }
 
-  if (items.length === 0) {
+  if (objects.length === 0) {
     return emptyState ? (
       <section className="masonry-grid__empty" aria-label={ariaLabel}>
         {emptyState}
@@ -55,11 +57,19 @@ export function MasonryGrid({
 
   return (
     <section className={gridClassName} style={gridStyle} aria-label={ariaLabel}>
-      {items.map((item) => (
-        <div className="masonry-grid__item" key={item.id}>
-          <ItemCard {...item} />
+      {objects.map((object) => (
+        <div className="masonry-grid__item" key={getArchiveObjectKey(object)}>
+          {object.objectType === "item" ? (
+            <ItemCard {...object.item} />
+          ) : (
+            <CollectionCard collection={object.collection} />
+          )}
         </div>
       ))}
     </section>
   );
+}
+
+function getArchiveObjectKey(object: ArchiveObject) {
+  return object.objectType === "item" ? `item:${object.item.id}` : `collection:${object.collection.id}`;
 }

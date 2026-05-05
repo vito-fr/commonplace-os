@@ -16,6 +16,7 @@ export type ItemCardFilters = {
   type?: ItemType;
   source?: ItemSourceFilter;
   format?: ItemFormatFilter;
+  collection?: string;
   text?: string;
 };
 

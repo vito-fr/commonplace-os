@@ -210,7 +210,7 @@ export function ItemDetailView({
                   pending={collectionActionPending}
                 />
               ) : !hasFit ? null : (
-                <DetailEmptyState label="Not in any collections yet." />
+                <DetailEmptyState label="No collections yet." />
               )}
             </Section>
           </DetailSectionGroup>
@@ -781,12 +781,14 @@ function renderHero(item: ItemDetail) {
     const pdfUrl = getPdfUrl(item);
 
     if (pdfUrl) {
+      const pdfLabel = item.title ?? item.content.link?.asset?.originalName ?? "PDF preview";
+
       return (
         <div className="item-detail__pdf-hero">
           <iframe
             className="item-detail__pdf-frame"
-            src={pdfUrl}
-            title={item.title ?? item.content.link?.asset?.originalName ?? "PDF preview"}
+            src={buildPdfPreviewUrl(pdfUrl, pdfLabel)}
+            title={pdfLabel}
           />
           <a className="text-button" href={pdfUrl} target="_blank" rel="noreferrer">
             Open PDF
@@ -817,6 +819,13 @@ function getPdfUrl(item: ItemDetail) {
 
   const url = item.content.link.url;
   return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
+function buildPdfPreviewUrl(src: string, name: string) {
+  const searchParams = new URLSearchParams();
+  searchParams.set("src", src);
+  searchParams.set("name", name);
+  return `/pdf-preview?${searchParams.toString()}`;
 }
 
 function DetailSectionGroup({
