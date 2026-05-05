@@ -11,14 +11,13 @@ export type MasonryViewProps = {
   ariaLabel?: string;
 };
 
-type MasonryColumn = ArchiveObject[];
 type MasonryVisual = {
-  kind: "image" | "pdf" | "text" | "placeholder";
+  kind: "image" | "link" | "pdf" | "text" | "video" | "placeholder";
   label: string;
   url: string | null;
 };
 type MasonryVisualStyle = CSSProperties & {
-  "--masonry-ratio": string;
+  "--masonry-ratio"?: string;
 };
 type MasonryViewStyle = CSSProperties & {
   "--masonry-columns": number;
@@ -34,7 +33,23 @@ export function MasonryView({
   objects,
 }: MasonryViewProps) {
   const columnCount = useResponsiveMasonryColumns();
-  const columns = useMemo(() => assignMasonryColumns(objects, columnCount), [columnCount, objects]);
+  const layoutSignature = useMemo(() => objects.map(getArchiveObjectLayoutSignature).join("|"), [objects]);
+  const objectByKey = useMemo(() => {
+    const map = new Map<string, ArchiveObject>();
+    objects.forEach((object) => map.set(getArchiveObjectKey(object), object));
+    return map;
+  }, [objects]);
+  const columnKeys = useMemo(() => assignMasonryColumnKeys(objects, columnCount), [columnCount, layoutSignature]);
+  const columns = useMemo(
+    () =>
+      columnKeys.map((column) =>
+        column.flatMap((key) => {
+          const object = objectByKey.get(key);
+          return object ? [object] : [];
+        }),
+      ),
+    [columnKeys, objectByKey],
+  );
   const viewClassName = ["masonry-view", className].filter(Boolean).join(" ");
   const viewStyle: MasonryViewStyle = { "--masonry-columns": columnCount };
 
@@ -81,10 +96,9 @@ function MasonryItemCard({ item }: { item: ItemCardProps }) {
   const href = item.detailHref ?? `/items/${encodeURIComponent(item.id)}`;
   const label = getItemLabel(item);
   const visual = getItemVisual(item);
-  const ratio = getItemRatio(item);
-  const visualStyle: MasonryVisualStyle = {
-    "--masonry-ratio": ratio,
-  };
+  const ratio = getItemVisualRatio(item, visual);
+  const visualStyle: MasonryVisualStyle | undefined = ratio ? { "--masonry-ratio": ratio } : undefined;
+  const hasMedia = Boolean(visual.url && (visual.kind === "image" || visual.kind === "video"));
 
   const openItem = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
@@ -111,8 +125,13 @@ function MasonryItemCard({ item }: { item: ItemCardProps }) {
   return (
     <article className={`masonry-card masonry-card--item${item.isSelected ? " masonry-card--selected" : ""}`} data-type={item.type}>
       <a className="masonry-card__link" href={href} onClick={openItem} aria-label={`Open ${label}`}>
-        <div className={`masonry-card__visual masonry-card__visual--${visual.kind}`} style={visualStyle}>
-          {visual.kind === "image" && visual.url ? (
+        <div
+          className={`masonry-card__visual masonry-card__visual--${visual.kind}`}
+          data-media={hasMedia ? "true" : "false"}
+          data-ratio={ratio ? "reserved" : "natural"}
+          style={visualStyle}
+        >
+          {(visual.kind === "image" || visual.kind === "video") && visual.url ? (
             <img src={visual.url} alt={item.title ?? item.ogTitle ?? ""} loading="lazy" decoding="async" />
           ) : visual.kind === "pdf" && visual.url ? (
             <iframe
@@ -122,8 +141,18 @@ function MasonryItemCard({ item }: { item: ItemCardProps }) {
               tabIndex={-1}
               scrolling="no"
             />
+          ) : visual.kind === "pdf" ? (
+            <span className="masonry-card__fallback">
+              <strong>PDF</strong>
+              <small>{item.ogTitle || item.title || item.url || "document"}</small>
+            </span>
           ) : visual.kind === "text" ? (
             <p>{getItemTextPreview(item)}</p>
+          ) : visual.kind === "link" || visual.kind === "video" ? (
+            <span className="masonry-card__fallback">
+              <strong>{getDomain(item.url) ?? visual.label}</strong>
+              <small>{item.ogTitle || item.title || item.url || visual.label}</small>
+            </span>
           ) : (
             <span>{visual.label}</span>
           )}
@@ -183,7 +212,11 @@ function MasonryCollectionCard({ collection }: { collection: CollectionCardModel
               <small>empty collection</small>
             </span>
           ) : (
-            collection.previewItems.slice(0, 4).map((preview, index) => {
+            getCollectionPreviewSlots(collection).map((preview, index) => {
+              if (preview.kind === "empty") {
+                return <span className="masonry-card__collection-tile masonry-card__collection-tile--ghost" key={preview.id} />;
+              }
+
               const imageUrl = preview.thumbnailUrl || preview.imageUrl || preview.ogImageUrl || preview.videoPosterUrl;
               return imageUrl ? (
                 <span className="masonry-card__collection-tile masonry-card__collection-tile--image" key={`${preview.id}:${index}`}>
@@ -205,7 +238,6 @@ function MasonryCollectionCard({ collection }: { collection: CollectionCardModel
         </div>
         <div className="masonry-card__meta">
           <strong>{collection.name}</strong>
-          {collection.description ? <p>{collection.description}</p> : null}
           <span>{collection.pieceCount} items · {collection.kindSummary} · {formatDate(collection.lastUpdatedAt)}</span>
         </div>
       </a>
@@ -243,18 +275,47 @@ function getResponsiveMasonryColumnCount() {
   return 2;
 }
 
-function assignMasonryColumns(objects: ArchiveObject[], columnCount: number): MasonryColumn[] {
+function assignMasonryColumnKeys(objects: ArchiveObject[], columnCount: number): string[][] {
   const safeColumnCount = Math.max(1, columnCount);
-  const columns = Array.from({ length: safeColumnCount }, () => [] as ArchiveObject[]);
+  const columns = Array.from({ length: safeColumnCount }, () => [] as string[]);
   const columnHeights = Array.from({ length: safeColumnCount }, () => 0);
 
   for (const object of objects) {
     const shortestColumnIndex = columnHeights.indexOf(Math.min(...columnHeights));
-    columns[shortestColumnIndex].push(object);
+    columns[shortestColumnIndex].push(getArchiveObjectKey(object));
     columnHeights[shortestColumnIndex] += estimateObjectHeight(object);
   }
 
   return columns;
+}
+
+function getArchiveObjectKey(object: ArchiveObject) {
+  return object.objectType === "item" ? `item:${object.item.id}` : `collection:${object.collection.id}`;
+}
+
+function getArchiveObjectLayoutSignature(object: ArchiveObject) {
+  if (object.objectType === "collection") {
+    const collection = object.collection;
+    const visualCount = collection.previewItems.filter(hasPreviewVisual).length;
+    return [
+      getArchiveObjectKey(object),
+      collection.previewItems.length,
+      visualCount,
+      collection.pieceCount,
+      getCollectionRatio(collection),
+    ].join(":");
+  }
+
+  const item = object.item;
+  return [
+    getArchiveObjectKey(object),
+    item.type,
+    item.linkContentType ?? "",
+    getItemEstimatedRatio(item),
+    getTextLengthBucket(getItemTextPreview(item)),
+    getItemPreviewUrl(item) ? "preview" : "",
+    getItemMediaAspectRatio(item) ? "measured" : "",
+  ].join(":");
 }
 
 function estimateObjectHeight(object: ArchiveObject) {
@@ -263,7 +324,7 @@ function estimateObjectHeight(object: ArchiveObject) {
   }
 
   const item = object.item;
-  const ratio = getItemRatio(item).split("/").map((part) => Number.parseFloat(part.trim()));
+  const ratio = getItemEstimatedRatio(item).split("/").map((part) => Number.parseFloat(part.trim()));
   const width = Number.isFinite(ratio[0]) && ratio[0] > 0 ? ratio[0] : 1;
   const height = Number.isFinite(ratio[1]) && ratio[1] > 0 ? ratio[1] : 1;
   const textBonus = item.type === "caption" || item.type === "note" ? Math.min(140, getItemTextPreview(item).length * 0.75) : 52;
@@ -277,9 +338,11 @@ function buildPlaceholderColumns(columnCount: number) {
 }
 
 function getItemVisual(item: ItemCardProps): MasonryVisual {
+  const media = item.mediaPreview;
   if (item.type === "image") {
-    return item.imageUrl
-      ? { kind: "image", label: "image", url: item.imageUrl }
+    const imageUrl = media?.imageUrl || media?.thumbnailUrl || media?.previewUrl || item.imageUrl || item.thumbnailUrl || item.previewUrl;
+    return imageUrl
+      ? { kind: "image", label: "image", url: imageUrl }
       : { kind: "placeholder", label: "image pending", url: null };
   }
 
@@ -287,19 +350,72 @@ function getItemVisual(item: ItemCardProps): MasonryVisual {
     return { kind: "text", label: item.type, url: null };
   }
 
-  if (item.linkContentType === "pdf" && item.assetFileUrl) {
-    return { kind: "pdf", label: "PDF", url: item.assetFileUrl };
+  const assetFileUrl = media?.assetFileUrl || item.assetFileUrl;
+  if (item.linkContentType === "pdf" && assetFileUrl) {
+    return { kind: "pdf", label: "PDF", url: assetFileUrl };
   }
 
-  const previewImage = item.ogImageUrl || (isDirectImageUrl(item.url) ? item.url : null);
+  const videoPosterUrl = media?.videoPosterUrl || item.videoPosterUrl;
+  const previewImage =
+    media?.thumbnailUrl ||
+    media?.imageUrl ||
+    videoPosterUrl ||
+    media?.ogImageUrl ||
+    item.thumbnailUrl ||
+    item.previewUrl ||
+    item.ogImageUrl ||
+    (isDirectImageUrl(item.url) ? item.url : null);
   if (previewImage) {
-    return { kind: "image", label: formatItemKind(item), url: previewImage };
+    return { kind: item.linkContentType === "video" ? "video" : "image", label: formatItemKind(item), url: previewImage };
+  }
+
+  if (item.linkContentType === "pdf") {
+    return { kind: "pdf", label: "PDF", url: null };
+  }
+
+  if (item.linkContentType === "video") {
+    return { kind: "video", label: "video", url: null };
+  }
+
+  if (item.type === "link") {
+    return { kind: "link", label: formatItemKind(item), url: null };
   }
 
   return { kind: "placeholder", label: formatItemKind(item), url: null };
 }
 
-function getItemRatio(item: ItemCardProps) {
+function getItemVisualRatio(item: ItemCardProps, visual: MasonryVisual) {
+  const mediaAspectRatio = getItemMediaAspectRatio(item);
+  if (mediaAspectRatio) {
+    return `${mediaAspectRatio} / 1`;
+  }
+
+  if (item.type === "image" && visual.kind === "image" && visual.url) {
+    return null;
+  }
+
+  return getItemFallbackRatio(item);
+}
+
+function getItemEstimatedRatio(item: ItemCardProps) {
+  const mediaAspectRatio = getItemMediaAspectRatio(item);
+  if (mediaAspectRatio) {
+    return `${mediaAspectRatio} / 1`;
+  }
+
+  return getItemFallbackRatio(item);
+}
+
+function getItemFallbackRatio(item: ItemCardProps) {
+  if (item.type === "caption" || item.type === "note") {
+    const previewLength = getItemTextPreview(item).length;
+    if (previewLength > 420) {
+      return "1 / 1.45";
+    }
+    if (previewLength > 220) {
+      return "1 / 1.28";
+    }
+  }
   if (item.type === "caption") {
     return "1 / 1.12";
   }
@@ -318,13 +434,63 @@ function getItemRatio(item: ItemCardProps) {
   return "4 / 5";
 }
 
+function getItemMediaAspectRatio(item: ItemCardProps) {
+  const preview = item.mediaPreview;
+  const aspectRatio = preview?.aspectRatio ?? item.aspectRatio ?? ratioFromDimensions(preview?.width, preview?.height) ?? ratioFromDimensions(item.imageWidth, item.imageHeight);
+  return Number.isFinite(aspectRatio) && aspectRatio && aspectRatio > 0 ? roundRatio(aspectRatio) : null;
+}
+
+function ratioFromDimensions(width: number | null | undefined, height: number | null | undefined) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
+}
+
+function roundRatio(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
 function getCollectionRatio(collection: CollectionCardModel) {
   if (collection.previewItems.length === 0) {
     return "1 / 1";
   }
 
+  const measuredPreview = collection.previewItems.find((item) => item.aspectRatio && item.aspectRatio > 0);
+  if (measuredPreview?.aspectRatio) {
+    return `${roundRatio(measuredPreview.aspectRatio)} / 1`;
+  }
+
   const visualCount = collection.previewItems.filter((item) => item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl).length;
   return visualCount >= 3 ? "1 / 1.08" : "4 / 3";
+}
+
+function getCollectionPreviewSlots(collection: CollectionCardModel) {
+  const slots = collection.previewItems.slice(0, 4);
+  while (slots.length < 4) {
+    slots.push({
+      id: `masonry-empty-slot-${slots.length}`,
+      kind: "empty",
+      textPreview: "",
+    });
+  }
+  return slots;
+}
+
+function hasPreviewVisual(item: CollectionCardModel["previewItems"][number]) {
+  return Boolean(item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl);
+}
+
+function getTextLengthBucket(value: string) {
+  const length = value.length;
+  if (length > 420) {
+    return "long";
+  }
+  if (length > 220) {
+    return "medium";
+  }
+  return "short";
 }
 
 function getItemLabel(item: ItemCardProps) {
@@ -342,6 +508,20 @@ function getItemLabel(item: ItemCardProps) {
 
 function getItemTextPreview(item: ItemCardProps) {
   return item.captionText || item.noteParagraph || item.ogTitle || item.title || item.url || formatItemKind(item);
+}
+
+function getItemPreviewUrl(item: ItemCardProps) {
+  return (
+    item.mediaPreview?.previewUrl ||
+    item.mediaPreview?.imageUrl ||
+    item.mediaPreview?.thumbnailUrl ||
+    item.previewUrl ||
+    item.imageUrl ||
+    item.thumbnailUrl ||
+    item.ogImageUrl ||
+    item.assetFileUrl ||
+    null
+  );
 }
 
 function formatItemKind(item: ItemCardProps) {

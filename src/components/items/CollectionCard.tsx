@@ -18,9 +18,13 @@ export type CollectionCardPreviewItem = {
   kind: string;
   format?: string | null;
   thumbnailUrl?: string | null;
+  previewUrl?: string | null;
   imageUrl?: string | null;
   ogImageUrl?: string | null;
   videoPosterUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+  aspectRatio?: number | null;
   textPreview?: string | null;
   sourceUrl?: string | null;
   source?: string | null;

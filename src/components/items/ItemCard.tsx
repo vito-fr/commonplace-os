@@ -18,6 +18,19 @@ export type RightsStatus =
   | "restricted"
   | "expired";
 
+export type ItemMediaPreview = {
+  previewUrl?: string | null;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
+  ogImageUrl?: string | null;
+  videoPosterUrl?: string | null;
+  assetFileUrl?: string | null;
+  assetMimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+  aspectRatio?: number | null;
+};
+
 export interface ItemCardProps {
   id: string;
   type: ItemType;
@@ -36,6 +49,13 @@ export interface ItemCardProps {
   ogTitle?: string | null;
   assetFileUrl?: string | null;
   assetMimeType?: string | null;
+  previewUrl?: string | null;
+  thumbnailUrl?: string | null;
+  videoPosterUrl?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  aspectRatio?: number | null;
+  mediaPreview?: ItemMediaPreview | null;
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;

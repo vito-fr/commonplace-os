@@ -12,6 +12,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   const type = normalizedFilter(query.get("type"));
   const source = normalizedFilter(query.get("source"));
   const format = normalizedFilter(query.get("format"));
+  const collection = normalizedFilter(query.get("collection"));
   const textQuery = normalizedTextQuery(query.get("q"));
   const rawItemIds = query.get("item_ids");
   const itemIds = rawItemIds
@@ -26,6 +27,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
   let typeFilter = "";
   let sourceFilter = "";
   let formatFilter = "";
+  let collectionFilter = "";
   let textQueryFilter = "";
   let orderBy = "ORDER BY i.updated_at DESC, i.id ASC";
 
@@ -70,6 +72,34 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       format === "website"
         ? "AND i.type = 'link' AND COALESCE(link.content_type, 'unknown') IN ('website', 'unknown')"
         : "AND i.type = 'link' AND link.content_type = {:format}";
+  }
+
+  if (collection) {
+    if (collection === "none") {
+      collectionFilter = `
+        AND NOT EXISTS (
+          SELECT 1
+          FROM collection_items collectionFilterItem
+          INNER JOIN collections collectionFilterCollection
+            ON collectionFilterCollection.id = collectionFilterItem.collection_id
+            AND collectionFilterCollection.workspace_id = i.workspace_id
+          WHERE collectionFilterItem.item_id = i.id
+        )
+      `;
+    } else {
+      params.collection = collection;
+      collectionFilter = `
+        AND EXISTS (
+          SELECT 1
+          FROM collection_items collectionFilterItem
+          INNER JOIN collections collectionFilterCollection
+            ON collectionFilterCollection.id = collectionFilterItem.collection_id
+            AND collectionFilterCollection.workspace_id = i.workspace_id
+          WHERE collectionFilterItem.item_id = i.id
+            AND collectionFilterItem.collection_id = {:collection}
+        )
+      `;
+    }
   }
 
   if (textQuery) {
@@ -148,6 +178,8 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       title: nullString(),
       createdAt: "",
       imageUrl: nullString(),
+      imageWidth: nullString(),
+      imageHeight: nullString(),
       captionText: nullString(),
       noteParagraph: nullString(),
       url: nullString(),
@@ -187,6 +219,8 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ) AS collectionCount,
           i.title AS title,
           img.file_ref AS imageUrl,
+          CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
+          CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
           caption.body AS captionText,
           note.body AS noteParagraph,
           link.url AS url,
@@ -224,6 +258,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ${typeFilter}
           ${sourceFilter}
           ${formatFilter}
+          ${collectionFilter}
           ${textQueryFilter}
         ${orderBy}
       `,
@@ -260,6 +295,24 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     }
   }
 
+  function nullableNumber(value) {
+    const text = nullableString(value);
+    if (text === null || text === "") {
+      return null;
+    }
+
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function aspectRatioFor(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return width / height;
+  }
+
   function isDirectImageUrl(value) {
     const url = nullableString(value);
     if (!url) {
@@ -284,7 +337,17 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     const row = rows[index];
     const openGraph = parseOpenGraph(row.ogMetadata);
     const rowUrl = nullableString(row.url);
+    const imageUrl = nullableString(row.imageUrl);
+    const assetFileUrl = nullableString(row.assetFileRef);
+    const linkContentType = nullableString(row.linkContentType);
+    const assetMimeType = nullableString(row.assetMimeType);
+    const imageWidth = nullableNumber(row.imageWidth);
+    const imageHeight = nullableNumber(row.imageHeight);
+    const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
     const fallbackImageUrl = !openGraph.image && isDirectImageUrl(rowUrl) ? rowUrl : null;
+    const ogImageUrl = openGraph.image || fallbackImageUrl;
+    const videoPosterUrl = linkContentType === "video" ? ogImageUrl : null;
+    const previewUrl = imageUrl || ogImageUrl || videoPosterUrl || (linkContentType === "pdf" ? assetFileUrl : null);
 
     items.push({
       id: row.id,
@@ -295,15 +358,33 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       collectionCount: row.collectionCount,
       title: nullableString(row.title),
       createdAt: row.createdAt,
-      imageUrl: nullableString(row.imageUrl),
+      imageUrl,
       captionText: nullableString(row.captionText),
       noteParagraph: nullableString(row.noteParagraph),
       url: rowUrl,
-      linkContentType: nullableString(row.linkContentType),
-      ogImageUrl: openGraph.image || fallbackImageUrl,
+      linkContentType,
+      ogImageUrl,
       ogTitle: openGraph.title,
-      assetFileUrl: nullableString(row.assetFileRef),
-      assetMimeType: nullableString(row.assetMimeType),
+      assetFileUrl,
+      assetMimeType,
+      previewUrl,
+      thumbnailUrl: imageUrl || ogImageUrl,
+      videoPosterUrl,
+      imageWidth,
+      imageHeight,
+      aspectRatio,
+      mediaPreview: {
+        previewUrl,
+        imageUrl,
+        thumbnailUrl: imageUrl || ogImageUrl,
+        ogImageUrl,
+        videoPosterUrl,
+        assetFileUrl,
+        assetMimeType,
+        width: imageWidth,
+        height: imageHeight,
+        aspectRatio,
+      },
       hasPendingAIAnnotations: row.hasPendingAIAnnotations === 1,
       rightsStatus: row.rightsStatus,
     });

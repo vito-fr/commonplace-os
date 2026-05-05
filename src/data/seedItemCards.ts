@@ -2,6 +2,7 @@ import annotationsFixture from "../../seed/fixtures/14_ai_annotations.json";
 import captionsFixture from "../../seed/fixtures/05_items_caption.json";
 import collectionItemsFixture from "../../seed/fixtures/12_collection_items.json";
 import itemsFixture from "../../seed/fixtures/03_items.json";
+import imagesFixture from "../../seed/fixtures/04_items_image.json";
 import linksFixture from "../../seed/fixtures/07_items_link.json";
 import notesFixture from "../../seed/fixtures/06_items_note.json";
 import relationshipsFixture from "../../seed/fixtures/13_relationships.json";
@@ -45,6 +46,14 @@ type FixtureLink = {
   content_type?: string | null;
 };
 
+type FixtureImage = {
+  item_id: string;
+  file_ref: string | null;
+  mime_type: string | null;
+  width: number | null;
+  height: number | null;
+};
+
 type FixtureRelationship = {
   from_id: string;
   type: string;
@@ -75,6 +84,7 @@ const sources = sourcesFixture as FixtureSource[];
 const captions = captionsFixture as FixtureCaption[];
 const notes = notesFixture as FixtureNote[];
 const links = linksFixture as FixtureLink[];
+const images = imagesFixture as FixtureImage[];
 const relationships = relationshipsFixture as FixtureRelationship[];
 const annotations = annotationsFixture as FixtureAnnotation[];
 const collectionItems = collectionItemsFixture as FixtureCollectionItem[];
@@ -110,8 +120,16 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
     const caption = captions.find((row) => row.item_id === item.id);
     const note = notes.find((row) => row.item_id === item.id);
     const link = links.find((row) => row.item_id === item.id);
+    const image = images.find((row) => row.item_id === item.id);
     const ogMetadata = parseOgMetadata(link?.og_metadata ?? null);
     const linkContentType = getLinkContentType(link);
+    const imageWidth = image?.width ?? null;
+    const imageHeight = image?.height ?? null;
+    const aspectRatio = getAspectRatio(imageWidth, imageHeight);
+    const imageUrl = image?.file_ref ?? null;
+    const assetFileUrl = null;
+    const videoPosterUrl = linkContentType === "video" ? ogMetadata.image : null;
+    const previewUrl = imageUrl ?? ogMetadata.image ?? videoPosterUrl ?? assetFileUrl;
 
     if (filters?.format && !matchesFormatFilter(filters.format, item.type, linkContentType)) {
       return [];
@@ -143,12 +161,33 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       collectionCount: collectionItems.filter((collectionItem) => collectionItem.item_id === item.id).length,
       title: item.title,
       createdAt: item.created_at,
+      imageUrl,
       captionText: caption?.body ?? null,
       noteParagraph: note?.body ?? null,
       url: link?.url ?? null,
       linkContentType,
       ogImageUrl: ogMetadata.image,
       ogTitle: ogMetadata.title,
+      assetFileUrl,
+      assetMimeType: null,
+      previewUrl,
+      thumbnailUrl: imageUrl ?? ogMetadata.image,
+      videoPosterUrl,
+      imageWidth,
+      imageHeight,
+      aspectRatio,
+      mediaPreview: {
+        previewUrl,
+        imageUrl,
+        thumbnailUrl: imageUrl ?? ogMetadata.image,
+        ogImageUrl: ogMetadata.image,
+        videoPosterUrl,
+        assetFileUrl,
+        assetMimeType: null,
+        width: imageWidth,
+        height: imageHeight,
+        aspectRatio,
+      },
       hasPendingAIAnnotations: annotations.some(
         (annotation) => annotation.item_id === item.id && annotation.review_status === "pending",
       ),
@@ -156,6 +195,14 @@ function getSeedFixtureItemCards({ workspaceId, itemIds = defaultProofItemIds, f
       onNavigate: () => undefined,
     };
   });
+}
+
+function getAspectRatio(width: number | null, height: number | null) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
 }
 
 function getLinkContentType(link: FixtureLink | undefined) {

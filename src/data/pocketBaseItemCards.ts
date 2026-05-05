@@ -1,4 +1,4 @@
-import type { ItemCardProps } from "../components/items";
+import type { ItemCardProps, ItemMediaPreview } from "../components/items";
 import type { ItemCardQuery, ItemCardReader } from "./itemCardReader";
 import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 
@@ -74,12 +74,71 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: st
     throw new Error("PocketBase item card response must be an array or { items: [] }");
   }
 
-  return rows.map((row) => ({
-    ...row,
-    imageUrl: resolvePocketBaseFileUrl(baseUrl, row.imageUrl),
-    assetFileUrl: resolvePocketBaseFileUrl(baseUrl, row.assetFileUrl),
-    onNavigate: () => undefined,
-  }));
+  return rows.map((row) => {
+    const imageUrl = resolvePocketBaseFileUrl(baseUrl, row.imageUrl);
+    const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, row.assetFileUrl);
+    const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, row.thumbnailUrl) ?? imageUrl ?? row.ogImageUrl ?? null;
+    const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, row.videoPosterUrl) ?? row.ogImageUrl ?? null;
+    const previewUrl =
+      resolvePocketBaseFileUrl(baseUrl, row.previewUrl) ??
+      imageUrl ??
+      thumbnailUrl ??
+      videoPosterUrl ??
+      row.ogImageUrl ??
+      assetFileUrl ??
+      null;
+    const mediaPreview = resolveMediaPreview(baseUrl, row.mediaPreview, {
+      assetFileUrl,
+      assetMimeType: row.assetMimeType ?? null,
+      imageUrl,
+      ogImageUrl: row.ogImageUrl ?? null,
+      previewUrl,
+      thumbnailUrl,
+      videoPosterUrl,
+    });
+
+    return {
+      ...row,
+      imageUrl,
+      assetFileUrl,
+      previewUrl,
+      thumbnailUrl,
+      videoPosterUrl,
+      mediaPreview,
+      onNavigate: () => undefined,
+    };
+  });
+}
+
+function resolveMediaPreview(
+  baseUrl: string,
+  preview: ItemMediaPreview | null | undefined,
+  fallback: Required<Pick<ItemMediaPreview, "assetFileUrl" | "assetMimeType" | "imageUrl" | "ogImageUrl" | "previewUrl" | "thumbnailUrl" | "videoPosterUrl">>,
+): ItemMediaPreview {
+  const imageUrl = resolvePocketBaseFileUrl(baseUrl, preview?.imageUrl) ?? fallback.imageUrl;
+  const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, preview?.assetFileUrl) ?? fallback.assetFileUrl;
+  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, preview?.thumbnailUrl) ?? fallback.thumbnailUrl ?? imageUrl ?? fallback.ogImageUrl;
+  const videoPosterUrl =
+    resolvePocketBaseFileUrl(baseUrl, preview?.videoPosterUrl) ?? fallback.videoPosterUrl ?? fallback.ogImageUrl;
+  const previewUrl =
+    resolvePocketBaseFileUrl(baseUrl, preview?.previewUrl) ??
+    fallback.previewUrl ??
+    imageUrl ??
+    thumbnailUrl ??
+    videoPosterUrl ??
+    fallback.ogImageUrl ??
+    assetFileUrl;
+
+  return {
+    ...preview,
+    assetFileUrl,
+    assetMimeType: preview?.assetMimeType ?? fallback.assetMimeType,
+    imageUrl,
+    ogImageUrl: preview?.ogImageUrl ?? fallback.ogImageUrl,
+    previewUrl,
+    thumbnailUrl,
+    videoPosterUrl,
+  };
 }
 
 function normalizeBaseUrl(baseUrl: string) {

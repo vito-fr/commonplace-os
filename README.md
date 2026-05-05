@@ -1,16 +1,16 @@
-# pocketbase/
+# Vita Brain Live Backend
 
-The PocketBase backend for the archive. Single-binary backend with an embedded SQLite database, a JS migration system, and a JS hook system for server-side logic.
+PocketBase is the live backend for the archive. It is a single-binary server with an embedded SQLite database, JS migrations, and JS hooks under `pocketbase/`.
 
-This folder is self-contained: everything the backend needs to run lives here.
+The frontend can run in two modes:
 
----
+- fixture mode: `npm run dev`
+- live PocketBase mode: `npm run dev:live`
 
 ## Layout
 
 ```
 pocketbase/
-├── README.md           This file.
 ├── pocketbase          The binary itself. Gitignored. Downloaded during M0.1 setup.
 ├── pb_data/            Runtime database, files, logs. Gitignored.
 ├── pb_migrations/      Committed JS migrations — source of truth for schema.
@@ -21,11 +21,30 @@ pocketbase/
 
 ---
 
-## Local setup (M0.1)
+## Local Live Setup
 
-PocketBase version, install steps, admin user creation, and the first migration verification are defined in the M0.1 implementation plan.
+Use PocketBase v0.36.9 for the current local runtime. The binary is intentionally gitignored at `pocketbase/pocketbase`.
 
-The current setup and verification steps live in `docs/runbooks/m0.1-plan.md`.
+From the repo root:
+
+```sh
+# 1. Install or copy the v0.36.9 binary to pocketbase/pocketbase.
+
+# 2. Run migrations.
+npm run pb:migrate
+
+# 3. Stop PocketBase if it is running, then load fixtures.
+npm run seed:dry-run
+npm run seed:load
+
+# 4. Start PocketBase.
+npm run pb:serve
+
+# 5. In a second terminal, start the frontend in live mode.
+npm run dev:live
+```
+
+The frontend reads `VITE_ITEM_CARD_READER=pocketbase` from `npm run dev:live`. Without that env var the app uses fixture mode, and write surfaces show live-mode disabled states.
 
 ---
 
@@ -56,8 +75,7 @@ Hooks do NOT duplicate UI logic. They enforce data invariants. If a rule should 
 ## Running PocketBase
 
 ```bash
-cd pocketbase
-./pocketbase serve
+npm run pb:serve
 ```
 
 The default port is 8090. The admin UI is at `http://127.0.0.1:8090/_/`.
