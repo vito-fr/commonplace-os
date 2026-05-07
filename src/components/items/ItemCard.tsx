@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
+import { CardActionMenu, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
 
 export type ItemCardActionAnchor = {
   bottom: number;
@@ -56,6 +57,7 @@ export interface ItemCardProps {
   imageHeight?: number | null;
   aspectRatio?: number | null;
   mediaPreview?: ItemMediaPreview | null;
+  variant?: "gallery" | "masonry";
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
   isSelected?: boolean;
@@ -68,15 +70,10 @@ export interface ItemCardProps {
     text?: string;
   };
   onAddToCollection?: (id: string, anchor: ItemCardActionAnchor) => void;
+  onDelete?: (id: string) => Promise<void> | void;
   onNavigate?: (id: string) => void;
   onSelectToggle?: (id: string) => void;
 }
-
-const itemCardSurfaceEvent = "vita:item-card-surface-open";
-type ItemCardSurfaceDetail = {
-  itemId: string;
-  surface: "actions" | "collection";
-};
 
 export function ItemCard({
   id,
@@ -95,6 +92,14 @@ export function ItemCard({
   ogImageUrl = null,
   ogTitle = null,
   assetFileUrl = null,
+  previewUrl = null,
+  thumbnailUrl = null,
+  videoPosterUrl = null,
+  imageWidth = null,
+  imageHeight = null,
+  aspectRatio = null,
+  mediaPreview = null,
+  variant = "gallery",
   hasPendingAIAnnotations = false,
   rightsStatus = null,
   isSelected = false,
@@ -102,6 +107,7 @@ export function ItemCard({
   detailHref,
   activeFilters,
   onAddToCollection,
+  onDelete,
   onNavigate,
   onSelectToggle,
 }: ItemCardProps) {
@@ -114,6 +120,7 @@ export function ItemCard({
   const showStatus = hasActiveFilters && activeFilters?.status !== status;
   const cardClassName = [
     "item-card",
+    variant === "masonry" ? "item-card--masonry" : "",
     isSelected ? "item-card--selected" : "",
   ]
     .filter(Boolean)
@@ -124,12 +131,74 @@ export function ItemCard({
   const ariaLabel = `Open ${primaryLabel}`;
   const relativeAddedTime = formatAddedTime(createdAt);
   const isPdf = type === "link" && linkContentType === "pdf";
-  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isShareIslandOpen, setIsShareIslandOpen] = useState(false);
   const [copiedShareAction, setCopiedShareAction] = useState<string | null>(null);
-  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
-  const downloadUrl = assetFileUrl ?? imageUrl;
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const actionMenu = useCardActionMenu({
+    id: `item:${id}`,
+    onClose: () => {
+      setIsShareIslandOpen(false);
+      setIsDeleteConfirming(false);
+      setDeleteError(null);
+    },
+  });
+  const resolvedImageUrl =
+    imageUrl ??
+    mediaPreview?.imageUrl ??
+    mediaPreview?.previewUrl ??
+    mediaPreview?.thumbnailUrl ??
+    previewUrl ??
+    thumbnailUrl ??
+    null;
+  const resolvedOgImageUrl =
+    ogImageUrl ??
+    mediaPreview?.ogImageUrl ??
+    mediaPreview?.videoPosterUrl ??
+    videoPosterUrl ??
+    mediaPreview?.thumbnailUrl ??
+    previewUrl ??
+    thumbnailUrl ??
+    null;
+  const resolvedAssetFileUrl = assetFileUrl ?? mediaPreview?.assetFileUrl ?? null;
+  const resolvedAspectRatio = getMediaAspectRatio({
+    aspectRatio,
+    height: imageHeight,
+    mediaPreview,
+    width: imageWidth,
+  });
+  const isRemoteImageReference = type === "link" && isDirectImageUrl(url);
+  const naturalMasonryImageUrl = type === "image" ? resolvedImageUrl : isRemoteImageReference ? url : null;
+  const masonryImageRatioState =
+    variant === "masonry" && (type === "image" || isRemoteImageReference)
+      ? resolvedAspectRatio
+        ? "reserved"
+        : naturalMasonryImageUrl
+          ? "natural"
+          : "fallback"
+      : variant === "masonry"
+        ? "fallback"
+      : undefined;
+  const masonryAspectRatio =
+    variant === "masonry"
+      ? masonryImageRatioState === "reserved" && resolvedAspectRatio
+        ? `${resolvedAspectRatio} / 1`
+        : masonryImageRatioState === "fallback"
+          ? getMasonryFallbackRatio({
+              captionText,
+              linkContentType,
+              noteParagraph,
+              ogImageUrl: resolvedOgImageUrl,
+              type,
+            })
+          : null
+      : null;
+  const contentStyle =
+    masonryAspectRatio
+      ? ({ "--item-media-ratio": masonryAspectRatio } as CSSProperties)
+      : undefined;
+  const downloadUrl = resolvedAssetFileUrl ?? resolvedImageUrl;
   const frameTags: Array<{
     key: string;
     label: string;
@@ -173,56 +242,6 @@ export function ItemCard({
     frameTags.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
   }
 
-  useEffect(() => {
-    if (!isMoreMenuOpen) {
-      return;
-    }
-
-    const onPointerDown = (event: globalThis.MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (moreButtonRef.current?.contains(target) || moreMenuRef.current?.contains(target)) {
-        return;
-      }
-
-      setIsMoreMenuOpen(false);
-      setIsShareIslandOpen(false);
-    };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsMoreMenuOpen(false);
-        setIsShareIslandOpen(false);
-        moreButtonRef.current?.focus();
-      }
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isMoreMenuOpen]);
-
-  useEffect(() => {
-    const onSurfaceOpen = (event: Event) => {
-      const detail = (event as CustomEvent<ItemCardSurfaceDetail>).detail;
-      if (!detail || detail.itemId === id && detail.surface === "actions") {
-        return;
-      }
-
-      setIsMoreMenuOpen(false);
-      setIsShareIslandOpen(false);
-    };
-
-    window.addEventListener(itemCardSurfaceEvent, onSurfaceOpen);
-    return () => window.removeEventListener(itemCardSurfaceEvent, onSurfaceOpen);
-  }, [id]);
-
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
       !onNavigate ||
@@ -242,6 +261,8 @@ export function ItemCard({
   const addToCollection = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    emitCardActionSurfaceOpen(`item:${id}`, "collection");
+    actionMenu.close();
     const rect = event.currentTarget.getBoundingClientRect();
     onAddToCollection?.(id, {
       bottom: rect.bottom,
@@ -256,22 +277,6 @@ export function ItemCard({
     event.preventDefault();
     event.stopPropagation();
     onSelectToggle?.(id);
-  };
-  const toggleMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    setIsMoreMenuOpen((currentlyOpen) => {
-      const nextOpen = !currentlyOpen;
-      if (nextOpen) {
-        window.dispatchEvent(new CustomEvent<ItemCardSurfaceDetail>(itemCardSurfaceEvent, {
-          detail: { itemId: id, surface: "actions" },
-        }));
-      } else {
-        setIsShareIslandOpen(false);
-      }
-      return nextOpen;
-    });
   };
   const downloadItem = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -288,27 +293,41 @@ export function ItemCard({
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-    setIsMoreMenuOpen(false);
-  };
-  const editItem = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsMoreMenuOpen(false);
-
-    if (onNavigate) {
-      onNavigate(id);
-      return;
-    }
-
-    if (typeof window !== "undefined") {
-      window.location.assign(itemHref);
-    }
+    actionMenu.close();
   };
   const openShareIsland = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setCopiedShareAction(null);
+    setIsDeleteConfirming(false);
     setIsShareIslandOpen((currentlyOpen) => !currentlyOpen);
+  };
+  const deleteItem = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!onDelete || isDeleting) {
+      return;
+    }
+
+    if (!isDeleteConfirming) {
+      setIsShareIslandOpen(false);
+      setDeleteError(null);
+      setIsDeleteConfirming(true);
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await onDelete(id);
+      actionMenu.close();
+    } catch {
+      setDeleteError("Delete failed");
+    } finally {
+      setIsDeleting(false);
+    }
   };
   const copyShareValue = async (shareAction: string, value: string | null) => {
     if (!value) {
@@ -334,7 +353,6 @@ export function ItemCard({
   };
   const shareUrl = getAbsoluteItemUrl(itemHref);
   const markdownReference = `[${primaryLabel}](${shareUrl})`;
-
   const resolvedCardClassName = [
     cardClassName,
     relativeAddedTime ? "item-card--has-added-time" : "",
@@ -346,11 +364,12 @@ export function ItemCard({
     <article
       className={resolvedCardClassName}
       data-type={type}
+      onMouseLeave={() => actionMenu.close()}
     >
       <a className="item-card__link" href={itemHref} aria-label={ariaLabel} onClick={navigate}>
         {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
-        <div className="item-card__content">
-          {renderContent(type, title, imageUrl, captionText, noteParagraph, url, linkContentType, assetFileUrl, ogImageUrl, ogTitle)}
+        <div className="item-card__content" data-ratio={masonryImageRatioState} style={contentStyle}>
+          {renderContent(type, title, resolvedImageUrl, captionText, noteParagraph, url, linkContentType, resolvedAssetFileUrl, resolvedOgImageUrl, ogTitle)}
           <span className="item-card__frame-tags" aria-hidden="true">
             {frameTags.map((item) => (
               <span
@@ -384,78 +403,81 @@ export function ItemCard({
         onBlur={(event) => {
           const nextTarget = event.relatedTarget;
           if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-            setIsMoreMenuOpen(false);
-            setIsShareIslandOpen(false);
+            actionMenu.close();
           }
         }}
       >
-        <span className="item-card__more-control">
+        <CardActionMenu
+          ariaLabel={`More actions for ${primaryLabel}`}
+          buttonRef={actionMenu.buttonRef}
+          isOpen={actionMenu.isOpen}
+          menuRef={actionMenu.menuRef}
+          onToggle={actionMenu.toggle}
+        >
           <button
-            className="item-card__action-cell item-card__action-cell--more"
+            className="item-card__menu-action item-card__menu-action--download"
             type="button"
-            onClick={toggleMoreMenu}
-            aria-label={`More actions for ${primaryLabel}`}
-            aria-haspopup="menu"
-            aria-expanded={isMoreMenuOpen}
-            ref={moreButtonRef}
+            role="menuitem"
+            disabled={!downloadUrl}
+            onClick={downloadItem}
           >
-            <span className="item-card__dots-icon" />
+            <span className="item-card__menu-icon" aria-hidden="true" />
+            <span className="item-card__menu-label">Download</span>
           </button>
-          {isMoreMenuOpen ? (
-            <div className="item-card__more-menu" role="menu" ref={moreMenuRef}>
-              <button
-                className="item-card__more-menu-item"
-                type="button"
-                role="menuitem"
-                disabled={!downloadUrl}
-                onClick={downloadItem}
-              >
-                Download
+          <button
+            className="item-card__menu-action item-card__menu-action--share"
+            type="button"
+            role="menuitem"
+            onClick={openShareIsland}
+            aria-expanded={isShareIslandOpen}
+          >
+            <span className="item-card__menu-icon" aria-hidden="true" />
+            <span className="item-card__menu-label">Share</span>
+          </button>
+          <button
+            className="item-card__menu-action item-card__menu-action--delete"
+            type="button"
+            role="menuitem"
+            disabled={!onDelete || isDeleting}
+            onClick={deleteItem}
+            data-confirming={isDeleteConfirming ? "true" : "false"}
+          >
+            <span className="item-card__menu-icon" aria-hidden="true" />
+            <span className="item-card__menu-label">
+              {isDeleting ? "Deleting" : isDeleteConfirming ? "Confirm" : "Delete"}
+            </span>
+          </button>
+          {isShareIslandOpen ? (
+            <div className="item-card__share-island" role="group" aria-label="share item">
+              <button type="button" onClick={() => void copyShareValue("Item link", shareUrl)}>
+                Copy item link
               </button>
-              <button className="item-card__more-menu-item" type="button" role="menuitem" onClick={editItem}>
-                Edit
-              </button>
-              <button
-                className="item-card__more-menu-item"
-                type="button"
-                role="menuitem"
-                onClick={openShareIsland}
-                aria-expanded={isShareIslandOpen}
-              >
-                Share
-              </button>
-              {isShareIslandOpen ? (
-                <div className="item-card__share-island" role="group" aria-label="share item">
-                  <button type="button" onClick={() => void copyShareValue("Item link", shareUrl)}>
-                    Copy item link
+              {url ? (
+                <>
+                  <button type="button" onClick={() => void copyShareValue("Source URL", url)}>
+                    Copy source URL
                   </button>
-                  {url ? (
-                    <>
-                      <button type="button" onClick={() => void copyShareValue("Source URL", url)}>
-                        Copy source URL
-                      </button>
-                      <button type="button" onClick={openSourceUrl}>
-                        Open source
-                      </button>
-                    </>
-                  ) : null}
-                  <button type="button" onClick={() => void copyShareValue("Title", primaryLabel)}>
-                    Copy title
+                  <button type="button" onClick={openSourceUrl}>
+                    Open source
                   </button>
-                  <button type="button" onClick={() => void copyShareValue("Markdown", markdownReference)}>
-                    Copy markdown
-                  </button>
-                  {downloadUrl ? (
-                    <button type="button" onClick={() => void copyShareValue("File URL", downloadUrl)}>
-                      Copy file URL
-                    </button>
-                  ) : null}
-                  {copiedShareAction ? <span>{copiedShareAction === "copy failed" ? "Copy failed" : `${copiedShareAction} copied`}</span> : null}
-                </div>
+                </>
               ) : null}
+              <button type="button" onClick={() => void copyShareValue("Title", primaryLabel)}>
+                Copy title
+              </button>
+              <button type="button" onClick={() => void copyShareValue("Markdown", markdownReference)}>
+                Copy markdown
+              </button>
+              {downloadUrl ? (
+                <button type="button" onClick={() => void copyShareValue("File URL", downloadUrl)}>
+                  Copy file URL
+                </button>
+              ) : null}
+              {copiedShareAction ? <span>{copiedShareAction === "copy failed" ? "Copy failed" : `${copiedShareAction} copied`}</span> : null}
             </div>
           ) : null}
-        </span>
+          {deleteError ? <span className="item-card__menu-status">{deleteError}</span> : null}
+        </CardActionMenu>
         <button
           className="item-card__action-cell item-card__action-cell--add"
           type="button"
@@ -496,6 +518,71 @@ function getPrimaryLabel({
   }
 
   return formatLabel(type);
+}
+
+function getMediaAspectRatio({
+  aspectRatio,
+  height,
+  mediaPreview,
+  width,
+}: {
+  aspectRatio: number | null;
+  height: number | null;
+  mediaPreview: ItemMediaPreview | null;
+  width: number | null;
+}) {
+  const ratio =
+    mediaPreview?.aspectRatio ??
+    aspectRatio ??
+    ratioFromDimensions(mediaPreview?.width, mediaPreview?.height) ??
+    ratioFromDimensions(width, height);
+
+  return Number.isFinite(ratio) && ratio && ratio > 0 ? Math.round(ratio * 1000) / 1000 : null;
+}
+
+function getMasonryFallbackRatio({
+  captionText,
+  linkContentType,
+  noteParagraph,
+  ogImageUrl,
+  type,
+}: {
+  captionText: string | null;
+  linkContentType: string | null;
+  noteParagraph: string | null;
+  ogImageUrl: string | null;
+  type: ItemType;
+}) {
+  if (type === "caption" || type === "note") {
+    const textLength = (type === "caption" ? captionText : noteParagraph)?.length ?? 0;
+    if (textLength > 420) {
+      return "1 / 1.45";
+    }
+    if (textLength > 220) {
+      return "1 / 1.28";
+    }
+    return type === "caption" ? "1 / 1.12" : "1 / 1.24";
+  }
+
+  if (linkContentType === "pdf") {
+    return "3 / 4";
+  }
+  if (linkContentType === "video") {
+    return "16 / 9";
+  }
+  if (ogImageUrl || linkContentType === "website") {
+    return "1.2 / 1";
+  }
+
+  return "4 / 5";
+}
+
+function ratioFromDimensions(width: number | null | undefined, height: number | null | undefined) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
 }
 
 function formatAddedTime(createdAt: string | null) {
@@ -542,7 +629,13 @@ function renderContent(
 ) {
   if (type === "image") {
     return imageUrl ? (
-      <img className="item-card__image" src={imageUrl} alt={title ?? ""} />
+      <img
+        className="item-card__image"
+        src={imageUrl}
+        alt={title ?? ""}
+        loading="lazy"
+        decoding="async"
+      />
     ) : (
       <Placeholder label="image pending" />
     );
@@ -584,7 +677,17 @@ function renderContent(
 
   return (
     <div className="item-card__link-preview">
-      {previewImageUrl ? <img className="item-card__image" src={previewImageUrl} alt={ogTitle ?? title ?? ""} /> : <Placeholder label="link preview" />}
+      {previewImageUrl ? (
+        <img
+          className="item-card__image"
+          src={previewImageUrl}
+          alt={ogTitle ?? title ?? ""}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <Placeholder label="link preview" />
+      )}
     </div>
   );
 }

@@ -9,6 +9,14 @@ export type ItemDetailQuery = {
   itemId: string;
 };
 
+export type ItemNoteUpdate = {
+  workspaceId: string;
+  itemId: string;
+  body: string;
+  format?: "plain" | "markdown" | "blocknote";
+  actor?: string;
+};
+
 export type ItemDetailSource = {
   id: string;
   kind: string | null;
@@ -46,6 +54,9 @@ export type ItemDetailContent = {
   image: {
     fileRef: string | null;
     mimeType: string | null;
+    width: number | null;
+    height: number | null;
+    aspectRatio: number | null;
     dominantColors: string[] | null;
     perceptualHash: string | null;
     ocrText: string | null;
@@ -133,7 +144,37 @@ export type ItemDetailReader = {
   getItemDetail(query: ItemDetailQuery): Promise<ItemDetail>;
 };
 
+export type ItemNoteUpdateResult = {
+  item: {
+    id: string;
+    workspaceId: string;
+    updatedAt: string;
+    updateCount: number;
+    content: {
+      note: {
+        body: string;
+        format: string;
+      };
+    };
+  };
+  event: {
+    id: string;
+    eventType: "note_updated";
+    createdAt: string;
+  };
+};
+
+export type ItemNoteWriter = {
+  updateItemNote(change: ItemNoteUpdate): Promise<ItemNoteUpdateResult>;
+};
+
 export type PocketBaseItemDetailReaderOptions = {
+  baseUrl: string;
+  endpointPath?: string;
+  fetcher?: Fetcher;
+};
+
+export type PocketBaseItemNoteWriterOptions = {
   baseUrl: string;
   endpointPath?: string;
   fetcher?: Fetcher;
@@ -168,11 +209,51 @@ export function createPocketBaseItemDetailReader({
   };
 }
 
+export function createPocketBaseItemNoteWriter({
+  baseUrl,
+  endpointPath = "/api/vita/item-note",
+  fetcher = globalThis.fetch,
+}: PocketBaseItemNoteWriterOptions): ItemNoteWriter {
+  return {
+    async updateItemNote(change) {
+      const response = await fetcher(buildItemNoteUrl(baseUrl, endpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          item_id: change.itemId,
+          body: change.body,
+          format: change.format ?? "plain",
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase item note write failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as ItemNoteUpdateResult;
+      if (!payload.item || !payload.event) {
+        throw new Error("PocketBase item note response must include { item, event }");
+      }
+
+      return payload;
+    },
+  };
+}
+
 function buildItemDetailUrl(baseUrl: string, endpointPath: string, query: ItemDetailQuery) {
   const url = new URL(endpointPath, normalizeBaseUrl(baseUrl));
   url.searchParams.set("workspace_id", query.workspaceId);
   url.searchParams.set("item_id", query.itemId);
   return url;
+}
+
+function buildItemNoteUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
 }
 
 function normalizeBaseUrl(baseUrl: string) {

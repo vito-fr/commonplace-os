@@ -1,4 +1,5 @@
 import captionsFixture from "../../seed/fixtures/05_items_caption.json";
+import imagesFixture from "../../seed/fixtures/04_items_image.json";
 import itemsFixture from "../../seed/fixtures/03_items.json";
 import linksFixture from "../../seed/fixtures/07_items_link.json";
 import notesFixture from "../../seed/fixtures/06_items_note.json";
@@ -55,8 +56,20 @@ type FixtureLink = {
   fetched_at?: string | null;
 };
 
+type FixtureImage = {
+  item_id: string;
+  file_ref: string | null;
+  mime_type: string | null;
+  width: number | null;
+  height: number | null;
+  dominant_colors: string | null;
+  perceptual_hash: string | null;
+  ocr_text: string | null;
+};
+
 const items = itemsFixture as FixtureItem[];
 const sources = sourcesFixture as FixtureSource[];
+const images = imagesFixture as FixtureImage[];
 const captions = captionsFixture as FixtureCaption[];
 const notes = notesFixture as FixtureNote[];
 const links = linksFixture as FixtureLink[];
@@ -80,6 +93,7 @@ function getSeedFixtureItemDetail({ workspaceId, itemId }: ItemDetailQuery): Ite
   const caption = captions.find((row) => row.item_id === item.id);
   const note = notes.find((row) => row.item_id === item.id);
   const link = links.find((row) => row.item_id === item.id);
+  const image = images.find((row) => row.item_id === item.id);
 
   return {
     id: item.id,
@@ -107,7 +121,19 @@ function getSeedFixtureItemDetail({ workspaceId, itemId }: ItemDetailQuery): Ite
     updatedAt: item.updated_at,
     content: {
       kind: item.type,
-      image: null,
+      image:
+        item.type === "image"
+          ? {
+              fileRef: image?.file_ref ?? null,
+              mimeType: image?.mime_type ?? null,
+              width: image?.width ?? null,
+              height: image?.height ?? null,
+              aspectRatio: getAspectRatio(image?.width ?? null, image?.height ?? null),
+              dominantColors: parseOgMetadata(image?.dominant_colors) as string[] | null,
+              perceptualHash: image?.perceptual_hash ?? null,
+              ocrText: image?.ocr_text ?? null,
+            }
+          : null,
       caption: caption
         ? {
             body: caption.body ?? null,
@@ -133,6 +159,14 @@ function getSeedFixtureItemDetail({ workspaceId, itemId }: ItemDetailQuery): Ite
     aiAnnotations: [],
     events: [],
   };
+}
+
+function getAspectRatio(width: number | null, height: number | null) {
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
 }
 
 function parseOgMetadata(value: string | null | undefined): Record<string, unknown> | null {

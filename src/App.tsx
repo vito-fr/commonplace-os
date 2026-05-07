@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { gsap, ScrollTrigger } from "./motion/MotionShell";
+import { ScrollTrigger } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid, MasonryView } from "./components/items";
@@ -15,11 +15,12 @@ import {
 } from "./data/pocketBaseItemCollection";
 import { createPocketBaseItemDeleteWriter } from "./data/pocketBaseItemDelete";
 import type { ItemDetail, ItemDetailReader } from "./data/pocketBaseItemDetail";
-import { createPocketBaseItemDetailReader } from "./data/pocketBaseItemDetail";
+import { createPocketBaseItemDetailReader, createPocketBaseItemNoteWriter } from "./data/pocketBaseItemDetail";
 import { createPocketBaseItemCardReader } from "./data/pocketBaseItemCards";
 import { createPocketBaseItemRelationshipWriter } from "./data/pocketBaseItemRelationship";
 import { createPocketBaseItemStatusWriter } from "./data/pocketBaseItemStatus";
 import { seedFixtureItemCardReader } from "./data/seedItemCards";
+import { seedFixtureItemCollectionClient } from "./data/seedItemCollection";
 import { seedFixtureItemDetailReader } from "./data/seedItemDetail";
 import { SpotlightDock, type SpotlightCaptureRequest } from "./components/spotlight/SpotlightDock";
 import {
@@ -35,7 +36,7 @@ import {
 type AppRoute =
   | { kind: "grid" }
   | { kind: "item"; itemId: string; returnCollectionId?: string }
-  | { kind: "collection"; collectionId: string }
+  | { kind: "collection"; collectionId: string; returnTo?: string }
   | { kind: "pdfPreview"; src: string; name?: string; surface?: "card" | "reader" };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
@@ -71,6 +72,10 @@ const formatFilterOptions: ArchiveFormatFilter[] = [
 ];
 const minGalleryColumns = 2;
 const maxGalleryColumns = 8;
+const defaultGalleryColumns = 5;
+const minMasonryColumns = 2;
+const maxMasonryColumns = 8;
+const maxCollectionTitleLength = 50;
 const shortcutStorageKey = "vita:shortcut-bindings:v1";
 const defaultShortcutBindings: ShortcutBindings = {
   search: { key: "k", modifier: "mod" },
@@ -92,11 +97,14 @@ const itemCardReader: ItemCardReader =
       })
     : seedFixtureItemCardReader;
 const itemCaptureWriter = createPocketBaseItemCaptureWriter({ baseUrl: pocketBaseUrl });
-const itemCollectionClient = createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl });
+const itemCollectionClient = isPocketBaseMode
+  ? createPocketBaseItemCollectionClient({ baseUrl: pocketBaseUrl })
+  : seedFixtureItemCollectionClient;
 const itemDeleteWriter = createPocketBaseItemDeleteWriter({ baseUrl: pocketBaseUrl });
 const itemDetailReader: ItemDetailReader = isPocketBaseMode
   ? createPocketBaseItemDetailReader({ baseUrl: pocketBaseUrl })
   : seedFixtureItemDetailReader;
+const itemNoteWriter = createPocketBaseItemNoteWriter({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
 
@@ -110,6 +118,43 @@ type ItemCardSurfaceDetail = {
   surface: "actions" | "collection";
 };
 
+function useResponsiveGalleryColumnCap() {
+  const [columnCap, setColumnCap] = useState(() => getResponsiveGalleryColumnCap());
+
+  useEffect(() => {
+    const updateColumnCap = () => setColumnCap(getResponsiveGalleryColumnCap());
+    window.addEventListener("resize", updateColumnCap);
+    return () => window.removeEventListener("resize", updateColumnCap);
+  }, []);
+
+  return columnCap;
+}
+
+function getDefaultGalleryColumnCount() {
+  return Math.min(defaultGalleryColumns, getResponsiveGalleryColumnCap());
+}
+
+function getResponsiveGalleryColumnCap() {
+  if (typeof window === "undefined") {
+    return defaultGalleryColumns;
+  }
+
+  const width = window.innerWidth;
+  if (width >= 1440) {
+    return maxGalleryColumns;
+  }
+  if (width >= 1180) {
+    return defaultGalleryColumns;
+  }
+  if (width >= 900) {
+    return 4;
+  }
+  if (width >= 620) {
+    return 3;
+  }
+  return 2;
+}
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
@@ -117,7 +162,10 @@ export function App() {
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
   const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
   const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
-  const [galleryColumns, setGalleryColumns] = useState(4);
+  const [galleryColumns, setGalleryColumns] = useState(() => getDefaultGalleryColumnCount());
+  const [masonryColumns, setMasonryColumns] = useState(4);
+  const galleryColumnCap = useResponsiveGalleryColumnCap();
+  const effectiveGalleryColumns = Math.min(galleryColumns, galleryColumnCap);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
   const [shortcutError, setShortcutError] = useState<string | null>(null);
@@ -136,6 +184,9 @@ export function App() {
   const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
   const [collectionUpdateError, setCollectionUpdateError] = useState<string | null>(null);
   const [isCollectionUpdating, setIsCollectionUpdating] = useState(false);
+  const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
+  const [isCreateCollectionPending, setIsCreateCollectionPending] = useState(false);
+  const [createCollectionError, setCreateCollectionError] = useState<string | null>(null);
   const [cardCollectionItem, setCardCollectionItem] = useState<ItemCardProps | null>(null);
   const [cardCollectionAnchor, setCardCollectionAnchor] = useState<CardCollectionIslandPosition | null>(null);
   const [cardCollectionOptions, setCardCollectionOptions] = useState<CollectionOption[]>([]);
@@ -153,6 +204,8 @@ export function App() {
   const [statusWriteError, setStatusWriteError] = useState<string | null>(null);
   const [isRelationshipCreating, setIsRelationshipCreating] = useState(false);
   const [relationshipWriteError, setRelationshipWriteError] = useState<string | null>(null);
+  const [isNoteSaving, setIsNoteSaving] = useState(false);
+  const [noteWriteError, setNoteWriteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteWriteError, setDeleteWriteError] = useState<string | null>(null);
 
@@ -208,9 +261,21 @@ export function App() {
         return;
       }
 
+      if (route.kind === "grid" && archiveViewMode === "masonry" && matchesShortcut(event, shortcutBindings.galleryIncrease)) {
+        event.preventDefault();
+        setMasonryColumns((currentColumns) => Math.min(maxMasonryColumns, currentColumns + 1));
+        return;
+      }
+
       if (route.kind === "grid" && archiveViewMode === "gallery" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
         event.preventDefault();
         setGalleryColumns((currentColumns) => Math.max(minGalleryColumns, currentColumns - 1));
+        return;
+      }
+
+      if (route.kind === "grid" && archiveViewMode === "masonry" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
+        event.preventDefault();
+        setMasonryColumns((currentColumns) => Math.max(minMasonryColumns, currentColumns - 1));
       }
     };
 
@@ -290,6 +355,8 @@ export function App() {
       setIsStatusUpdating(false);
       setRelationshipWriteError(null);
       setIsRelationshipCreating(false);
+      setNoteWriteError(null);
+      setIsNoteSaving(false);
       setDeleteWriteError(null);
       setIsDeleting(false);
       return () => {
@@ -302,6 +369,7 @@ export function App() {
     setCollectionWriteError(null);
     setStatusWriteError(null);
     setRelationshipWriteError(null);
+    setNoteWriteError(null);
     setDeleteWriteError(null);
 
     itemDetailReader
@@ -339,7 +407,7 @@ export function App() {
           console.error(error);
           setDetail(null);
           setCollectionOptions([]);
-          setDetailError("Unable to load archive detail.");
+          setDetailError(getReadableDetailError(error));
         }
       })
       .finally(() => {
@@ -388,19 +456,10 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
-    const needsCollections = route.kind === "grid";
+    const needsCollections = route.kind === "grid" || route.kind === "item";
 
     if (!needsCollections) {
       setCollectionIndexError(null);
-      setIsCollectionIndexLoading(false);
-      return () => {
-        isCurrent = false;
-      };
-    }
-
-    if (!isPocketBaseMode) {
-      setCollectionIndex([]);
-      setCollectionIndexError(galleryObjectMode === "collections" ? "Collection index requires live archive mode." : null);
       setIsCollectionIndexLoading(false);
       return () => {
         isCurrent = false;
@@ -439,17 +498,7 @@ export function App() {
     let isCurrent = true;
 
     if (route.kind !== "collection") {
-      setCollectionDetail(null);
       setCollectionReadError(null);
-      setIsCollectionLoading(false);
-      return () => {
-        isCurrent = false;
-      };
-    }
-
-    if (!isPocketBaseMode) {
-      setCollectionDetail(null);
-      setCollectionReadError("Collection view requires live archive mode.");
       setIsCollectionLoading(false);
       return () => {
         isCurrent = false;
@@ -458,6 +507,9 @@ export function App() {
 
     setIsCollectionLoading(true);
     setCollectionReadError(null);
+    setCollectionDetail((currentCollection) =>
+      currentCollection?.id === route.collectionId ? currentCollection : null,
+    );
 
     itemCollectionClient
       .getCollectionDetail({ workspaceId, collectionId: route.collectionId })
@@ -504,6 +556,13 @@ export function App() {
     setArchivePanel(null);
   };
 
+  const openCollectionFromItemDetail = (collectionId: string) => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.history.pushState(null, "", buildCollectionUrl(collectionId, { returnTo }));
+    setRoute({ kind: "collection", collectionId, returnTo });
+    setArchivePanel(null);
+  };
+
   const closeItemDetail = () => {
     if (route.kind === "item" && route.returnCollectionId) {
       window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
@@ -514,7 +573,21 @@ export function App() {
     }
   };
 
+  const exitItemDetailToArchive = () => {
+    window.history.pushState(null, "", buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode));
+    setRoute({ kind: "grid" });
+  };
+
   const closeCollection = () => {
+    if (route.kind === "collection" && route.returnTo && isSafeInternalReturnPath(route.returnTo)) {
+      window.history.pushState(null, "", route.returnTo);
+      setRoute(getRouteFromLocation());
+      setItemCardFilters(getFiltersFromLocation());
+      setGalleryObjectMode(getGalleryObjectModeFromLocation());
+      setArchiveViewMode(getArchiveViewModeFromLocation());
+      return;
+    }
+
     window.history.pushState(null, "", buildArchiveUrl(itemCardFilters, galleryObjectMode, archiveViewMode));
     setRoute({ kind: "grid" });
   };
@@ -586,6 +659,37 @@ export function App() {
     }
   };
 
+  const deleteArchiveCardItem = async (itemId: string) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    await itemDeleteWriter.deleteItem({
+      workspaceId,
+      itemId,
+      actor: "system",
+    });
+    await refreshArchiveCollectionState();
+    setSelectedItemIds((currentSelection) => currentSelection.filter((selectedItemId) => selectedItemId !== itemId));
+
+    if (cardCollectionItem?.id === itemId) {
+      closeArchiveCardCollection();
+    }
+  };
+
+  const deleteCollectionWorkspaceItem = async (itemId: string, collectionId: string) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    await itemDeleteWriter.deleteItem({
+      workspaceId,
+      itemId,
+      actor: "system",
+    });
+    await refreshCollectionWorkspaceState(collectionId);
+  };
+
   const createItemRelationship = async ({ toId, note }: { toId: string; note: string | null }) => {
     if (!detail || !isPocketBaseMode) {
       return;
@@ -612,6 +716,61 @@ export function App() {
       throw error;
     } finally {
       setIsRelationshipCreating(false);
+    }
+  };
+
+  const updateItemNote = async ({
+    body,
+    format,
+  }: {
+    body: string;
+    format?: "plain" | "markdown" | "blocknote";
+  }) => {
+    if (!detail || detail.type !== "note") {
+      return;
+    }
+
+    if (!isPocketBaseMode) {
+      setNoteWriteError("Note editing requires live archive mode.");
+      throw new Error("Live archive mode required.");
+    }
+
+    setIsNoteSaving(true);
+    setNoteWriteError(null);
+
+    try {
+      await itemNoteWriter.updateItemNote({
+        workspaceId,
+        itemId: detail.id,
+        body,
+        format,
+        actor: "system",
+      });
+
+      const collectionRefresh =
+        route.kind === "item" && route.returnCollectionId
+          ? itemCollectionClient.getCollectionDetail({
+              workspaceId,
+              collectionId: route.returnCollectionId,
+            })
+          : Promise.resolve(null);
+      const [nextDetail, nextItems, nextCollectionDetail] = await Promise.all([
+        itemDetailReader.getItemDetail({ workspaceId, itemId: detail.id }),
+        itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters }),
+        collectionRefresh,
+      ]);
+
+      setDetail(nextDetail);
+      setItems(nextItems);
+      if (nextCollectionDetail) {
+        setCollectionDetail(nextCollectionDetail);
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      setNoteWriteError("Unable to save note.");
+      throw error;
+    } finally {
+      setIsNoteSaving(false);
     }
   };
 
@@ -762,6 +921,53 @@ export function App() {
     setCollectionIndex(nextCollections);
   };
 
+  const openCreateCollectionIsland = () => {
+    setIsCreateCollectionOpen(true);
+    setCreateCollectionError(isPocketBaseMode ? null : "Live archive mode required.");
+  };
+
+  const closeCreateCollectionIsland = () => {
+    if (isCreateCollectionPending) {
+      return;
+    }
+
+    setIsCreateCollectionOpen(false);
+    setCreateCollectionError(null);
+  };
+
+  const createBlankCollection = async ({
+    description,
+    name,
+  }: {
+    description: string | null;
+    name: string;
+  }) => {
+    if (!isPocketBaseMode) {
+      setCreateCollectionError("Live archive mode required.");
+      return;
+    }
+
+    setIsCreateCollectionPending(true);
+    setCreateCollectionError(null);
+
+    try {
+      const result = await itemCollectionClient.createCollection({
+        workspaceId,
+        name,
+        description: description ?? undefined,
+        actor: "system",
+      });
+      await refreshArchiveCollectionState();
+      setIsCreateCollectionOpen(false);
+      openCollection(result.collection.id);
+    } catch (error: unknown) {
+      console.error(error);
+      setCreateCollectionError("Unable to create collection.");
+    } finally {
+      setIsCreateCollectionPending(false);
+    }
+  };
+
   const removeCollectionWorkspaceItems = async ({
     collectionId,
     itemIds,
@@ -862,6 +1068,78 @@ export function App() {
     }
 
     await refreshCollectionWorkspaceState(sourceCollectionId);
+  };
+
+  const importFilesToCollection = async ({
+    collectionId,
+    files,
+  }: {
+    collectionId: string;
+    files: File[];
+  }) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    for (const file of files) {
+      const kind = getCollectionImportFileKind(file);
+      if (!kind) {
+        throw new Error("Only image and PDF files can be imported into a collection.");
+      }
+
+      const captureResult =
+        kind === "pdf"
+          ? await itemCaptureWriter.capturePdf({
+              workspaceId,
+              type: "pdf",
+              file,
+              actor: "system",
+            })
+          : await itemCaptureWriter.captureImage({
+              workspaceId,
+              type: "image",
+              file,
+              actor: "system",
+            });
+
+      await itemCollectionClient.attachCollection({
+        workspaceId,
+        itemId: captureResult.item.id,
+        collectionId,
+        actor: "system",
+      });
+    }
+
+    await refreshCollectionWorkspaceState(collectionId);
+  };
+
+  const createNoteInCollection = async ({
+    body,
+    collectionId,
+  }: {
+    body: string;
+    collectionId: string;
+  }) => {
+    if (!isPocketBaseMode) {
+      throw new Error("Live archive mode required.");
+    }
+
+    const captureResult = await itemCaptureWriter.captureNote({
+      workspaceId,
+      type: "note",
+      body,
+      sourceExternalId: captureSourceExternalId(),
+      actor: "system",
+    });
+
+    await itemCollectionClient.attachCollection({
+      workspaceId,
+      itemId: captureResult.item.id,
+      collectionId,
+      actor: "system",
+    });
+
+    await refreshCollectionWorkspaceState(collectionId);
   };
 
   const toggleArchiveItemSelection = (itemId: string) => {
@@ -1225,6 +1503,10 @@ export function App() {
     setGalleryColumns(Math.min(maxGalleryColumns, Math.max(minGalleryColumns, columns)));
   };
 
+  const updateMasonryColumns = (columns: number) => {
+    setMasonryColumns(Math.min(maxMasonryColumns, Math.max(minMasonryColumns, columns)));
+  };
+
   const updateArchiveViewMode = (mode: ArchiveViewMode) => {
     setArchiveViewMode(mode);
     setArchivePanel("views");
@@ -1284,12 +1566,11 @@ export function App() {
     }
   };
 
-  const routeRef = useRef<HTMLDivElement | null>(null);
   const previousRouteKeyRef = useRef<string>(routeKey(route));
   const [renderedRoute, setRenderedRoute] = useState<AppRoute>(route);
+  const [routeTransitionToken, setRouteTransitionToken] = useState(0);
 
   useEffect(() => {
-    const wrapper = routeRef.current;
     const previousKey = previousRouteKeyRef.current;
     const currentKey = routeKey(route);
 
@@ -1299,27 +1580,10 @@ export function App() {
     }
 
     previousRouteKeyRef.current = currentKey;
-
-    if (!wrapper) {
-      setRenderedRoute(route);
-      return;
-    }
-
-    gsap.to(wrapper, {
-      opacity: 0,
-      duration: 0.18,
-      ease: "power2.in",
-      onComplete: () => {
-        setRenderedRoute(route);
-        requestAnimationFrame(() => {
-          gsap.fromTo(
-            wrapper,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.24, ease: "power2.out" },
-          );
-          ScrollTrigger.refresh();
-        });
-      },
+    setRenderedRoute(route);
+    setRouteTransitionToken((currentToken) => currentToken + 1);
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
     });
   }, [route]);
 
@@ -1331,8 +1595,9 @@ export function App() {
         collectionCount={collectionIndex.length}
         collectionIndex={collectionIndex}
         filters={itemCardFilters}
-        galleryColumns={galleryColumns}
+        galleryColumns={effectiveGalleryColumns}
         itemCount={items.length}
+        masonryColumns={masonryColumns}
         viewMode={archiveViewMode}
         isPocketBaseMode={isPocketBaseMode}
         loading={isLoading}
@@ -1342,6 +1607,7 @@ export function App() {
         onObjectModeChange={setGalleryObjectMode}
         onViewModeChange={updateArchiveViewMode}
         onGalleryColumnsChange={updateGalleryColumns}
+        onMasonryColumnsChange={updateMasonryColumns}
         onFormatChange={updateFormatFilter}
         onPanelChange={setArchivePanel}
         onSiteThemeChange={setSiteTheme}
@@ -1369,23 +1635,36 @@ export function App() {
       />
     );
   } else if (renderedRoute.kind === "collection") {
+    const renderedCollectionDetail =
+      collectionDetail?.id === renderedRoute.collectionId ? collectionDetail : null;
+    const renderedCollectionLoading =
+      isCollectionLoading || (!collectionReadError && !renderedCollectionDetail);
+
     routeContent = (
       <main className="app-shell" aria-label="Vita collection">
         <CollectionView
-          collection={collectionDetail}
+          collection={renderedCollectionDetail}
           collectionIndex={collectionIndex}
-          loading={isCollectionLoading}
+          loading={renderedCollectionLoading}
           error={collectionReadError}
           onBack={closeCollection}
           onAddItemsToCollection={addCollectionWorkspaceItemsToCollection}
           onCreateCollectionFromItems={createCollectionFromCollectionWorkspaceItems}
+          onCreateNoteInCollection={createNoteInCollection}
+          onImportFilesToCollection={importFilesToCollection}
           onOpenItem={openCollectionItemDetail}
+          onDeleteItem={deleteCollectionWorkspaceItem}
           onRemoveItemsFromCollection={removeCollectionWorkspaceItems}
+          onUpdateCollection={updateArchiveCollection}
+          collectionUpdatePending={isCollectionUpdating}
+          collectionUpdateError={collectionUpdateError}
         />
       </main>
     );
   } else if (renderedRoute.kind === "item") {
-    const currentItemId = detail?.id ?? renderedRoute.itemId;
+    const renderedDetail = detail?.id === renderedRoute.itemId ? detail : null;
+    const renderedDetailLoading = isDetailLoading || (!detailError && !renderedDetail);
+    const currentItemId = renderedDetail?.id ?? renderedRoute.itemId;
     const archiveContextLabel = renderedRoute.returnCollectionId
       ? "collection view"
       : formatArchiveContext(itemCardFilters);
@@ -1407,14 +1686,15 @@ export function App() {
     routeContent = (
       <main className="app-shell" aria-label="Vita archive">
         <ItemDetailView
-          item={detail}
-          loading={isDetailLoading}
+          item={renderedDetail}
+          loading={renderedDetailLoading}
           error={detailError}
           archiveContext={archiveContextLabel}
           archiveFlow={archiveFlow}
           backLabel={renderedRoute.returnCollectionId ? "Back to collection" : "Back to archive"}
           onBack={closeItemDetail}
-          onOpenCollection={openCollection}
+          onExitToArchive={exitItemDetailToArchive}
+          onOpenCollection={openCollectionFromItemDetail}
           onOpenArchiveItem={openItemDetail}
           onOpenRelatedItem={openItemDetail}
           onChangeStatus={changeItemStatus}
@@ -1427,11 +1707,15 @@ export function App() {
           relationshipActionPending={isRelationshipCreating}
           relationshipActionError={relationshipWriteError}
           relationshipTargetOptions={relationshipTargetOptions}
+          onUpdateNote={updateItemNote}
+          noteActionPending={isNoteSaving}
+          noteActionError={noteWriteError}
           onAttachCollection={attachItemToCollection}
           onRemoveCollection={removeItemFromCollection}
           collectionActionPending={isCollectionAttaching}
           collectionActionError={collectionWriteError}
           collectionOptions={collectionTargetOptions}
+          collectionIndex={collectionIndex}
         />
       </main>
     );
@@ -1446,6 +1730,7 @@ export function App() {
             isSelected: selectedItemIds.includes(item.id),
             isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
+            onDelete: deleteArchiveCardItem,
             onNavigate: openItemDetail,
             onSelectToggle: toggleArchiveItemSelection,
           }
@@ -1453,6 +1738,7 @@ export function App() {
             isSelected: selectedItemIds.includes(item.id),
             isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
+            onDelete: undefined,
             onNavigate: openItemDetail,
             onSelectToggle: toggleArchiveItemSelection,
           }),
@@ -1464,6 +1750,7 @@ export function App() {
       collections: renderedCollections,
       items: renderedItems,
       mode: galleryObjectMode,
+      onCreateCollection: openCreateCollectionIsland,
     });
     const showInitialCollectionsLoading =
       galleryObjectMode === "collections" && isCollectionIndexLoading && collectionIndex.length === 0;
@@ -1477,7 +1764,7 @@ export function App() {
             <MasonryGrid
               objects={archiveObjects}
               density="comfortable"
-              columns={galleryColumns}
+              columns={effectiveGalleryColumns}
               loading={galleryLoading}
               emptyState={
                 <ArchiveEmptyState
@@ -1493,6 +1780,7 @@ export function App() {
           ) : archiveViewMode === "masonry" ? (
             <MasonryView
               objects={archiveObjects}
+              columns={masonryColumns}
               loading={galleryLoading}
               emptyState={
                 <ArchiveEmptyState
@@ -1520,7 +1808,7 @@ export function App() {
   return (
     <>
       {archiveNav}
-      <div className="app-route-shell" ref={routeRef}>
+      <div className="app-route-shell" key={routeTransitionToken}>
         {routeContent}
       </div>
       {renderedRoute.kind === "grid" && cardCollectionItem ? (
@@ -1537,6 +1825,14 @@ export function App() {
           onCreate={createArchiveCardCollection}
         />
       ) : null}
+      {renderedRoute.kind === "grid" && isCreateCollectionOpen ? (
+        <CreateCollectionIsland
+          error={createCollectionError}
+          pending={isCreateCollectionPending}
+          onClose={closeCreateCollectionIsland}
+          onCreate={createBlankCollection}
+        />
+      ) : null}
       {renderedRoute.kind === "grid" && (archiveViewMode === "gallery" || archiveViewMode === "masonry") && selectedItemIds.length > 0 ? (
         <SelectionActionBar
           collections={collectionIndex}
@@ -1549,7 +1845,7 @@ export function App() {
           onCreate={createCollectionFromSelectedItems}
         />
       ) : null}
-      {renderedRoute.kind !== "pdfPreview" ? (
+      {renderedRoute.kind === "grid" ? (
         <SpotlightDock
           value={itemCardFilters.text ?? ""}
           onChange={updateTextFilter}
@@ -1585,23 +1881,41 @@ function buildArchiveObjects({
   collections,
   items,
   mode,
+  onCreateCollection,
 }: {
   collections: CollectionCardModel[];
   items: ItemCardProps[];
   mode: GalleryObjectMode;
+  onCreateCollection: () => void;
 }): ArchiveObject[] {
   if (mode === "items") {
     return items.map((item) => ({ objectType: "item" as const, item }));
   }
 
   if (mode === "collections") {
-    return collections.map((collection) => ({ objectType: "collection" as const, collection }));
+    return [
+      { objectType: "collection-create" as const, onCreateCollection },
+      ...collections.map((collection) => ({ objectType: "collection" as const, collection })),
+    ];
   }
 
   return [
     ...collections.map((collection) => ({ objectType: "collection" as const, collection })),
     ...items.map((item) => ({ objectType: "item" as const, item })),
   ];
+}
+
+function getCollectionImportFileKind(file: File): "image" | "pdf" | null {
+  const mimeType = file.type.toLowerCase();
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    return "pdf";
+  }
+
+  return null;
 }
 
 function toCollectionCardModel(
@@ -1810,6 +2124,86 @@ function ArchiveComingSoonState({
   );
 }
 
+function CreateCollectionIsland({
+  error,
+  onClose,
+  onCreate,
+  pending,
+}: {
+  error: string | null;
+  onClose: () => void;
+  onCreate: (input: { name: string; description: string | null }) => void;
+  pending: boolean;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const canCreate = name.trim().length > 0 && !pending;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const submitCreate = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreate) {
+      return;
+    }
+
+    onCreate({
+      name: name.trim(),
+      description: description.trim() || null,
+    });
+  };
+
+  return (
+    <section className="create-collection-island" role="dialog" aria-label="create collection" aria-modal="true">
+      <form className="create-collection-island__form" onSubmit={submitCreate}>
+        <div className="create-collection-island__header">
+          <span>
+            <small>new object</small>
+            <strong>Create collection</strong>
+          </span>
+          <button className="card-collection-island__cell" type="button" disabled={pending} onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+        <label>
+          <span>Name</span>
+          <input
+            autoFocus
+            disabled={pending}
+            maxLength={maxCollectionTitleLength}
+            onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
+            placeholder="Collection name"
+            value={name}
+          />
+        </label>
+        <label>
+          <span>Description optional</span>
+          <textarea
+            disabled={pending}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What belongs here?"
+            rows={3}
+            value={description}
+          />
+        </label>
+        <button className="card-collection-island__cell" disabled={!canCreate} type="submit">
+          {pending ? "Creating" : "Create"}
+        </button>
+        {error ? <span className="card-collection-island__error">{error}</span> : null}
+      </form>
+    </section>
+  );
+}
+
 function CardCollectionIsland({
   anchor,
   collectionIndex,
@@ -1982,7 +2376,8 @@ function CardCollectionIsland({
         <input
           aria-label="new collection name"
           disabled={pending}
-          onChange={(event) => setName(event.target.value)}
+          maxLength={maxCollectionTitleLength}
+          onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
           placeholder="New collection"
           value={name}
         />
@@ -2104,7 +2499,8 @@ function SelectionActionBar({
           <input
             aria-label="new collection name for selected items"
             disabled={pending}
-            onChange={(event) => setName(event.target.value)}
+            maxLength={maxCollectionTitleLength}
+            onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
             placeholder="New collection"
             value={name}
           />
@@ -2217,14 +2613,9 @@ function PdfPreview({
           <>
             <iframe
               className="pdf-preview-shell__frame"
-              src={`${objectUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              src={`${objectUrl}#page=1&view=FitH`}
               title={label}
-              scrolling="no"
             />
-            <span className="pdf-preview-shell__badge" aria-hidden="true">
-              <strong>PDF</strong>
-              <small>{label}</small>
-            </span>
           </>
         ) : (
           <div className="pdf-preview-shell__fallback" role={error ? "alert" : "status"}>
@@ -2260,7 +2651,12 @@ function getRouteFromLocation(): AppRoute {
 
   const collectionMatch = window.location.pathname.match(/^\/collections\/([^/]+)\/?$/);
   if (collectionMatch) {
-    return { kind: "collection", collectionId: decodeURIComponent(collectionMatch[1]) };
+    const returnTo = new URLSearchParams(window.location.search).get("return_to")?.trim();
+    return {
+      kind: "collection",
+      collectionId: decodeURIComponent(collectionMatch[1]),
+      returnTo: returnTo && isSafeInternalReturnPath(returnTo) ? returnTo : undefined,
+    };
   }
 
   return { kind: "grid" };
@@ -2321,8 +2717,19 @@ function buildArchiveUrl(
   return `/${buildFilterSearch(filters, { mode, view })}`;
 }
 
-function buildCollectionUrl(collectionId: string) {
-  return `/collections/${encodeURIComponent(collectionId)}`;
+function buildCollectionUrl(collectionId: string, options: { returnTo?: string } = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (options.returnTo && isSafeInternalReturnPath(options.returnTo)) {
+    searchParams.set("return_to", options.returnTo);
+  }
+
+  const search = searchParams.toString();
+  return `/collections/${encodeURIComponent(collectionId)}${search ? `?${search}` : ""}`;
+}
+
+function isSafeInternalReturnPath(value: string) {
+  return value.startsWith("/") && !value.startsWith("//") && !/^\/pdf-preview(?:\/|\?|$)/.test(value);
 }
 
 function buildPdfPreviewRouteUrl(src: string, name?: string, surface: "card" | "reader" = "reader") {
@@ -2529,10 +2936,26 @@ function getReadableLoadError(error: unknown, surface: "archive" | "collection" 
   }
 
   if (surface === "collection") {
+    if (isCollectionNotFoundError(error)) {
+      return "This collection could not be found.\nIt may have been removed or belongs to another archive mode.";
+    }
+
     return "Collection could not be loaded.\nRefresh the page or check the PocketBase logs.";
   }
 
   return "Archive could not be loaded.\nRefresh the page or check the PocketBase logs.";
+}
+
+function getReadableDetailError(error: unknown) {
+  if (isApiUnreachableError(error)) {
+    return `${pocketBaseUnavailableTitle}\n${pocketBaseUnavailableCopy}`;
+  }
+
+  if (isItemNotFoundError(error)) {
+    return "This item could not be found.";
+  }
+
+  return "Item could not be loaded.\nRefresh the page or check the PocketBase logs.";
 }
 
 function getLoadErrorDisplay(message: string) {
@@ -2554,6 +2977,27 @@ function isApiUnreachableError(error: unknown) {
     normalizedMessage.includes("load failed") ||
     normalizedMessage.includes("network") ||
     normalizedMessage.includes("econnrefused")
+  );
+}
+
+function isCollectionNotFoundError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("collection not found") ||
+    (normalizedMessage.includes("http 404") && normalizedMessage.includes("collection"))
+  );
+}
+
+function isItemNotFoundError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("item not found") ||
+    normalizedMessage.includes("seed fixture item") ||
+    normalizedMessage.includes("http 404")
   );
 }
 

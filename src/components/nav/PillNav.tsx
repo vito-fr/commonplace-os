@@ -55,12 +55,14 @@ export type PillNavProps = {
   objectMode: GalleryObjectMode;
   viewMode: ArchiveViewMode;
   galleryColumns: number;
+  masonryColumns: number;
   isPocketBaseMode: boolean;
   readError: string | null;
   shortcutBindings: ShortcutBindings;
   shortcutError: string | null;
   siteTheme: SiteTheme;
   onGalleryColumnsChange: (columns: number) => void;
+  onMasonryColumnsChange: (columns: number) => void;
   onFormatChange: (format: ArchiveFormatFilter) => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
@@ -102,12 +104,14 @@ export function PillNav(props: PillNavProps) {
     isPocketBaseMode,
     itemCount,
     loading,
+    masonryColumns,
     onClearFilters,
     onCollectionFilterChange,
     onObjectModeChange,
     onViewModeChange,
     onFormatChange,
     onGalleryColumnsChange,
+    onMasonryColumnsChange,
     onPanelChange,
     onSiteThemeChange,
     onShortcutChange,
@@ -153,9 +157,11 @@ export function PillNav(props: PillNavProps) {
     onViewModeChange,
     panel: activePanel,
     galleryColumns,
+    masonryColumns,
     objectMode,
     viewMode,
     onGalleryColumnsChange,
+    onMasonryColumnsChange,
     openFilter,
   });
 
@@ -234,6 +240,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
 
     let cancelled = false;
     let activeTweens: Array<{ kill: () => void }> = [];
+    let settleFallbackTimer: number | null = null;
     const cells = Array.from(row.querySelectorAll<HTMLElement>(".nav-cell, .subnav-cell"));
     const masks = Array.from(row.querySelectorAll<HTMLElement>(".nav-cell__text-mask"));
     const revealTargets = masks
@@ -420,20 +427,14 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
           gsap.set(text, { autoAlpha: 1, filter: "blur(0px)", x: 0 });
         }
       });
+      if (document.visibilityState === "hidden") {
+        logMotionRects("enter-skip-hidden");
+        return;
+      }
       logMotionRects("enter-start");
 
       const openRowRect = row.getBoundingClientRect();
       const openRowHeight = snapToDevicePixel(openRowRect.height);
-      const openMetrics = cells.map((cell) => {
-        const rect = cell.getBoundingClientRect();
-        return {
-          height: snapToDevicePixel(rect.height),
-          left: snapToDevicePixel(rect.left - openRowRect.left),
-          top: snapToDevicePixel(rect.top - openRowRect.top),
-          width: snapToDevicePixel(rect.width),
-        };
-      });
-      let openRowWidth = getMeasuredRowWidth(snapToDevicePixel(openRowRect.width), openMetrics);
 
       row.setAttribute("data-entering", "true");
       row.setAttribute("data-preparing", "true");
@@ -461,11 +462,6 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         };
       });
       const closedRowWidth = getMeasuredRowWidth(snapToDevicePixel(closedRowRect.width), closedMetrics);
-      const measuredTextWidthTotal = revealTargets.reduce((total, { mask }) => {
-        const width = parseFloat(mask.style.getPropertyValue("--text-width"));
-        return total + (Number.isFinite(width) ? width : 0);
-      }, 0);
-      openRowWidth = snapToDevicePixel(Math.max(openRowWidth, closedRowWidth + measuredTextWidthTotal));
       const seedWidth = snapToDevicePixel(Math.max(closedRowHeight, closedMetrics[0]?.height ?? 27));
       const seedHold = 0.07;
       const splitDuration = 0.26;
@@ -477,7 +473,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
       const maxSplitDelay = splitDelays.reduce((maxDelay, delay) => Math.max(maxDelay, delay), 0);
       const revealStart = seedHold + maxSplitDelay + splitDuration + 0.04;
       const wrapperSplitDuration = splitDuration + maxSplitDelay;
-      const wrapperRevealDuration = revealDuration + Math.max(0, revealTargets.length - 1) * revealStep;
+      const maxRevealDelay = Math.max(0, revealTargets.length - 1) * revealStep;
 
       gsap.set(row, {
         "--nav-row-clip-x": `${Math.max(0, (closedRowWidth - seedWidth) / 2)}px`,
@@ -503,13 +499,19 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
       row.setAttribute("data-reveal-state", "seed");
       logMotionRects("seed");
 
+      let hasSettled = false;
       const settle = () => {
-        if (cancelled) {
+        if (cancelled || hasSettled) {
           return;
         }
 
+        hasSettled = true;
+        if (settleFallbackTimer !== null) {
+          window.clearTimeout(settleFallbackTimer);
+          settleFallbackTimer = null;
+        }
         clearEnterDelays();
-        gsap.set(row, { height: openRowHeight, width: openRowWidth });
+        gsap.set(row, { height: openRowHeight });
         revealTargets.forEach(({ mask, text }) => {
           gsap.set(mask, { width: mask.style.getPropertyValue("--text-width") || "auto" });
           if (text) {
@@ -526,6 +528,10 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         paused: true,
       });
       activeTweens.push(timeline);
+      settleFallbackTimer = window.setTimeout(
+        settle,
+        Math.ceil((revealStart + maxRevealDelay + revealDuration + 0.18) * 1000),
+      );
 
       timeline.call(() => {
         row.setAttribute("data-reveal-state", "split");
@@ -550,10 +556,10 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
 
       timeline.call(() => {
         row.setAttribute("data-reveal-state", "reveal");
+        gsap.set(row, { clearProps: "width" });
         gsap.set(row, {
           "--nav-row-clip-x": "0px",
           height: closedRowHeight,
-          width: closedRowWidth,
         });
         gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
         revealTargets.forEach(({ mask, text }) => {
@@ -564,14 +570,6 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         });
         logMotionRects("reveal-ready");
       }, undefined, revealStart);
-
-      timeline.to(row, {
-        autoRound: false,
-        duration: wrapperRevealDuration,
-        ease: "power3.out",
-        height: openRowHeight,
-        width: openRowWidth,
-      }, revealStart);
 
       revealTargets.forEach(({ mask, revealIndex: index, text }) => {
         const measurementTarget = mask.querySelector<HTMLElement>("[data-nav-measure-target]") ?? text;
@@ -639,6 +637,10 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
     return () => {
       cancelled = true;
       activeTweens.forEach((tween) => tween.kill());
+      if (settleFallbackTimer !== null) {
+        window.clearTimeout(settleFallbackTimer);
+        settleFallbackTimer = null;
+      }
       clearRevealState();
       clearEnterDelays();
       clearAnimatedStyles();
@@ -682,6 +684,66 @@ function AnimatedSubnavGroup({ groupKey, items }: { groupKey: string; items: Sub
   );
 }
 
+function ViewDensityControl({
+  active,
+  columns,
+  label,
+  maxColumns,
+  minColumns,
+  onColumnsChange,
+  onSelect,
+}: {
+  active: boolean;
+  columns: number;
+  label: string;
+  maxColumns: number;
+  minColumns: number;
+  onColumnsChange: (columns: number) => void;
+  onSelect: () => void;
+}) {
+  const labelLower = label.toLowerCase();
+
+  return (
+    <span
+      className="view-density-control"
+      aria-label={`${label} columns: ${columns}`}
+      title={`${columns} columns`}
+    >
+      <button
+        className="view-density-control__label"
+        type="button"
+        data-nav-measure-target="true"
+        onClick={onSelect}
+      >
+        {label}
+      </button>
+      {active ? (
+        <span className="view-density-control__extras">
+          <span className="view-density-control__divider" aria-hidden="true" />
+          <button
+            className="view-density-control__step"
+            type="button"
+            disabled={columns >= maxColumns}
+            onClick={() => onColumnsChange(columns + 1)}
+            aria-label={`show more ${labelLower} columns, currently ${columns}`}
+          >
+            <span className="view-density-control__icon view-density-control__icon--plus" aria-hidden="true" />
+          </button>
+          <button
+            className="view-density-control__step"
+            type="button"
+            disabled={columns <= minColumns}
+            onClick={() => onColumnsChange(columns - 1)}
+            aria-label={`show fewer ${labelLower} columns, currently ${columns}`}
+          >
+            <span className="view-density-control__icon view-density-control__icon--minus" aria-hidden="true" />
+          </button>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function IndexNavControl({ count, label }: { count: number; label: string }) {
   const countLabel = String(count);
   const countStyle = {
@@ -707,7 +769,9 @@ function getSubnavGroups({
   itemCount,
   onObjectModeChange,
   galleryColumns,
+  masonryColumns,
   onGalleryColumnsChange,
+  onMasonryColumnsChange,
   onViewModeChange,
   objectMode,
   viewMode,
@@ -719,7 +783,9 @@ function getSubnavGroups({
   itemCount: number;
   onObjectModeChange: (mode: GalleryObjectMode) => void;
   galleryColumns: number;
+  masonryColumns: number;
   onGalleryColumnsChange: (columns: number) => void;
+  onMasonryColumnsChange: (columns: number) => void;
   onViewModeChange: (mode: ArchiveViewMode) => void;
   objectMode: GalleryObjectMode;
   viewMode: ArchiveViewMode;
@@ -771,46 +837,35 @@ function getSubnavGroups({
             key: "gallery-control",
             label: "Gallery",
             active: viewMode === "gallery",
-            className: "subnav-cell--gallery-control",
+            className: "subnav-cell--view-density",
             node: (
-              <span className="gallery-nav-control" aria-label={`Gallery columns: ${galleryColumns}`} title={`${galleryColumns} columns`}>
-                <button
-                  className="gallery-nav-control__label"
-                  type="button"
-                  data-nav-measure-target="true"
-                  onClick={() => onViewModeChange("gallery")}
-                >
-                  Gallery
-                </button>
-                <span className="gallery-nav-control__extras">
-                  <span className="gallery-nav-control__divider" aria-hidden="true" />
-                  <button
-                    className="gallery-nav-control__step"
-                    type="button"
-                    disabled={galleryColumns >= 8}
-                    onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
-                    aria-label={`show more gallery columns, currently ${galleryColumns}`}
-                  >
-                    <span className="gallery-nav-control__icon gallery-nav-control__icon--plus" aria-hidden="true" />
-                  </button>
-                  <button
-                    className="gallery-nav-control__step"
-                    type="button"
-                    disabled={galleryColumns <= 2}
-                    onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
-                    aria-label={`show fewer gallery columns, currently ${galleryColumns}`}
-                  >
-                    <span className="gallery-nav-control__icon gallery-nav-control__icon--minus" aria-hidden="true" />
-                  </button>
-                </span>
-              </span>
+              <ViewDensityControl
+                active={viewMode === "gallery"}
+                columns={galleryColumns}
+                label="Gallery"
+                maxColumns={8}
+                minColumns={2}
+                onColumnsChange={onGalleryColumnsChange}
+                onSelect={() => onViewModeChange("gallery")}
+              />
             ),
           },
           {
-            key: "masonry",
+            key: "masonry-control",
             label: "Masonry",
             active: viewMode === "masonry",
-            onClick: () => onViewModeChange("masonry"),
+            className: "subnav-cell--view-density",
+            node: (
+              <ViewDensityControl
+                active={viewMode === "masonry"}
+                columns={masonryColumns}
+                label="Masonry"
+                maxColumns={8}
+                minColumns={2}
+                onColumnsChange={onMasonryColumnsChange}
+                onSelect={() => onViewModeChange("masonry")}
+              />
+            ),
           },
           {
             key: "list",

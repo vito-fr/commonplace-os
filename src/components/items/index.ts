@@ -1,5 +1,7 @@
 export type { ArchiveObject } from "./ArchiveObject";
-export { CollectionCard } from "./CollectionCard";
+export { CardActionMenu, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
+export type { CardActionSurface } from "./CardActions";
+export { CollectionCard, NewCollectionCard } from "./CollectionCard";
 export type { CollectionCardModel, CollectionCardProps } from "./CollectionCard";
 export { ItemCard } from "./ItemCard";
 export type { ItemCardActionAnchor, ItemCardProps, ItemMediaPreview, RightsStatus } from "./ItemCard";

@@ -77,10 +77,13 @@ export function SpotlightDock({
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable);
 
-      if (!isTypingTarget && matchesShortcut(event, searchShortcut)) {
+      if ((!isTypingTarget || searchShortcut.modifier === "mod") && matchesShortcut(event, searchShortcut)) {
         event.preventDefault();
-        shouldFocusSearchRef.current = true;
-        setActiveMode("search");
+        setActiveMode((currentMode) => {
+          const nextMode: DockMode = currentMode === "search" ? null : "search";
+          shouldFocusSearchRef.current = nextMode === "search";
+          return nextMode;
+        });
         return;
       }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { ItemStatus, ItemType } from "../atoms";
 import { MasonryGrid } from "../items";
 import type { ArchiveObject, ItemCardProps } from "../items";
@@ -22,13 +22,21 @@ export type CollectionViewProps = {
     name: string;
     sourceCollectionId: string;
   }) => Promise<void>;
+  onCreateNoteInCollection?: (input: { collectionId: string; body: string }) => Promise<void>;
+  onDeleteItem?: (itemId: string, collectionId: string) => Promise<void> | void;
+  onImportFilesToCollection?: (input: { collectionId: string; files: File[] }) => Promise<void>;
   onOpenItem?: (itemId: string, collectionId: string) => void;
   onRemoveItemsFromCollection: (input: { collectionId: string; itemIds: string[] }) => Promise<void>;
+  onUpdateCollection?: (input: { collectionId: string; description: string | null; name: string }) => Promise<void>;
+  collectionUpdatePending?: boolean;
+  collectionUpdateError?: string | null;
 };
 
 type CollectionKindFilter = ItemType | "pdf" | "video" | "website" | "all";
 type CollectionStateFilter = ItemStatus | "all";
 type CollectionSort = "newest" | "oldest" | "title";
+
+const maxCollectionTitleLength = 50;
 
 const collectionKindOptions: CollectionKindFilter[] = [
   "all",
@@ -51,8 +59,14 @@ export function CollectionView({
   onAddItemsToCollection,
   onBack,
   onCreateCollectionFromItems,
+  onCreateNoteInCollection,
+  onDeleteItem,
+  onImportFilesToCollection,
   onOpenItem,
   onRemoveItemsFromCollection,
+  onUpdateCollection,
+  collectionUpdatePending = false,
+  collectionUpdateError = null,
 }: CollectionViewProps) {
   const [query, setQuery] = useState(() => getInitialCollectionQuery());
   const [kindFilter, setKindFilter] = useState<CollectionKindFilter>(() => getInitialKindFilter());
@@ -62,6 +76,10 @@ export function CollectionView({
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [selectionPending, setSelectionPending] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadPending, setUploadPending] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [notePending, setNotePending] = useState(false);
 
   const sourceOptions = useMemo(() => {
     const sources = new Set<string>();
@@ -188,6 +206,49 @@ export function CollectionView({
       }),
     );
   };
+  const importFiles = async (files: File[]) => {
+    if (!collection || files.length === 0 || uploadPending) {
+      return;
+    }
+
+    if (!onImportFilesToCollection) {
+      setUploadError("Live archive mode required.");
+      return;
+    }
+
+    setUploadPending(true);
+    setUploadError(null);
+    try {
+      await onImportFilesToCollection({ collectionId: collection.id, files });
+    } catch (importError: unknown) {
+      console.error(importError);
+      setUploadError("Unable to add files to this collection.");
+    } finally {
+      setUploadPending(false);
+    }
+  };
+  const createNote = async (body: string) => {
+    if (!collection || notePending) {
+      return;
+    }
+
+    if (!onCreateNoteInCollection) {
+      setNoteError("Live archive mode required.");
+      return;
+    }
+
+    setNotePending(true);
+    setNoteError(null);
+    try {
+      await onCreateNoteInCollection({ collectionId: collection.id, body });
+    } catch (noteCreateError: unknown) {
+      console.error(noteCreateError);
+      setNoteError("Unable to add note to this collection.");
+      throw noteCreateError;
+    } finally {
+      setNotePending(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -221,10 +282,20 @@ export function CollectionView({
       collectionId: collection.id,
       isSelected: selectedItemIds.includes(item.id),
       item,
+      onDeleteItem,
       onOpenItem,
       onSelectToggle: toggleSelection,
     }),
   }));
+  const uploadTile = (
+    <CollectionUploadTile
+      error={uploadError ?? noteError}
+      filePending={uploadPending}
+      notePending={notePending}
+      onCreateNote={createNote}
+      onImportFiles={importFiles}
+    />
+  );
 
   return (
     <article className="collection-view collection-workspace" aria-labelledby="collection-title">
@@ -232,60 +303,47 @@ export function CollectionView({
       <header className="collection-workspace__header">
         <CollectionWorkspaceCover collection={collection} />
         <div className="collection-workspace__intro">
-          <p className="proof-kicker">collection</p>
-          <h1 id="collection-title">{collection.name}</h1>
-          {collection.description ? <p className="collection-view__description">{collection.description}</p> : null}
-          <dl className="collection-workspace__meta">
-            <div>
-              <dt>items</dt>
-              <dd>{collection.pieceCount}</dd>
-            </div>
-            <div>
-              <dt>kind</dt>
-              <dd>{collection.kindSummary}</dd>
-            </div>
-            <div>
-              <dt>updated</dt>
-              <dd>{formatDate(collection.lastUpdatedAt)}</dd>
-            </div>
-          </dl>
+          <CollectionHeaderMeta collection={collection} />
+          <EditableCollectionIdentity
+            collection={collection}
+            error={collectionUpdateError}
+            onUpdateCollection={onUpdateCollection}
+            pending={collectionUpdatePending}
+          />
         </div>
       </header>
 
-      {collection.items.length === 0 ? (
-        <CollectionEmptyState onBack={onBack} />
-      ) : (
-        <>
-          <CollectionToolbar
-            kindFilter={kindFilter}
+      {collection.items.length > 0 ? (
+        <CollectionToolbar
+          kindFilter={kindFilter}
+          onClearFilters={clearFilters}
+          onKindFilterChange={setKindFilter}
+          onQueryChange={setQuery}
+          onSortChange={setSort}
+          onSourceFilterChange={setSourceFilter}
+          onStateFilterChange={setStateFilter}
+          query={query}
+          sort={sort}
+          sourceFilter={sourceFilter}
+          sourceOptions={sourceOptions}
+          stateFilter={stateFilter}
+        />
+      ) : null}
+      <MasonryGrid
+        ariaLabel={`${collection.name} items`}
+        className="collection-workspace__grid"
+        columns={4}
+        density="comfortable"
+        leadingTile={uploadTile}
+        objects={archiveObjects}
+        emptyState={
+          <CollectionFilteredEmptyState
+            hasActiveFilters={hasActiveFilters}
+            onBack={onBack}
             onClearFilters={clearFilters}
-            onKindFilterChange={setKindFilter}
-            onQueryChange={setQuery}
-            onSortChange={setSort}
-            onSourceFilterChange={setSourceFilter}
-            onStateFilterChange={setStateFilter}
-            query={query}
-            sort={sort}
-            sourceFilter={sourceFilter}
-            sourceOptions={sourceOptions}
-            stateFilter={stateFilter}
           />
-          <MasonryGrid
-            ariaLabel={`${collection.name} items`}
-            className="collection-workspace__grid"
-            columns={4}
-            density="comfortable"
-            objects={archiveObjects}
-            emptyState={
-              <CollectionFilteredEmptyState
-                hasActiveFilters={hasActiveFilters}
-                onBack={onBack}
-                onClearFilters={clearFilters}
-              />
-            }
-          />
-        </>
-      )}
+        }
+      />
 
       {selectedItemIds.length > 0 ? (
         <CollectionSelectionActionBar
@@ -307,9 +365,162 @@ export function CollectionView({
 function CollectionTopBar({ onBack }: { onBack: () => void }) {
   return (
     <div className="collection-view__topbar" aria-label="collection context">
-      <button className="text-button" type="button" onClick={onBack}>
-        Back to Gallery
+      <button className="collection-return-button" type="button" onClick={onBack} aria-label="Return to archive">
+        <ReturnArrowIcon />
+        <span className="collection-return-button__label">Return</span>
       </button>
+    </div>
+  );
+}
+
+function ReturnArrowIcon() {
+  return (
+    <svg className="collection-return-button__arrow" aria-hidden="true" viewBox="0 0 11 11" focusable="false">
+      <path d="M2.35 5.5 7.7 1.35v8.3Z" />
+    </svg>
+  );
+}
+
+function CollectionHeaderMeta({ collection }: { collection: CollectionDetail }) {
+  return (
+    <div className="collection-workspace__meta-row" aria-label="collection metadata">
+      <CollectionCountPill count={collection.pieceCount} kindSummary={collection.kindSummary} />
+      <span className="collection-workspace__date-pill">Created {formatDisplayDate(collection.createdAt)}</span>
+      <span className="collection-workspace__date-pill">Updated {formatDisplayDate(collection.lastUpdatedAt)}</span>
+    </div>
+  );
+}
+
+function CollectionCountPill({ count, kindSummary }: { count: number; kindSummary: string }) {
+  const countLabel = `${count} ${count === 1 ? "item" : "items"}`;
+  const summary = kindSummary.trim();
+
+  return (
+    <span className="collection-workspace__count-pill" aria-label={summary ? `${countLabel}: ${summary}` : countLabel}>
+      <span className="collection-workspace__count-label">{countLabel}</span>
+      {summary ? (
+        <span className="collection-workspace__count-extra" aria-hidden="true">
+          <span className="collection-workspace__count-divider" />
+          <span>{summary}</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function EditableCollectionIdentity({
+  collection,
+  error,
+  onUpdateCollection,
+  pending,
+}: {
+  collection: CollectionDetail;
+  error: string | null;
+  onUpdateCollection?: (input: { collectionId: string; description: string | null; name: string }) => Promise<void>;
+  pending: boolean;
+}) {
+  const [name, setName] = useState(collection.name);
+  const [description, setDescription] = useState(collection.description ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const initialNameRef = useRef(collection.name);
+  const initialDescriptionRef = useRef(collection.description ?? "");
+  const trimmedName = name.trim();
+  const normalizedDescription = description.trim();
+  const isDirty =
+    trimmedName !== initialNameRef.current ||
+    normalizedDescription !== initialDescriptionRef.current;
+  const canSave = trimmedName.length > 0 && isDirty && !pending;
+
+  useEffect(() => {
+    initialNameRef.current = collection.name;
+    initialDescriptionRef.current = collection.description ?? "";
+    setName(collection.name);
+    setDescription(collection.description ?? "");
+    setLocalError(null);
+  }, [collection.description, collection.id, collection.name]);
+
+  const save = async () => {
+    if (!canSave) {
+      return;
+    }
+
+    if (!onUpdateCollection) {
+      setLocalError("Live archive mode required.");
+      return;
+    }
+
+    setLocalError(null);
+    await onUpdateCollection({
+      collectionId: collection.id,
+      name: trimmedName,
+      description: normalizedDescription || null,
+    });
+    initialNameRef.current = trimmedName;
+    initialDescriptionRef.current = normalizedDescription;
+  };
+  const cancel = () => {
+    setName(initialNameRef.current);
+    setDescription(initialDescriptionRef.current);
+    setLocalError(null);
+  };
+  const onTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void save();
+      event.currentTarget.blur();
+    }
+  };
+  const onDescriptionKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      void save();
+    }
+  };
+
+  return (
+    <div className="collection-title-editor" data-dirty={isDirty ? "true" : "false"}>
+      <h1 id="collection-title">
+        <input
+          aria-label="collection title"
+          disabled={pending}
+          maxLength={maxCollectionTitleLength}
+          onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
+          onKeyDown={onTitleKeyDown}
+          value={name}
+        />
+      </h1>
+      <textarea
+        aria-label="collection description"
+        disabled={pending}
+        onChange={(event) => setDescription(event.target.value)}
+        onKeyDown={onDescriptionKeyDown}
+        placeholder="Add description"
+        rows={description.trim().length > 88 ? 3 : 1}
+        value={description}
+      />
+      <div className="collection-title-editor__controls" aria-label="collection title editing controls">
+        <button disabled={!canSave} type="button" onClick={() => void save()}>
+          {pending ? "Saving" : "Save"}
+        </button>
+        <button disabled={pending || !isDirty} type="button" onClick={cancel}>
+          Cancel
+        </button>
+      </div>
+      {localError || error ? <p className="collection-title-editor__error">{localError ?? error}</p> : null}
     </div>
   );
 }
@@ -327,7 +538,145 @@ function CollectionWorkspaceCover({ collection }: { collection: CollectionDetail
       ) : (
         renderCoverTiles(previewItems)
       )}
-      <span className="collection-card__badge">workspace</span>
+    </div>
+  );
+}
+
+function CollectionUploadTile({
+  error,
+  filePending,
+  notePending,
+  onCreateNote,
+  onImportFiles,
+}: {
+  error: string | null;
+  filePending: boolean;
+  notePending: boolean;
+  onCreateNote: (body: string) => Promise<void>;
+  onImportFiles: (files: File[]) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isFileDragging, setIsFileDragging] = useState(false);
+  const [mode, setMode] = useState<"choice" | "note">("choice");
+  const [noteBody, setNoteBody] = useState("");
+  const pending = filePending || notePending;
+  const canSaveNote = noteBody.trim().length > 0 && !pending;
+
+  const importFileList = (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []);
+    if (files.length > 0) {
+      onImportFiles(files);
+    }
+  };
+  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
+    importFileList(event.target.files);
+    event.target.value = "";
+  };
+  const hasDraggedFiles = (event: DragEvent<HTMLElement>) => Array.from(event.dataTransfer.types).includes("Files");
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!pending) {
+      setIsFileDragging(true);
+    }
+  };
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasDraggedFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsFileDragging(false);
+    if (!pending) {
+      importFileList(event.dataTransfer.files);
+    }
+  };
+  const submitNote = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSaveNote) {
+      return;
+    }
+
+    await onCreateNote(noteBody.trim());
+    setNoteBody("");
+    setMode("choice");
+  };
+  const onNoteKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape") {
+      setMode("choice");
+      setNoteBody("");
+    }
+  };
+
+  return (
+    <div
+      id="add-to-collection"
+      className="collection-upload-tile"
+      data-dragging={isFileDragging ? "true" : "false"}
+      data-mode={mode}
+      onDragEnter={onDragOver}
+      onDragOver={onDragOver}
+      onDragLeave={(event) => {
+        const relatedTarget = event.relatedTarget;
+        if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+          setIsFileDragging(false);
+        }
+      }}
+      onDrop={onDrop}
+    >
+      <div className="collection-upload-tile__surface">
+        <span className="collection-upload-tile__icon" aria-hidden="true">{isFileDragging ? "↓" : "+"}</span>
+        {mode === "note" ? (
+          <form className="collection-upload-tile__note-form" onSubmit={submitNote}>
+            <textarea
+              aria-label="new note for this collection"
+              autoFocus
+              disabled={pending}
+              onChange={(event) => setNoteBody(event.target.value)}
+              onKeyDown={onNoteKeyDown}
+              placeholder="Write a note for this collection"
+              value={noteBody}
+            />
+            <div className="collection-upload-tile__actions">
+              <button type="button" disabled={pending} onClick={() => {
+                setMode("choice");
+                setNoteBody("");
+              }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={!canSaveNote}>
+                {notePending ? "Saving" : "Save note"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <strong>{isFileDragging ? "Release into this set" : "Add to the collection"}</strong>
+            <small>{isFileDragging ? "Files attach to this collection" : "Import files or write a note in place"}</small>
+            <div className="collection-upload-tile__actions">
+              <button disabled={pending} type="button" onClick={() => fileInputRef.current?.click()}>
+                Files
+              </button>
+              <button disabled={pending} type="button" onClick={() => setMode("note")}>
+                Note
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <input
+        ref={fileInputRef}
+        aria-label="upload files to this collection"
+        hidden
+        multiple
+        accept="image/*,application/pdf"
+        type="file"
+        onChange={onChange}
+      />
+      {error ? <span className="collection-upload-tile__error">{error}</span> : null}
     </div>
   );
 }
@@ -362,39 +711,42 @@ function CollectionToolbar({
   return (
     <section className="collection-workspace__toolbar" aria-label="collection filters">
       <input
+        className="collection-workspace__search"
         aria-label="search within this collection"
         onChange={(event) => onQueryChange(event.target.value)}
         placeholder="Search this collection"
         type="search"
         value={query}
       />
-      <CollectionSelect
-        label="Kind"
-        onChange={(value) => onKindFilterChange(value as CollectionKindFilter)}
-        options={collectionKindOptions}
-        value={kindFilter}
-      />
-      <CollectionSelect
-        label="State"
-        onChange={(value) => onStateFilterChange(value as CollectionStateFilter)}
-        options={collectionStateOptions}
-        value={stateFilter}
-      />
-      <CollectionSelect
-        label="Source"
-        onChange={onSourceFilterChange}
-        options={sourceOptions}
-        value={sourceFilter}
-      />
-      <CollectionSelect
-        label="Sort"
-        onChange={(value) => onSortChange(value as CollectionSort)}
-        options={collectionSortOptions}
-        value={sort}
-      />
-      <button className="collection-workspace__tool-cell" type="button" onClick={onClearFilters}>
-        Clear filters
-      </button>
+      <div className="collection-workspace__tool-group">
+        <CollectionSelect
+          label="Kind"
+          onChange={(value) => onKindFilterChange(value as CollectionKindFilter)}
+          options={collectionKindOptions}
+          value={kindFilter}
+        />
+        <CollectionSelect
+          label="State"
+          onChange={(value) => onStateFilterChange(value as CollectionStateFilter)}
+          options={collectionStateOptions}
+          value={stateFilter}
+        />
+        <CollectionSelect
+          label="Source"
+          onChange={onSourceFilterChange}
+          options={sourceOptions}
+          value={sourceFilter}
+        />
+        <CollectionSelect
+          label="Sort"
+          onChange={(value) => onSortChange(value as CollectionSort)}
+          options={collectionSortOptions}
+          value={sort}
+        />
+        <button className="collection-workspace__tool-cell" type="button" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      </div>
     </section>
   );
 }
@@ -525,7 +877,8 @@ function CollectionSelectionActionBar({
           <input
             aria-label="new collection name for selected collection items"
             disabled={pending}
-            onChange={(event) => setName(event.target.value)}
+            maxLength={maxCollectionTitleLength}
+            onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
             placeholder="New collection"
             value={name}
           />
@@ -592,12 +945,14 @@ function toCollectionItemCard({
   collectionId,
   isSelected,
   item,
+  onDeleteItem,
   onOpenItem,
   onSelectToggle,
 }: {
   collectionId: string;
   isSelected: boolean;
   item: CollectionDetailItem;
+  onDeleteItem?: (itemId: string, collectionId: string) => Promise<void> | void;
   onOpenItem?: (itemId: string, collectionId: string) => void;
   onSelectToggle: (itemId: string) => void;
 }): ItemCardProps {
@@ -610,6 +965,9 @@ function toCollectionItemCard({
     createdAt: item.createdAt,
     title: item.title,
     imageUrl: item.imageUrl,
+    imageWidth: item.imageWidth,
+    imageHeight: item.imageHeight,
+    aspectRatio: item.aspectRatio,
     captionText: item.captionText,
     noteParagraph: item.noteParagraph,
     url: item.url,
@@ -618,8 +976,13 @@ function toCollectionItemCard({
     ogTitle: item.ogTitle,
     assetFileUrl: item.assetFileUrl,
     assetMimeType: item.assetMimeType,
+    previewUrl: item.previewUrl,
+    thumbnailUrl: item.thumbnailUrl,
+    videoPosterUrl: item.videoPosterUrl,
+    mediaPreview: item.mediaPreview,
     isSelected,
     detailHref: buildCollectionItemHref(item.id, collectionId),
+    onDelete: onDeleteItem ? (itemId) => onDeleteItem(itemId, collectionId) : undefined,
     onNavigate: onOpenItem ? (itemId) => onOpenItem(itemId, collectionId) : undefined,
     onSelectToggle,
   };
@@ -725,8 +1088,14 @@ function buildCollectionPreviewItems(items: CollectionDetailItem[]): CollectionC
       title: item.title ?? item.ogTitle,
       kind: item.type,
       format: item.linkContentType,
+      thumbnailUrl: item.thumbnailUrl ?? item.imageUrl ?? item.ogImageUrl,
+      previewUrl: item.previewUrl,
       imageUrl: item.imageUrl,
       ogImageUrl: item.ogImageUrl,
+      videoPosterUrl: item.videoPosterUrl,
+      width: item.imageWidth,
+      height: item.imageHeight,
+      aspectRatio: item.aspectRatio,
       textPreview: item.captionText ?? item.noteParagraph ?? item.summary ?? item.url,
       sourceUrl: item.url,
       source: item.source.kind,
@@ -757,13 +1126,11 @@ function renderCoverTiles(items: CollectionCardPreviewItem[]) {
 
   return slots.map((item, index) => {
     const imageUrl = item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl || null;
-    const label = getPreviewKindLabel(item);
 
     if (imageUrl) {
       return (
         <span className="collection-card__preview-tile collection-card__preview-tile--visual" key={`${item.id}:${index}`}>
           <img src={imageUrl} alt="" />
-          <small>{label}</small>
         </span>
       );
     }
@@ -778,32 +1145,15 @@ function renderCoverTiles(items: CollectionCardPreviewItem[]) {
         data-kind={item.format || item.kind}
         key={`${item.id}:${index}`}
       >
-        <strong>{label}</strong>
-        <small>{getPreviewText(item)}</small>
+        {getPreviewText(item) ? <small>{getPreviewText(item)}</small> : null}
       </span>
     );
   });
 }
 
-function getPreviewKindLabel(item: CollectionCardPreviewItem) {
-  if (item.format === "pdf") {
-    return "PDF";
-  }
-
-  if (item.format === "video") {
-    return "video";
-  }
-
-  if (item.format === "website") {
-    return "web";
-  }
-
-  return item.kind === "empty" ? "" : item.kind;
-}
-
 function getPreviewText(item: CollectionCardPreviewItem) {
-  const text = item.title || item.textPreview || getDomain(item.sourceUrl) || item.kind;
-  return text.trim() || item.kind;
+  const text = item.title || item.textPreview || getDomain(item.sourceUrl) || "";
+  return text.trim();
 }
 
 function getCoverLabel(name: string) {
@@ -881,6 +1231,11 @@ function buildCollectionFilterUrl(
   },
 ) {
   const searchParams = new URLSearchParams();
+  const returnTo = new URLSearchParams(window.location.search).get("return_to")?.trim();
+
+  if (returnTo) {
+    searchParams.set("return_to", returnTo);
+  }
 
   if (query.trim()) {
     searchParams.set("q", query.trim());
@@ -906,8 +1261,17 @@ function buildCollectionFilterUrl(
   return `/collections/${encodeURIComponent(collectionId)}${search ? `?${search}` : ""}`;
 }
 
-function formatDate(value: string) {
-  return value.slice(0, 10);
+function formatDisplayDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "unknown";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(timestamp));
 }
 
 function buildCollectionItemHref(itemId: string, collectionId: string) {

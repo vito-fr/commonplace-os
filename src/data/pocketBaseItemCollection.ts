@@ -1,4 +1,5 @@
 import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
+import type { ItemMediaPreview } from "../components/items";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -31,6 +32,7 @@ export type CollectionDetailItem = {
   imageUrl: string | null;
   imageWidth: number | null;
   imageHeight: number | null;
+  aspectRatio?: number | null;
   captionText: string | null;
   noteParagraph: string | null;
   url: string | null;
@@ -39,6 +41,10 @@ export type CollectionDetailItem = {
   ogTitle: string | null;
   assetFileUrl: string | null;
   assetMimeType: string | null;
+  previewUrl?: string | null;
+  thumbnailUrl?: string | null;
+  videoPosterUrl?: string | null;
+  mediaPreview?: ItemMediaPreview | null;
 };
 
 export type CollectionDetail = {
@@ -59,9 +65,13 @@ export type CollectionPreviewItem = {
   kind: string;
   format?: string | null;
   thumbnailUrl?: string | null;
+  previewUrl?: string | null;
   imageUrl?: string | null;
   ogImageUrl?: string | null;
   videoPosterUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+  aspectRatio?: number | null;
   textPreview?: string | null;
   sourceUrl?: string | null;
   source?: string | null;
@@ -98,6 +108,13 @@ export type ItemCollectionAttach = {
 export type ItemCollectionCreateAndAttach = {
   workspaceId: string;
   itemId: string;
+  name: string;
+  description?: string;
+  actor?: string;
+};
+
+export type CollectionCreate = {
+  workspaceId: string;
   name: string;
   description?: string;
   actor?: string;
@@ -147,6 +164,10 @@ export type ItemCollectionCreateAndAttachResult = ItemCollectionAttachResult & {
   };
 };
 
+export type CollectionCreateResult = {
+  collection: CollectionIndexItem;
+};
+
 export type ItemCollectionRemoveResult = {
   membership: {
     collectionId: string;
@@ -177,6 +198,7 @@ export type ItemCollectionClient = {
   listCollectionIndex(query: CollectionIndexQuery): Promise<CollectionIndexItem[]>;
   listCollectionOptions(query: CollectionOptionsQuery): Promise<CollectionOption[]>;
   attachCollection(change: ItemCollectionAttach): Promise<ItemCollectionAttachResult>;
+  createCollection(change: CollectionCreate): Promise<CollectionCreateResult>;
   createCollectionAndAttach(change: ItemCollectionCreateAndAttach): Promise<ItemCollectionCreateAndAttachResult>;
   removeCollection(change: ItemCollectionRemove): Promise<ItemCollectionRemoveResult>;
   updateCollection(change: CollectionUpdate): Promise<CollectionUpdateResult>;
@@ -224,7 +246,8 @@ export function createPocketBaseItemCollectionClient({
       });
 
       if (!response.ok) {
-        throw new Error(`PocketBase collection detail read failed with HTTP ${response.status}`);
+        const message = await readPocketBaseErrorMessage(response);
+        throw new Error(formatPocketBaseHttpError("PocketBase collection detail read failed", response.status, message));
       }
 
       const payload = (await response.json()) as CollectionDetailResponse;
@@ -234,11 +257,7 @@ export function createPocketBaseItemCollectionClient({
 
       return {
         ...payload.collection,
-        items: payload.collection.items.map((item) => ({
-          ...item,
-          imageUrl: resolvePocketBaseFileUrl(baseUrl, item.imageUrl),
-          assetFileUrl: resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl),
-        })),
+        items: payload.collection.items.map((item) => resolveCollectionDetailItem(baseUrl, item)),
       };
     },
 
@@ -258,12 +277,26 @@ export function createPocketBaseItemCollectionClient({
 
       return payload.collections.map((collection) => ({
         ...collection,
-        previewItems: (collection.previewItems ?? []).map((item) => ({
-          ...item,
-          thumbnailUrl: resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl),
-          imageUrl: resolvePocketBaseFileUrl(baseUrl, item.imageUrl),
-          videoPosterUrl: resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl),
-        })),
+        previewItems: (collection.previewItems ?? []).map((item) => {
+          const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
+          const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? item.ogImageUrl ?? null;
+          const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? item.ogImageUrl ?? null;
+          const previewUrl =
+            resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
+            thumbnailUrl ??
+            imageUrl ??
+            videoPosterUrl ??
+            item.ogImageUrl ??
+            null;
+
+          return {
+            ...item,
+            imageUrl,
+            previewUrl,
+            thumbnailUrl,
+            videoPosterUrl,
+          };
+        }),
       }));
     },
 
@@ -334,6 +367,33 @@ export function createPocketBaseItemCollectionClient({
       const payload = (await response.json()) as ItemCollectionCreateAndAttachResult;
       if (!payload.collection || !payload.membership || !payload.event) {
         throw new Error("PocketBase collection create response must include { collection, membership, event }");
+      }
+
+      return payload;
+    },
+
+    async createCollection(change) {
+      const response = await fetcher(buildCollectionCreateUrl(baseUrl, createEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          name: change.name,
+          description: change.description,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`PocketBase collection create failed with HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as CollectionCreateResult;
+      if (!payload.collection) {
+        throw new Error("PocketBase collection create response must include { collection }");
       }
 
       return payload;
@@ -448,4 +508,55 @@ function buildCollectionUpdateUrl(baseUrl: string, endpointPath: string) {
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+}
+
+async function readPocketBaseErrorMessage(response: Response) {
+  try {
+    const payload = (await response.clone().json()) as { message?: unknown };
+    return typeof payload.message === "string" ? payload.message.trim() : "";
+  } catch {
+    try {
+      return (await response.text()).trim();
+    } catch {
+      return "";
+    }
+  }
+}
+
+function formatPocketBaseHttpError(prefix: string, status: number, message: string) {
+  return message ? `${prefix} with HTTP ${status}: ${message}` : `${prefix} with HTTP ${status}`;
+}
+
+function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem): CollectionDetailItem {
+  const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
+  const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl);
+  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? item.ogImageUrl ?? null;
+  const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? item.ogImageUrl ?? null;
+  const previewUrl =
+    resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
+    imageUrl ??
+    thumbnailUrl ??
+    videoPosterUrl ??
+    item.ogImageUrl ??
+    assetFileUrl ??
+    null;
+
+  return {
+    ...item,
+    assetFileUrl,
+    imageUrl,
+    previewUrl,
+    thumbnailUrl,
+    videoPosterUrl,
+    mediaPreview: {
+      ...item.mediaPreview,
+      assetFileUrl,
+      assetMimeType: item.mediaPreview?.assetMimeType ?? item.assetMimeType,
+      imageUrl,
+      ogImageUrl: item.mediaPreview?.ogImageUrl ?? item.ogImageUrl,
+      previewUrl,
+      thumbnailUrl,
+      videoPosterUrl,
+    },
+  };
 }

@@ -3,4 +3,5 @@ import type { ItemCardProps } from "./ItemCard";
 
 export type ArchiveObject =
   | { objectType: "item"; item: ItemCardProps }
-  | { objectType: "collection"; collection: CollectionCardModel };
+  | { objectType: "collection"; collection: CollectionCardModel }
+  | { objectType: "collection-create"; onCreateCollection: () => void; disabled?: boolean };
