@@ -421,6 +421,7 @@ function EditableCollectionIdentity({
 }) {
   const [name, setName] = useState(collection.name);
   const [description, setDescription] = useState(collection.description ?? "");
+  const [isEditing, setIsEditing] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const initialNameRef = useRef(collection.name);
   const initialDescriptionRef = useRef(collection.description ?? "");
@@ -436,6 +437,7 @@ function EditableCollectionIdentity({
     initialDescriptionRef.current = collection.description ?? "";
     setName(collection.name);
     setDescription(collection.description ?? "");
+    setIsEditing(false);
     setLocalError(null);
   }, [collection.description, collection.id, collection.name]);
 
@@ -457,10 +459,12 @@ function EditableCollectionIdentity({
     });
     initialNameRef.current = trimmedName;
     initialDescriptionRef.current = normalizedDescription;
+    setIsEditing(false);
   };
   const cancel = () => {
     setName(initialNameRef.current);
     setDescription(initialDescriptionRef.current);
+    setIsEditing(false);
     setLocalError(null);
   };
   const onTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -492,34 +496,55 @@ function EditableCollectionIdentity({
   };
 
   return (
-    <div className="collection-title-editor" data-dirty={isDirty ? "true" : "false"}>
-      <h1 id="collection-title">
-        <input
-          aria-label="collection title"
-          disabled={pending}
-          maxLength={maxCollectionTitleLength}
-          onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
-          onKeyDown={onTitleKeyDown}
-          value={name}
-        />
-      </h1>
-      <textarea
-        aria-label="collection description"
-        disabled={pending}
-        onChange={(event) => setDescription(event.target.value)}
-        onKeyDown={onDescriptionKeyDown}
-        placeholder="Add description"
-        rows={description.trim().length > 88 ? 3 : 1}
-        value={description}
-      />
-      <div className="collection-title-editor__controls" aria-label="collection title editing controls">
-        <button disabled={!canSave} type="button" onClick={() => void save()}>
-          {pending ? "Saving" : "Save"}
-        </button>
-        <button disabled={pending || !isDirty} type="button" onClick={cancel}>
-          Cancel
-        </button>
+    <div className="collection-title-editor" data-dirty={isDirty ? "true" : "false"} data-editing={isEditing ? "true" : "false"}>
+      <div className="collection-title-editor__header">
+        <h1 id="collection-title" title={collection.name}>
+          {isEditing ? (
+            <input
+              aria-label="collection title"
+              autoFocus
+              disabled={pending}
+              maxLength={maxCollectionTitleLength}
+              onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
+              onKeyDown={onTitleKeyDown}
+              value={name}
+            />
+          ) : (
+            <span>{collection.name}</span>
+          )}
+        </h1>
+        <div className="collection-title-editor__controls" aria-label="collection title editing controls">
+          {isEditing ? (
+            <>
+              <button disabled={!canSave} type="button" onClick={() => void save()}>
+                {pending ? "Saving" : "Save"}
+              </button>
+              <button disabled={pending || !isDirty} type="button" onClick={cancel}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button disabled={pending || !onUpdateCollection} type="button" onClick={() => setIsEditing(true)}>
+              Edit
+            </button>
+          )}
+        </div>
       </div>
+      {isEditing ? (
+        <textarea
+          aria-label="collection description"
+          disabled={pending}
+          onChange={(event) => setDescription(event.target.value)}
+          onKeyDown={onDescriptionKeyDown}
+          placeholder="Add a description..."
+          rows={description.trim().length > 88 ? 3 : 1}
+          value={description}
+        />
+      ) : (
+        <p className="collection-title-editor__description">
+          {collection.description?.trim() || "Add a description..."}
+        </p>
+      )}
       {localError || error ? <p className="collection-title-editor__error">{localError ?? error}</p> : null}
     </div>
   );
@@ -1130,7 +1155,14 @@ function renderCoverTiles(items: CollectionCardPreviewItem[]) {
     if (imageUrl) {
       return (
         <span className="collection-card__preview-tile collection-card__preview-tile--visual" key={`${item.id}:${index}`}>
-          <img src={imageUrl} alt="" />
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            width={item.width ?? undefined}
+            height={item.height ?? undefined}
+          />
         </span>
       );
     }

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
-import { CardActionMenu, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
+import { CardActionMenu, CardGlyph, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
 
 export type ItemCardActionAnchor = {
   bottom: number;
@@ -364,12 +364,33 @@ export function ItemCard({
     <article
       className={resolvedCardClassName}
       data-type={type}
-      onMouseLeave={() => actionMenu.close()}
+      onPointerLeave={(event) => {
+        actionMenu.close();
+        if (event.pointerType === "mouse") {
+          const activeElement = document.activeElement;
+          if (activeElement instanceof HTMLElement && event.currentTarget.contains(activeElement)) {
+            activeElement.blur();
+          }
+        }
+      }}
     >
       <a className="item-card__link" href={itemHref} aria-label={ariaLabel} onClick={navigate}>
         {hasPendingAIAnnotations ? <span className="item-card__pending-ai" aria-hidden="true" /> : null}
         <div className="item-card__content" data-ratio={masonryImageRatioState} style={contentStyle}>
-          {renderContent(type, title, resolvedImageUrl, captionText, noteParagraph, url, linkContentType, resolvedAssetFileUrl, resolvedOgImageUrl, ogTitle)}
+          {renderContent(
+            type,
+            title,
+            resolvedImageUrl,
+            captionText,
+            noteParagraph,
+            url,
+            linkContentType,
+            resolvedAssetFileUrl,
+            resolvedOgImageUrl,
+            ogTitle,
+            mediaPreview?.width ?? imageWidth,
+            mediaPreview?.height ?? imageHeight,
+          )}
           <span className="item-card__frame-tags" aria-hidden="true">
             {frameTags.map((item) => (
               <span
@@ -421,7 +442,7 @@ export function ItemCard({
             disabled={!downloadUrl}
             onClick={downloadItem}
           >
-            <span className="item-card__menu-icon" aria-hidden="true" />
+            <CardGlyph name="download" className="item-card__menu-icon" />
             <span className="item-card__menu-label">Download</span>
           </button>
           <button
@@ -431,7 +452,7 @@ export function ItemCard({
             onClick={openShareIsland}
             aria-expanded={isShareIslandOpen}
           >
-            <span className="item-card__menu-icon" aria-hidden="true" />
+            <CardGlyph name="share" className="item-card__menu-icon" />
             <span className="item-card__menu-label">Share</span>
           </button>
           <button
@@ -442,7 +463,7 @@ export function ItemCard({
             onClick={deleteItem}
             data-confirming={isDeleteConfirming ? "true" : "false"}
           >
-            <span className="item-card__menu-icon" aria-hidden="true" />
+            <CardGlyph name="delete" className="item-card__menu-icon" />
             <span className="item-card__menu-label">
               {isDeleting ? "Deleting" : isDeleteConfirming ? "Confirm" : "Delete"}
             </span>
@@ -487,7 +508,7 @@ export function ItemCard({
           data-active={isCollectionPickerOpen ? "true" : "false"}
           disabled={!onAddToCollection}
         >
-          <span className="item-card__plus-icon" aria-hidden="true" />
+          <CardGlyph name="add" className="item-card__plus-icon" />
         </button>
       </span>
     </article>
@@ -626,6 +647,8 @@ function renderContent(
   assetFileUrl: string | null,
   ogImageUrl: string | null,
   ogTitle: string | null,
+  width: number | null | undefined,
+  height: number | null | undefined,
 ) {
   if (type === "image") {
     return imageUrl ? (
@@ -635,6 +658,8 @@ function renderContent(
         alt={title ?? ""}
         loading="lazy"
         decoding="async"
+        width={width ?? undefined}
+        height={height ?? undefined}
       />
     ) : (
       <Placeholder label="image pending" />

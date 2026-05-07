@@ -164,6 +164,7 @@ export function PillNav(props: PillNavProps) {
     onMasonryColumnsChange,
     openFilter,
   });
+  const settingsPresence = useDeferredPresence(activePanel === "settings", 260);
 
   const nav = (
     <header className="pill-nav" aria-label="archive controls">
@@ -188,10 +189,11 @@ export function PillNav(props: PillNavProps) {
         </div>
       ) : null}
 
-      {activePanel === "settings" ? (
+      {settingsPresence.shouldRender ? (
         <SettingsIsland
           galleryColumns={galleryColumns}
           isPocketBaseMode={isPocketBaseMode}
+          presenceState={settingsPresence.state}
           readError={readError}
           shortcutBindings={shortcutBindings}
           shortcutError={shortcutError}
@@ -229,6 +231,25 @@ export function PillNav(props: PillNavProps) {
   }
 
   return createPortal(nav, document.body);
+}
+
+function useDeferredPresence(visible: boolean, exitMs: number) {
+  const [shouldRender, setShouldRender] = useState(visible);
+  const [state, setState] = useState<"enter" | "exit">(visible ? "enter" : "exit");
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      setState("enter");
+      return undefined;
+    }
+
+    setState("exit");
+    const timeout = window.setTimeout(() => setShouldRender(false), exitMs);
+    return () => window.clearTimeout(timeout);
+  }, [exitMs, visible]);
+
+  return { shouldRender, state };
 }
 
 function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature: string) {
@@ -1229,6 +1250,7 @@ function SettingsIsland({
   onSiteThemeChange,
   onShortcutChange,
   onShortcutReset,
+  presenceState = "enter",
   readError,
   shortcutBindings,
   shortcutError,
@@ -1240,6 +1262,7 @@ function SettingsIsland({
   onSiteThemeChange: (theme: SiteTheme) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
+  presenceState?: "enter" | "exit";
   readError: string | null;
   shortcutBindings: ShortcutBindings;
   shortcutError: string | null;
@@ -1267,7 +1290,7 @@ function SettingsIsland({
   };
 
   return (
-    <section className="settings-island" aria-label="archive settings">
+    <section className="settings-island" data-state={presenceState} aria-label="archive settings">
       <div className="settings-island__tabs" aria-label="settings sections">
         {SETTINGS_SECTIONS.map((section) => (
           <button

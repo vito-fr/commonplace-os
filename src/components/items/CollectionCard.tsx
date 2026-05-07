@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from "react";
-import { CardActionMenu, useCardActionMenu } from "./CardActions";
+import { CardActionMenu, CardGlyph, useCardActionMenu } from "./CardActions";
 
 export type CollectionCardModel = {
   id: string;
@@ -95,7 +95,18 @@ export function CollectionCard({ collection }: CollectionCardProps) {
   };
 
   return (
-    <article className="collection-card" onMouseLeave={() => actionMenu.close()}>
+    <article
+      className="collection-card"
+      onPointerLeave={(event) => {
+        actionMenu.close();
+        if (event.pointerType === "mouse") {
+          const activeElement = document.activeElement;
+          if (activeElement instanceof HTMLElement && event.currentTarget.contains(activeElement)) {
+            activeElement.blur();
+          }
+        }
+      }}
+    >
       <a className="collection-card__link" href={href} onClick={openCollection} aria-label={`Open ${collection.name}`}>
         <div className="collection-card__cover" aria-hidden="true" data-empty={collection.previewItems.length === 0 ? "true" : "false"}>
           {renderCoverTiles(collection)}
@@ -115,6 +126,14 @@ export function CollectionCard({ collection }: CollectionCardProps) {
           }
         }}
       >
+        <a
+          className="item-card__action-cell item-card__action-cell--add collection-card__action-cell collection-card__action-cell--add"
+          href={addItemsHref}
+          onClick={(event) => openCollectionTarget(event, "add-to-collection")}
+          aria-label={`Add items to ${collection.name}`}
+        >
+          <CardGlyph name="add" className="item-card__plus-icon" />
+        </a>
         <CardActionMenu
           ariaLabel={`More actions for ${collection.name}`}
           buttonClassName="collection-card__action-cell collection-card__action-cell--more"
@@ -125,27 +144,41 @@ export function CollectionCard({ collection }: CollectionCardProps) {
           menuRef={actionMenu.menuRef}
           onToggle={actionMenu.toggle}
         >
-          <a className="item-card__more-menu-item collection-card__more-menu-link" href={href} onClick={openCollection} role="menuitem">
-            Open collection
+          <a
+            className="item-card__menu-action item-card__menu-action--open collection-card__more-menu-link"
+            href={href}
+            onClick={openCollection}
+            role="menuitem"
+          >
+            <CardGlyph name="open" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">Open</span>
           </a>
           <a
-            className="item-card__more-menu-item collection-card__more-menu-link"
+            className="item-card__menu-action item-card__menu-action--add collection-card__more-menu-link"
             href={addItemsHref}
             onClick={(event) => openCollectionTarget(event, "add-to-collection")}
             role="menuitem"
           >
-            Add files or note
+            <CardGlyph name="add" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">Add</span>
           </a>
           <a
-            className="item-card__more-menu-item collection-card__more-menu-link"
+            className="item-card__menu-action item-card__menu-action--edit collection-card__more-menu-link"
             href={editHref}
             onClick={(event) => openCollectionTarget(event, "collection-title")}
             role="menuitem"
           >
-            Rename / describe
+            <CardGlyph name="edit" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">Edit</span>
           </a>
-          <button className="item-card__more-menu-item" type="button" role="menuitem" onClick={copyCollectionLink}>
-            {copied ? "Copied" : "Copy collection link"}
+          <button
+            className="item-card__menu-action item-card__menu-action--copy"
+            type="button"
+            role="menuitem"
+            onClick={copyCollectionLink}
+          >
+            <CardGlyph name="copy" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">{copied ? "Copied" : "Copy"}</span>
           </button>
         </CardActionMenu>
       </div>
@@ -196,7 +229,14 @@ function renderCoverTiles(collection: CollectionCardModel) {
     if (imageUrl) {
       return (
         <span className="collection-card__preview-tile collection-card__preview-tile--visual" key={`${item.id}:${index}`}>
-          <img src={imageUrl} alt="" />
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            width={item.width ?? undefined}
+            height={item.height ?? undefined}
+          />
         </span>
       );
     }

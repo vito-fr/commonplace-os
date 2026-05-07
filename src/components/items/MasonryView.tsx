@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import type { CollectionCardModel } from "./CollectionCard";
 import { ItemCard, type ItemCardProps } from "./ItemCard";
+import { useGridFlipAnimation } from "./useGridFlip";
 
 export type MasonryViewProps = {
   objects: ArchiveObject[];
@@ -59,10 +60,14 @@ export function MasonryView({
   );
   const viewClassName = ["masonry-view", className].filter(Boolean).join(" ");
   const viewStyle: MasonryViewStyle = { "--masonry-columns": columnCount };
+  const viewRef = useRef<HTMLElement | null>(null);
+  const flipSignature = `${columnCount}::${layoutSignature}`;
+
+  useGridFlipAnimation(viewRef, flipSignature);
 
   if (loading) {
     return (
-      <section className={viewClassName} style={viewStyle} aria-label={ariaLabel} aria-busy="true">
+      <section ref={viewRef} className={viewClassName} style={viewStyle} aria-label={ariaLabel} aria-busy="true">
         {buildPlaceholderColumns(columnCount).map((column, columnIndex) => (
           <div className="masonry-view__column" key={`placeholder-column-${columnIndex}`}>
             {column.map((id, itemIndex) => (
@@ -83,7 +88,7 @@ export function MasonryView({
   }
 
   return (
-    <section className={viewClassName} style={viewStyle} aria-label={ariaLabel}>
+    <section ref={viewRef} className={viewClassName} style={viewStyle} aria-label={ariaLabel}>
       {columns.map((column, columnIndex) => (
         <div className="masonry-view__column" key={`masonry-column-${columnIndex}`}>
           {column.map((object) => {
@@ -93,6 +98,7 @@ export function MasonryView({
             return (
               <div
                 className="masonry-view__item"
+                data-archive-key={objectKey}
                 key={objectKey}
                 style={{ "--archive-card-index": enterIndex } as MasonryItemStyle}
               >

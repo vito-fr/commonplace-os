@@ -1,7 +1,8 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import { ItemCard } from "./ItemCard";
+import { useGridFlipAnimation } from "./useGridFlip";
 
 export type MasonryDensity = "comfortable" | "dense" | "editorial";
 
@@ -40,10 +41,18 @@ export function MasonryGrid({
     .filter(Boolean)
     .join(" ");
   const gridStyle: GalleryGridStyle = { "--gallery-columns": columns };
+  const gridRef = useRef<HTMLElement | null>(null);
+  const hasLeadingTile = Boolean(leadingTile);
+  const layoutSignature = useMemo(
+    () => [columns, density, hasLeadingTile ? "leading" : "none", objects.map(getArchiveObjectKey).join("|")].join("::"),
+    [columns, density, hasLeadingTile, objects],
+  );
+
+  useGridFlipAnimation(gridRef, layoutSignature);
 
   if (loading) {
     return (
-      <section className={gridClassName} style={gridStyle} aria-label={ariaLabel} aria-busy="true">
+      <section ref={gridRef} className={gridClassName} style={gridStyle} aria-label={ariaLabel} aria-busy="true">
         {loadingPlaceholders.map((id) => (
           <div className="masonry-grid__item" key={id}>
             <div className="masonry-grid__placeholder" />
@@ -62,10 +71,11 @@ export function MasonryGrid({
   }
 
   return (
-    <section className={gridClassName} style={gridStyle} aria-label={ariaLabel}>
+    <section ref={gridRef} className={gridClassName} style={gridStyle} aria-label={ariaLabel}>
       {leadingTile ? (
         <div
           className="masonry-grid__item masonry-grid__item--leading"
+          data-archive-key="collection:leading"
           style={{ "--archive-card-index": 0 } as CardEnterStyle}
         >
           {leadingTile}
@@ -74,6 +84,7 @@ export function MasonryGrid({
       {objects.map((object, index) => (
         <div
           className="masonry-grid__item"
+          data-archive-key={getArchiveObjectKey(object)}
           key={getArchiveObjectKey(object)}
           style={{ "--archive-card-index": leadingTile ? index + 1 : index } as CardEnterStyle}
         >

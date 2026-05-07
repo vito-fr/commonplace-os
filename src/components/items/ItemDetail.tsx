@@ -797,7 +797,7 @@ function CollectionMembershipThumb({
         const imageUrl = getCollectionPreviewImageUrl(item);
 
         if (imageUrl) {
-          return <img alt="" key={`${item.id}:${index}`} src={imageUrl} />;
+          return <img alt="" decoding="async" loading="lazy" key={`${item.id}:${index}`} src={imageUrl} />;
         }
 
         return <span key={`${item.id}:${index}`}>{index === 0 && previewItems.length === 0 ? getCollectionThumbLabel(label) : null}</span>;
