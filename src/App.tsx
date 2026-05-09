@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { ScrollTrigger } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
-import { CollectionView } from "./components/collections/CollectionView";
 import { MasonryGrid, MasonryView } from "./components/items";
 import type { ArchiveObject, CollectionCardModel, ItemCardActionAnchor, ItemCardProps } from "./components/items";
-import { ItemDetailView, type DetailArchiveFlow } from "./components/items/ItemDetail";
+import type { DetailArchiveFlow } from "./components/items/ItemDetail";
 import type { ItemCardFilters, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
@@ -107,6 +106,13 @@ const itemDetailReader: ItemDetailReader = isPocketBaseMode
 const itemNoteWriter = createPocketBaseItemNoteWriter({ baseUrl: pocketBaseUrl });
 const itemRelationshipWriter = createPocketBaseItemRelationshipWriter({ baseUrl: pocketBaseUrl });
 const itemStatusWriter = createPocketBaseItemStatusWriter({ baseUrl: pocketBaseUrl });
+
+const LazyCollectionView = lazy(() =>
+  import("./components/collections/CollectionView").then((module) => ({ default: module.CollectionView })),
+);
+const LazyItemDetailView = lazy(() =>
+  import("./components/items/ItemDetail").then((module) => ({ default: module.ItemDetailView })),
+);
 
 type CardCollectionIslandPosition = {
   left: number;
@@ -1650,23 +1656,25 @@ export function App() {
 
     routeContent = (
       <main className="app-shell" aria-label="Vita collection">
-        <CollectionView
-          collection={renderedCollectionDetail}
-          collectionIndex={collectionIndex}
-          loading={renderedCollectionLoading}
-          error={collectionReadError}
-          onBack={closeCollection}
-          onAddItemsToCollection={addCollectionWorkspaceItemsToCollection}
-          onCreateCollectionFromItems={createCollectionFromCollectionWorkspaceItems}
-          onCreateNoteInCollection={createNoteInCollection}
-          onImportFilesToCollection={importFilesToCollection}
-          onOpenItem={openCollectionItemDetail}
-          onDeleteItem={deleteCollectionWorkspaceItem}
-          onRemoveItemsFromCollection={removeCollectionWorkspaceItems}
-          onUpdateCollection={updateArchiveCollection}
-          collectionUpdatePending={isCollectionUpdating}
-          collectionUpdateError={collectionUpdateError}
-        />
+        <Suspense fallback={<RouteChunkLoadingState label="Loading collection." />}>
+          <LazyCollectionView
+            collection={renderedCollectionDetail}
+            collectionIndex={collectionIndex}
+            loading={renderedCollectionLoading}
+            error={collectionReadError}
+            onBack={closeCollection}
+            onAddItemsToCollection={addCollectionWorkspaceItemsToCollection}
+            onCreateCollectionFromItems={createCollectionFromCollectionWorkspaceItems}
+            onCreateNoteInCollection={createNoteInCollection}
+            onImportFilesToCollection={importFilesToCollection}
+            onOpenItem={openCollectionItemDetail}
+            onDeleteItem={deleteCollectionWorkspaceItem}
+            onRemoveItemsFromCollection={removeCollectionWorkspaceItems}
+            onUpdateCollection={updateArchiveCollection}
+            collectionUpdatePending={isCollectionUpdating}
+            collectionUpdateError={collectionUpdateError}
+          />
+        </Suspense>
       </main>
     );
   } else if (renderedRoute.kind === "item") {
@@ -1693,38 +1701,40 @@ export function App() {
 
     routeContent = (
       <main className="app-shell" aria-label="Vita archive">
-        <ItemDetailView
-          item={renderedDetail}
-          loading={renderedDetailLoading}
-          error={detailError}
-          archiveContext={archiveContextLabel}
-          archiveFlow={archiveFlow}
-          backLabel={renderedRoute.returnCollectionId ? "Back to collection" : "Back to archive"}
-          onBack={closeItemDetail}
-          onExitToArchive={exitItemDetailToArchive}
-          onOpenCollection={openCollectionFromItemDetail}
-          onOpenArchiveItem={openItemDetail}
-          onOpenRelatedItem={openItemDetail}
-          onChangeStatus={changeItemStatus}
-          statusActionPending={isStatusUpdating}
-          statusActionError={statusWriteError}
-          onDelete={deleteItem}
-          deleteActionPending={isDeleting}
-          deleteActionError={deleteWriteError}
-          onCreateRelationship={createItemRelationship}
-          relationshipActionPending={isRelationshipCreating}
-          relationshipActionError={relationshipWriteError}
-          relationshipTargetOptions={relationshipTargetOptions}
-          onUpdateNote={updateItemNote}
-          noteActionPending={isNoteSaving}
-          noteActionError={noteWriteError}
-          onAttachCollection={attachItemToCollection}
-          onRemoveCollection={removeItemFromCollection}
-          collectionActionPending={isCollectionAttaching}
-          collectionActionError={collectionWriteError}
-          collectionOptions={collectionTargetOptions}
-          collectionIndex={collectionIndex}
-        />
+        <Suspense fallback={<RouteChunkLoadingState label="Loading archive object." />}>
+          <LazyItemDetailView
+            item={renderedDetail}
+            loading={renderedDetailLoading}
+            error={detailError}
+            archiveContext={archiveContextLabel}
+            archiveFlow={archiveFlow}
+            backLabel={renderedRoute.returnCollectionId ? "Back to collection" : "Back to archive"}
+            onBack={closeItemDetail}
+            onExitToArchive={exitItemDetailToArchive}
+            onOpenCollection={openCollectionFromItemDetail}
+            onOpenArchiveItem={openItemDetail}
+            onOpenRelatedItem={openItemDetail}
+            onChangeStatus={changeItemStatus}
+            statusActionPending={isStatusUpdating}
+            statusActionError={statusWriteError}
+            onDelete={deleteItem}
+            deleteActionPending={isDeleting}
+            deleteActionError={deleteWriteError}
+            onCreateRelationship={createItemRelationship}
+            relationshipActionPending={isRelationshipCreating}
+            relationshipActionError={relationshipWriteError}
+            relationshipTargetOptions={relationshipTargetOptions}
+            onUpdateNote={updateItemNote}
+            noteActionPending={isNoteSaving}
+            noteActionError={noteWriteError}
+            onAttachCollection={attachItemToCollection}
+            onRemoveCollection={removeItemFromCollection}
+            collectionActionPending={isCollectionAttaching}
+            collectionActionError={collectionWriteError}
+            collectionOptions={collectionTargetOptions}
+            collectionIndex={collectionIndex}
+          />
+        </Suspense>
       </main>
     );
   } else {
@@ -1863,6 +1873,7 @@ export function App() {
           captureNotice={captureNotice}
           searchShortcut={shortcutBindings.search}
           onCapture={captureArchiveInput}
+          onOpen={() => setArchivePanel(null)}
         />
       ) : null}
     </>
@@ -2016,6 +2027,15 @@ function ArchiveLoadingState({ filters }: { filters: ItemCardFilters }) {
       <p className="archive-state__copy">
         {filterSummary ? `Loading archive items for ${filterSummary}.` : "Loading archive items."}
       </p>
+    </div>
+  );
+}
+
+function RouteChunkLoadingState({ label }: { label: string }) {
+  return (
+    <div className="archive-state archive-state--loading" role="status" aria-live="polite">
+      <span className="archive-state__kicker">loading</span>
+      <p className="archive-state__copy">{label}</p>
     </div>
   );
 }

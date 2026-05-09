@@ -22,6 +22,7 @@ export type SpotlightDockProps = {
   captureNotice: string | null;
   searchShortcut: ShortcutBinding;
   onCapture: (request: SpotlightCaptureRequest) => Promise<SpotlightCaptureResult> | SpotlightCaptureResult;
+  onOpen?: () => void;
 };
 
 type DockMode = "search" | "import" | null;
@@ -46,6 +47,7 @@ export function SpotlightDock({
   isPocketBaseMode,
   onCapture,
   onChange,
+  onOpen,
   pendingCapture,
   searchShortcut,
   value,
@@ -83,6 +85,9 @@ export function SpotlightDock({
         setActiveMode((currentMode) => {
           const nextMode: DockMode = currentMode === "search" ? null : "search";
           shouldFocusSearchRef.current = nextMode === "search";
+          if (nextMode) {
+            onOpen?.();
+          }
           return nextMode;
         });
         return;
@@ -97,7 +102,7 @@ export function SpotlightDock({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searchShortcut]);
+  }, [onOpen, searchShortcut]);
 
   useEffect(() => {
     if (!activeMode) {
@@ -238,6 +243,7 @@ export function SpotlightDock({
   const openSearch = () => {
     if (!isImportOpen) {
       shouldFocusSearchRef.current = false;
+      onOpen?.();
       setActiveMode("search");
     }
   };
@@ -256,6 +262,7 @@ export function SpotlightDock({
     }
 
     shouldFocusSearchRef.current = true;
+    onOpen?.();
     setActiveMode("search");
   };
 
@@ -423,7 +430,10 @@ export function SpotlightDock({
               className="spotlight-dock__import-button ui-pill-cell"
               data-active={isImportOpen ? "true" : "false"}
               type="button"
-              onClick={() => setActiveMode(isImportOpen ? "search" : "import")}
+              onClick={() => {
+                onOpen?.();
+                setActiveMode(isImportOpen ? "search" : "import");
+              }}
             >
               Import
             </button>
