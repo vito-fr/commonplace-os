@@ -112,6 +112,59 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     return parts.join(" · ") || "no pieces";
   }
 
+  function parseOpenGraph(value) {
+    const metadata = nullableString(value);
+    if (!metadata) {
+      return { image: null, title: null };
+    }
+
+    try {
+      const parsed = JSON.parse(metadata);
+      return {
+        image: typeof parsed.image === "string" ? parsed.image : null,
+        title: typeof parsed.title === "string" ? parsed.title : null,
+      };
+    } catch {
+      return { image: null, title: null };
+    }
+  }
+
+  function nullableNumber(value) {
+    const text = nullableString(value);
+    if (text === null || text === "") {
+      return null;
+    }
+
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function aspectRatioFor(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return width / height;
+  }
+
+  function isDirectImageUrl(value) {
+    const url = nullableString(value);
+    if (!url) {
+      return false;
+    }
+
+    const lower = url.toLowerCase().replace(/[?#].*$/, "");
+    return (
+      lower.includes("://i.pinimg.com/") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".gif") ||
+      lower.endsWith(".avif")
+    );
+  }
+
   const rows = arrayOf(
     new DynamicModel({
       id: "",
@@ -161,6 +214,170 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     .bind({ workspaceId })
     .all(rows);
 
+  const previewRows = arrayOf(
+    new DynamicModel({
+      collectionId: "",
+      id: "",
+      title: nullString(),
+      kind: "",
+      format: nullString(),
+      imageUrl: nullString(),
+      imageWidth: nullString(),
+      imageHeight: nullString(),
+      ogMetadata: nullString(),
+      assetFileRef: nullString(),
+      textPreview: nullString(),
+      sourceUrl: nullString(),
+      sourceKind: nullString(),
+    }),
+  );
+
+  try {
+    e.app
+      .db()
+      .newQuery(
+        `
+        WITH ranked_preview AS (
+          SELECT
+            ci.collection_id AS collectionId,
+            i.id,
+            i.title,
+            i.type AS kind,
+            link.content_type AS format,
+            img.file_ref AS imageUrl,
+            CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
+            CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+            link.og_metadata AS ogMetadata,
+            asset.file_ref AS assetFileRef,
+            SUBSTR(
+              COALESCE(
+                i.title,
+                caption.body,
+                note.body,
+                link.url,
+                ''
+              ),
+              1,
+              160
+            ) AS textPreview,
+            link.url AS sourceUrl,
+            COALESCE(s.kind, 'manual') AS sourceKind,
+            ROW_NUMBER() OVER (
+              PARTITION BY ci.collection_id
+              ORDER BY
+                CASE
+                  WHEN i.type = 'image' AND img.file_ref IS NOT NULL AND img.file_ref != '' THEN 0
+                  WHEN i.type = 'link'
+                    AND COALESCE(link.content_type, '') NOT IN ('video', 'pdf')
+                    AND (
+                      COALESCE(link.og_metadata, '') LIKE '%"image"%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.jpg%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.jpeg%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.png%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.webp%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%://i.pinimg.com/%'
+                    ) THEN 1
+                  WHEN i.type = 'link'
+                    AND link.content_type = 'video'
+                    AND COALESCE(link.og_metadata, '') LIKE '%"image"%' THEN 2
+                  WHEN i.type = 'link'
+                    AND link.content_type = 'pdf'
+                    AND asset.file_ref IS NOT NULL
+                    AND asset.file_ref != '' THEN 3
+                  ELSE 4
+                END ASC,
+                ci.added_at ASC,
+                i.id ASC
+            ) AS previewRank
+          FROM collection_items ci
+          INNER JOIN collections c
+            ON c.id = ci.collection_id
+          INNER JOIN items i
+            ON i.id = ci.item_id
+            AND i.workspace_id = c.workspace_id
+          LEFT JOIN items_image img
+            ON img.item_id = i.id
+          LEFT JOIN items_caption caption
+            ON caption.item_id = i.id
+          LEFT JOIN items_note note
+            ON note.item_id = i.id
+          LEFT JOIN items_link link
+            ON link.item_id = i.id
+          LEFT JOIN sources s
+            ON s.id = i.source_id
+            AND s.workspace_id = i.workspace_id
+          LEFT JOIN item_assets asset
+            ON asset.item_id = i.id
+            AND asset.workspace_id = i.workspace_id
+            AND asset.role = 'source_file'
+          WHERE c.workspace_id = {:workspaceId}
+        )
+        SELECT
+          collectionId,
+          id,
+          title,
+          kind,
+          format,
+          imageUrl,
+          imageWidth,
+          imageHeight,
+          ogMetadata,
+          assetFileRef,
+          textPreview,
+          sourceUrl,
+          sourceKind
+        FROM ranked_preview
+        WHERE previewRank <= 4
+        ORDER BY collectionId ASC, previewRank ASC
+      `,
+      )
+      .bind({ workspaceId })
+      .all(previewRows);
+  } catch (error) {
+    console.warn("collection-index preview query failed; returning collections without preview items", error);
+  }
+
+  const previewItemsByCollection = {};
+  for (let index = 0; index < previewRows.length; index += 1) {
+    const row = previewRows[index];
+    const openGraph = parseOpenGraph(row.ogMetadata);
+    const sourceUrl = nullableString(row.sourceUrl);
+    const imageUrl = nullableString(row.imageUrl);
+    const imageWidth = nullableNumber(row.imageWidth);
+    const imageHeight = nullableNumber(row.imageHeight);
+    const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
+    const ogImageUrl = openGraph.image || (isDirectImageUrl(sourceUrl) ? sourceUrl : null);
+    const format = nullableString(row.format);
+    const assetFileRef = nullableString(row.assetFileRef);
+    const videoPosterUrl = format === "video" ? ogImageUrl : null;
+    const previewUrl = imageUrl || ogImageUrl || videoPosterUrl || (format === "pdf" ? assetFileRef : null);
+    const previewItem = {
+      id: row.id,
+      title: nullableString(row.title) || openGraph.title,
+      kind: row.kind,
+      format,
+      thumbnailUrl: imageUrl || ogImageUrl,
+      previewUrl,
+      imageUrl,
+      ogImageUrl,
+      videoPosterUrl,
+      width: imageWidth,
+      height: imageHeight,
+      aspectRatio,
+      textPreview: nullableString(row.textPreview),
+      sourceUrl,
+      source: nullableString(row.sourceKind),
+    };
+
+    if (!previewItemsByCollection[row.collectionId]) {
+      previewItemsByCollection[row.collectionId] = [];
+    }
+
+    if (previewItemsByCollection[row.collectionId].length < 4) {
+      previewItemsByCollection[row.collectionId].push(previewItem);
+    }
+  }
+
   const collections = [];
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
@@ -173,6 +390,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       lastUpdatedAt: row.lastUpdatedAt,
       pieceCount: row.pieceCount,
       kindSummary: formatKindSummary(row),
+      previewItems: previewItemsByCollection[row.id] || [],
     });
   }
 
@@ -212,6 +430,14 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
 
     const parsed = Number(text);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function aspectRatioFor(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return width / height;
   }
 
   function parseOpenGraph(value) {
@@ -306,7 +532,10 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         caption.body AS captionText,
         note.body AS noteParagraph,
         link.url AS url,
-        link.og_metadata AS ogMetadata
+        link.content_type AS linkContentType,
+        link.og_metadata AS ogMetadata,
+        asset.file_ref AS assetFileUrl,
+        asset.mime_type AS assetMimeType
       FROM collection_items ci
       INNER JOIN collections c
         ON c.id = ci.collection_id
@@ -324,6 +553,10 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
+      LEFT JOIN item_assets asset
+        ON asset.item_id = i.id
+        AND asset.workspace_id = i.workspace_id
+        AND asset.role = 'source_file'
       WHERE c.workspace_id = {:workspaceId}
         AND c.id = {:collectionId}
       ORDER BY ci.added_at ASC, ci.item_id ASC
@@ -347,7 +580,10 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       captionText: nullString(),
       noteParagraph: nullString(),
       url: nullString(),
+      linkContentType: nullString(),
       ogMetadata: nullString(),
+      assetFileUrl: nullString(),
+      assetMimeType: nullString(),
     },
     { workspaceId, collectionId },
   );
@@ -358,6 +594,15 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
   for (let index = 0; index < itemRows.length; index += 1) {
     const row = itemRows[index];
     const openGraph = parseOpenGraph(row.ogMetadata);
+    const imageUrl = nullableString(row.imageUrl);
+    const imageWidth = nullableNumber(row.imageWidth);
+    const imageHeight = nullableNumber(row.imageHeight);
+    const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
+    const linkContentType = nullableString(row.linkContentType);
+    const assetFileUrl = nullableString(row.assetFileUrl);
+    const assetMimeType = nullableString(row.assetMimeType);
+    const videoPosterUrl = linkContentType === "video" ? openGraph.image : null;
+    const previewUrl = imageUrl || openGraph.image || videoPosterUrl || (linkContentType === "pdf" ? assetFileUrl : null);
     const sourceLabel =
       nullableString(row.sourceLabel) ||
       nullableString(row.sourceIdentifier) ||
@@ -382,14 +627,33 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         kind: nullableString(row.sourceKind) || "manual",
         label: sourceLabel,
       },
-      imageUrl: nullableString(row.imageUrl),
-      imageWidth: nullableNumber(row.imageWidth),
-      imageHeight: nullableNumber(row.imageHeight),
+      imageUrl,
+      imageWidth,
+      imageHeight,
+      aspectRatio,
       captionText: nullableString(row.captionText),
       noteParagraph: nullableString(row.noteParagraph),
       url: nullableString(row.url),
+      linkContentType,
       ogImageUrl: openGraph.image,
       ogTitle: openGraph.title,
+      assetFileUrl,
+      assetMimeType,
+      previewUrl,
+      thumbnailUrl: imageUrl || openGraph.image,
+      videoPosterUrl,
+      mediaPreview: {
+        previewUrl,
+        imageUrl,
+        thumbnailUrl: imageUrl || openGraph.image,
+        ogImageUrl: openGraph.image,
+        videoPosterUrl,
+        assetFileUrl,
+        assetMimeType,
+        width: imageWidth,
+        height: imageHeight,
+        aspectRatio,
+      },
     });
   }
 
@@ -771,7 +1035,7 @@ routerAdd("POST", "/api/vita/collection-create", (e) => {
   e.bindBody(body);
 
   const workspaceId = requiredString(body.workspace_id, "workspace_id");
-  const itemId = requiredString(body.item_id, "item_id");
+  const itemId = optionalString(body.item_id) || null;
   const name = requiredString(body.name, "name");
   const description = optionalString(body.description) || null;
   const actor = optionalString(body.actor) || "system";
@@ -825,30 +1089,8 @@ routerAdd("POST", "/api/vita/collection-create", (e) => {
   let result = null;
 
   e.app.runInTransaction((txApp) => {
-    const itemRows = queryAll(
-      txApp,
-      `
-        SELECT id
-        FROM items
-        WHERE workspace_id = {:workspaceId}
-          AND id = {:itemId}
-        LIMIT 1
-      `,
-      { id: "" },
-      { workspaceId, itemId },
-    );
-
-    if (itemRows.length === 0) {
-      throw new NotFoundError("item not found");
-    }
-
     const now = new Date().toISOString();
     const collectionId = collectionIdFor(now);
-    const eventId = eventIdFor(itemId, collectionId, now);
-    const metadata = JSON.stringify({
-      collection_id: collectionId,
-      collection_name: name,
-    });
 
     txApp
       .db()
@@ -872,52 +1114,6 @@ routerAdd("POST", "/api/vita/collection-create", (e) => {
       .bind({ collectionId, workspaceId, name, description, now })
       .execute();
 
-    txApp
-      .db()
-      .newQuery(
-        `
-          INSERT INTO collection_items (
-            collection_id,
-            item_id,
-            added_at,
-            added_by
-          ) VALUES (
-            {:collectionId},
-            {:itemId},
-            {:now},
-            {:actor}
-          )
-        `,
-      )
-      .bind({ collectionId, itemId, now, actor })
-      .execute();
-
-    txApp
-      .db()
-      .newQuery(
-        `
-          INSERT INTO item_events (
-            id,
-            workspace_id,
-            item_id,
-            event_type,
-            actor,
-            metadata,
-            created_at
-          ) VALUES (
-            {:eventId},
-            {:workspaceId},
-            {:itemId},
-            'collection_added',
-            {:actor},
-            {:metadata},
-            {:now}
-          )
-        `,
-      )
-      .bind({ eventId, workspaceId, itemId, actor, metadata, now })
-      .execute();
-
     result = {
       collection: {
         id: collectionId,
@@ -925,8 +1121,88 @@ routerAdd("POST", "/api/vita/collection-create", (e) => {
         name,
         description: nullableString(description),
         createdAt: now,
+        lastUpdatedAt: now,
+        pieceCount: 0,
+        kindSummary: "empty",
+        previewItems: [],
       },
-      membership: {
+      membership: null,
+      event: null,
+    };
+
+    if (itemId) {
+      const itemRows = queryAll(
+        txApp,
+        `
+          SELECT id
+          FROM items
+          WHERE workspace_id = {:workspaceId}
+            AND id = {:itemId}
+          LIMIT 1
+        `,
+        { id: "" },
+        { workspaceId, itemId },
+      );
+
+      if (itemRows.length === 0) {
+        throw new NotFoundError("item not found");
+      }
+
+      const eventId = eventIdFor(itemId, collectionId, now);
+      const metadata = JSON.stringify({
+        collection_id: collectionId,
+        collection_name: name,
+      });
+
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO collection_items (
+              collection_id,
+              item_id,
+              added_at,
+              added_by
+            ) VALUES (
+              {:collectionId},
+              {:itemId},
+              {:now},
+              {:actor}
+            )
+          `,
+        )
+        .bind({ collectionId, itemId, now, actor })
+        .execute();
+
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO item_events (
+              id,
+              workspace_id,
+              item_id,
+              event_type,
+              actor,
+              metadata,
+              created_at
+            ) VALUES (
+              {:eventId},
+              {:workspaceId},
+              {:itemId},
+              'collection_added',
+              {:actor},
+              {:metadata},
+              {:now}
+            )
+          `,
+        )
+        .bind({ eventId, workspaceId, itemId, actor, metadata, now })
+        .execute();
+
+      result.collection.pieceCount = 1;
+      result.collection.kindSummary = "1 item";
+      result.membership = {
         collectionId,
         itemId,
         addedAt: now,
@@ -936,14 +1212,192 @@ routerAdd("POST", "/api/vita/collection-create", (e) => {
           name,
           description: nullableString(description),
         },
-      },
-      event: {
+      };
+      result.event = {
         id: eventId,
         eventType: "collection_added",
         createdAt: now,
-      },
-    };
+      };
+    }
   });
 
   return e.json(200, result);
+});
+
+routerAdd("POST", "/api/vita/collection-update", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    collection_id: "",
+    name: "",
+    description: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const collectionId = requiredString(body.collection_id, "collection_id");
+  const name = requiredString(body.name, "name");
+  const description = optionalString(body.description) || null;
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function nullableString(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "valid")) {
+      return value.valid ? value.string : null;
+    }
+
+    return value;
+  }
+
+  const existingRows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        SELECT id
+        FROM collections
+        WHERE workspace_id = {:workspaceId}
+          AND id = {:collectionId}
+        LIMIT 1
+      `,
+    )
+    .bind({ workspaceId, collectionId })
+    .all(existingRows);
+
+  if (existingRows.length === 0) {
+    throw new NotFoundError("collection not found");
+  }
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        UPDATE collections
+        SET
+          name = {:name},
+          description = {:description}
+        WHERE workspace_id = {:workspaceId}
+          AND id = {:collectionId}
+      `,
+    )
+    .bind({ workspaceId, collectionId, name, description })
+    .execute();
+
+  const rows = arrayOf(
+    new DynamicModel({
+      id: "",
+      workspaceId: "",
+      name: "",
+      description: nullString(),
+      createdAt: "",
+      lastUpdatedAt: "",
+      pieceCount: 0,
+      imageCount: 0,
+      captionCount: 0,
+      noteCount: 0,
+      linkCount: 0,
+    }),
+  );
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        SELECT
+          c.id,
+          c.workspace_id AS workspaceId,
+          c.name,
+          c.description,
+          c.created_at AS createdAt,
+          CASE
+            WHEN MAX(i.updated_at) IS NOT NULL AND MAX(i.updated_at) > c.created_at THEN MAX(i.updated_at)
+            ELSE c.created_at
+          END AS lastUpdatedAt,
+          COUNT(i.id) AS pieceCount,
+          SUM(CASE WHEN i.type = 'image' THEN 1 ELSE 0 END) AS imageCount,
+          SUM(CASE WHEN i.type = 'caption' THEN 1 ELSE 0 END) AS captionCount,
+          SUM(CASE WHEN i.type = 'note' THEN 1 ELSE 0 END) AS noteCount,
+          SUM(CASE WHEN i.type = 'link' THEN 1 ELSE 0 END) AS linkCount
+        FROM collections c
+        LEFT JOIN collection_items ci
+          ON ci.collection_id = c.id
+        LEFT JOIN items i
+          ON i.id = ci.item_id
+          AND i.workspace_id = c.workspace_id
+        WHERE c.workspace_id = {:workspaceId}
+          AND c.id = {:collectionId}
+        GROUP BY c.id, c.workspace_id, c.name, c.description, c.created_at
+        LIMIT 1
+      `,
+    )
+    .bind({ workspaceId, collectionId })
+    .all(rows);
+
+  if (rows.length === 0) {
+    throw new NotFoundError("collection not found");
+  }
+
+  function formatKindSummary(row) {
+    const parts = [];
+    const imageCount = Number(row.imageCount) || 0;
+    const captionCount = Number(row.captionCount) || 0;
+    const noteCount = Number(row.noteCount) || 0;
+    const linkCount = Number(row.linkCount) || 0;
+
+    if (imageCount > 0) {
+      parts.push(`${imageCount} ${imageCount === 1 ? "image" : "images"}`);
+    }
+
+    if (captionCount > 0) {
+      parts.push(`${captionCount} ${captionCount === 1 ? "caption" : "captions"}`);
+    }
+
+    if (noteCount > 0) {
+      parts.push(`${noteCount} ${noteCount === 1 ? "note" : "notes"}`);
+    }
+
+    if (linkCount > 0) {
+      parts.push(`${linkCount} ${linkCount === 1 ? "link" : "links"}`);
+    }
+
+    return parts.join(" · ") || "no pieces";
+  }
+
+  const row = rows[0];
+  return e.json(200, {
+    collection: {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      name: row.name,
+      description: nullableString(row.description),
+      createdAt: row.createdAt,
+      lastUpdatedAt: row.lastUpdatedAt,
+      pieceCount: row.pieceCount,
+      kindSummary: formatKindSummary(row),
+      previewItems: [],
+    },
+  });
 });

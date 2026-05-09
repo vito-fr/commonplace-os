@@ -2,7 +2,7 @@
 
 The v0.1 seed fixtures live in `seed/fixtures/` as one JSON file per table, ordered by filename.
 
-The loader is `seed/load.js`. It writes the fixtures into the PocketBase SQLite database after `0001_initial_schema.js` has been applied.
+The loader is `seed/load.js`. It writes the fixtures into the PocketBase SQLite database after migrations have been applied.
 
 ## Requirements
 
@@ -15,11 +15,9 @@ The loader is `seed/load.js`. It writes the fixtures into the PocketBase SQLite 
 From the repo root:
 
 ```sh
-./pocketbase/pocketbase migrate up \
-  --dir pocketbase/pb_data \
-  --migrationsDir pocketbase/pb_migrations
+npm run pb:migrate
 
-node seed/load.js
+npm run seed:load
 ```
 
 Expected output is one line per fixture file plus a final total, for example:
@@ -33,7 +31,7 @@ loaded: 167 total rows
 To validate without writing rows:
 
 ```sh
-node seed/load.js --dry-run
+npm run seed:dry-run
 ```
 
 `--dry-run` still opens the target database, checks that the migration has been applied, validates table columns, and validates fixture references. Expected output uses `validated:` instead of `loaded:`.
@@ -49,6 +47,11 @@ node seed/load.js --db /tmp/vita-pocketbase/pb_data/data.db
 - Enables `PRAGMA foreign_keys=ON`.
 - Enables `PRAGMA trusted_schema=ON` so FTS triggers can run under local SQLite behavior.
 - Verifies `0001_initial_schema.js` is recorded in `_migrations`.
+- If `0002_personal_archive_pivot.js` is recorded, adapts the legacy fixtures at load time:
+  - skips removed campaign rows/tables
+  - maps `inbox` and `triaged` item statuses to `active`
+  - maps `retired` item statuses to `archived`
+  - skips `retired_by` and campaign-dependent relationships/events
 - Validates fixture references before writing.
 - Upserts fixture rows by primary key in filename order.
 - Wraps writes in one transaction.

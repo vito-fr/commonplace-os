@@ -78,6 +78,8 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         i.updated_at AS updatedAt,
         img.file_ref AS imageFileRef,
         img.mime_type AS imageMimeType,
+        CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
+        CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
         img.dominant_colors AS imageDominantColors,
         img.perceptual_hash AS imagePerceptualHash,
         img.ocr_text AS imageOcrText,
@@ -137,6 +139,8 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       updatedAt: "",
       imageFileRef: nullString(),
       imageMimeType: nullString(),
+      imageWidth: nullString(),
+      imageHeight: nullString(),
       imageDominantColors: nullString(),
       imagePerceptualHash: nullString(),
       imageOcrText: nullString(),
@@ -319,6 +323,8 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
   );
 
   const sourceId = nullableString(row.sourceId);
+  const imageWidth = nullableNumber(row.imageWidth);
+  const imageHeight = nullableNumber(row.imageHeight);
   const content = {
     kind: row.type,
     image:
@@ -326,6 +332,9 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         ? {
             fileRef: nullableString(row.imageFileRef),
             mimeType: nullableString(row.imageMimeType),
+            width: imageWidth,
+            height: imageHeight,
+            aspectRatio: aspectRatioFor(imageWidth, imageHeight),
             dominantColors: parseJson(row.imageDominantColors, null),
             perceptualHash: nullableString(row.imagePerceptualHash),
             ocrText: nullableString(row.imageOcrText),
@@ -440,6 +449,14 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
     });
   }
 
+  function aspectRatioFor(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    return width / height;
+  }
+
   return e.json(200, {
     item: {
       id: row.id,
@@ -473,4 +490,185 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       events,
     },
   });
+});
+
+routerAdd("POST", "/api/vita/item-note", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    item_id: "",
+    body: "",
+    format: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const itemId = requiredString(body.item_id, "item_id");
+  const noteBody = textString(body.body);
+  const noteFormat = optionalString(body.format) || "plain";
+  const actor = optionalString(body.actor) || "system";
+
+  if (!["plain", "markdown", "blocknote"].includes(noteFormat)) {
+    throw new BadRequestError("format is invalid");
+  }
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function textString(value) {
+    return typeof value === "string" ? value : "";
+  }
+
+  function queryAll(app, sql, shape, params) {
+    const rows = arrayOf(new DynamicModel(shape));
+    app.db().newQuery(sql).bind(params).all(rows);
+    return rows;
+  }
+
+  function eventIdFor(itemId, timestamp) {
+    const suffix = Math.random().toString(36).slice(2, 10);
+    return `note:${itemId}:${timestamp}:${suffix}`;
+  }
+
+  let result = null;
+
+  e.app.runInTransaction((txApp) => {
+    const itemRows = queryAll(
+      txApp,
+      `
+        SELECT id, workspace_id AS workspaceId, type, update_count AS updateCount
+        FROM items
+        WHERE workspace_id = {:workspaceId}
+          AND id = {:itemId}
+        LIMIT 1
+      `,
+      {
+        id: "",
+        workspaceId: "",
+        type: "",
+        updateCount: 0,
+      },
+      { workspaceId, itemId },
+    );
+
+    if (itemRows.length === 0) {
+      throw new NotFoundError("item not found");
+    }
+
+    if (itemRows[0].type !== "note") {
+      throw new BadRequestError("only note items can be edited through item-note");
+    }
+
+    const noteRows = queryAll(
+      txApp,
+      `
+        SELECT item_id AS itemId
+        FROM items_note
+        WHERE item_id = {:itemId}
+        LIMIT 1
+      `,
+      { itemId: "" },
+      { itemId },
+    );
+
+    if (noteRows.length === 0) {
+      throw new NotFoundError("note body not found");
+    }
+
+    const now = new Date().toISOString();
+    const eventId = eventIdFor(itemId, now);
+    const nextUpdateCount = Number(itemRows[0].updateCount || 0) + 1;
+    const metadata = JSON.stringify({
+      format: noteFormat,
+      length_chars: noteBody.length,
+    });
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          UPDATE items_note
+          SET body = {:noteBody},
+              format = {:noteFormat}
+          WHERE item_id = {:itemId}
+        `,
+      )
+      .bind({ itemId, noteBody, noteFormat })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          UPDATE items
+          SET update_count = update_count + 1,
+              updated_at = {:now}
+          WHERE workspace_id = {:workspaceId}
+            AND id = {:itemId}
+        `,
+      )
+      .bind({ workspaceId, itemId, now })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO item_events (
+            id,
+            workspace_id,
+            item_id,
+            event_type,
+            actor,
+            metadata,
+            created_at
+          ) VALUES (
+            {:eventId},
+            {:workspaceId},
+            {:itemId},
+            'note_updated',
+            {:actor},
+            {:metadata},
+            {:now}
+          )
+        `,
+      )
+      .bind({ eventId, workspaceId, itemId, actor, metadata, now })
+      .execute();
+
+    result = {
+      item: {
+        id: itemId,
+        workspaceId,
+        updatedAt: now,
+        updateCount: nextUpdateCount,
+        content: {
+          note: {
+            body: noteBody,
+            format: noteFormat,
+          },
+        },
+      },
+      event: {
+        id: eventId,
+        eventType: "note_updated",
+        createdAt: now,
+      },
+    };
+  });
+
+  return e.json(200, result);
 });

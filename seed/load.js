@@ -153,6 +153,14 @@ function getTableColumns(db, table) {
   return new Set(rows.map((row) => row.name));
 }
 
+function tableExists(db, table) {
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?")
+    .get(table);
+
+  return Boolean(row);
+}
+
 function getFixtureColumns(rows) {
   const columns = [];
   const seen = new Set();
@@ -188,19 +196,99 @@ function validateFixtureColumns(db, fixtures) {
   }
 }
 
-function validateMigrationApplied(db) {
+function migrationApplied(db, file) {
   const migration = db
     .prepare("SELECT file FROM _migrations WHERE file = ?")
-    .get("0001_initial_schema.js");
+    .get(file);
 
-  if (!migration) {
+  return Boolean(migration);
+}
+
+function validateMigrationApplied(db) {
+  if (!migrationApplied(db, "0001_initial_schema.js")) {
     throw new Error("0001_initial_schema.js is not recorded in _migrations; run PocketBase migrations before loading fixtures");
   }
 }
 
+function prepareFixturesForDatabase(db, fixtures) {
+  let preparedFixtures = fixtures;
+
+  if (migrationApplied(db, "0002_personal_archive_pivot.js")) {
+    preparedFixtures = applyPersonalArchivePivot(preparedFixtures);
+  }
+
+  return preparedFixtures.filter((fixture) => {
+    if (tableExists(db, fixture.table)) {
+      return true;
+    }
+
+    if (fixture.rows.length === 0) {
+      return false;
+    }
+
+    throw new Error(`${fixture.file} targets missing table: ${fixture.table}`);
+  });
+}
+
+function applyPersonalArchivePivot(fixtures) {
+  const rawByTable = new Map(fixtures.map((fixture) => [fixture.table, fixture.rows]));
+  const rawItems = rawByTable.get("items") ?? [];
+  const removedItemIds = new Set();
+  const keptItemIds = new Set();
+
+  for (const item of rawItems) {
+    if (item.type === "campaign") {
+      removedItemIds.add(item.id);
+    } else {
+      keptItemIds.add(item.id);
+    }
+  }
+
+  return fixtures.map((fixture) => {
+    let rows = fixture.rows;
+
+    if (fixture.table === "campaign_profiles") {
+      rows = [];
+    } else if (fixture.table === "items") {
+      rows = rows
+        .filter((item) => item.type !== "campaign")
+        .map((item) => ({
+          ...item,
+          status: mapPersonalArchiveStatus(item.status),
+        }));
+    } else if (fixture.table === "relationship_types") {
+      rows = rows.filter((type) => type.type !== "retired_by");
+    } else if (["items_image", "items_caption", "items_note", "items_link", "item_tags", "collection_items", "ai_annotations", "item_events", "embeddings"].includes(fixture.table)) {
+      rows = rows.filter((row) => !removedItemIds.has(row.item_id) && (!row.item_id || keptItemIds.has(row.item_id)));
+    } else if (fixture.table === "relationships") {
+      rows = rows.filter(
+        (relationship) =>
+          relationship.type !== "retired_by" &&
+          keptItemIds.has(relationship.from_id) &&
+          keptItemIds.has(relationship.to_id),
+      );
+    }
+
+    return { ...fixture, rows };
+  });
+}
+
+function mapPersonalArchiveStatus(status) {
+  if (status === "inbox" || status === "triaged") {
+    return "active";
+  }
+
+  if (status === "retired") {
+    return "archived";
+  }
+
+  return status;
+}
+
 function validateFixtureIntegrity(fixtures) {
   const byTable = new Map(fixtures.map((fixture) => [fixture.table, fixture.rows]));
-  const ids = (table, key) => new Set(byTable.get(table).map((row) => row[key]));
+  const rowsFor = (table) => byTable.get(table) ?? [];
+  const ids = (table, key) => new Set(rowsFor(table).map((row) => row[key]));
   const workspaces = ids("workspaces", "id");
   const relationshipTypes = ids("relationship_types", "type");
   const sources = ids("sources", "id");
@@ -208,40 +296,40 @@ function validateFixtureIntegrity(fixtures) {
   const tags = ids("tags", "id");
   const collections = ids("collections", "id");
 
-  for (const source of byTable.get("sources")) {
+  for (const source of rowsFor("sources")) {
     requireId(workspaces, source.workspace_id, `source ${source.id} workspace_id`);
   }
 
-  for (const item of byTable.get("items")) {
+  for (const item of rowsFor("items")) {
     requireId(workspaces, item.workspace_id, `item ${item.id} workspace_id`);
     requireId(sources, item.source_id, `item ${item.id} source_id`);
   }
 
-  validateExtensions(byTable.get("items_image"), items, "image extension");
-  validateExtensions(byTable.get("items_caption"), items, "caption extension");
-  validateExtensions(byTable.get("items_note"), items, "note extension");
-  validateExtensions(byTable.get("items_link"), items, "link extension");
-  validateExtensions(byTable.get("campaign_profiles"), items, "campaign profile");
+  validateExtensions(rowsFor("items_image"), items, "image extension");
+  validateExtensions(rowsFor("items_caption"), items, "caption extension");
+  validateExtensions(rowsFor("items_note"), items, "note extension");
+  validateExtensions(rowsFor("items_link"), items, "link extension");
+  validateExtensions(rowsFor("campaign_profiles"), items, "campaign profile");
 
-  for (const tag of byTable.get("tags")) {
+  for (const tag of rowsFor("tags")) {
     requireId(workspaces, tag.workspace_id, `tag ${tag.id} workspace_id`);
   }
 
-  for (const link of byTable.get("item_tags")) {
+  for (const link of rowsFor("item_tags")) {
     requireId(items, link.item_id, `item_tags item_id ${link.item_id}`);
     requireId(tags, link.tag_id, `item_tags tag_id ${link.tag_id}`);
   }
 
-  for (const collection of byTable.get("collections")) {
+  for (const collection of rowsFor("collections")) {
     requireId(workspaces, collection.workspace_id, `collection ${collection.id} workspace_id`);
   }
 
-  for (const link of byTable.get("collection_items")) {
+  for (const link of rowsFor("collection_items")) {
     requireId(collections, link.collection_id, `collection_items collection_id ${link.collection_id}`);
     requireId(items, link.item_id, `collection_items item_id ${link.item_id}`);
   }
 
-  for (const relationship of byTable.get("relationships")) {
+  for (const relationship of rowsFor("relationships")) {
     requireId(workspaces, relationship.workspace_id, `relationship ${relationship.id} workspace_id`);
     requireId(items, relationship.from_id, `relationship ${relationship.id} from_id`);
     requireId(items, relationship.to_id, `relationship ${relationship.id} to_id`);
@@ -249,24 +337,23 @@ function validateFixtureIntegrity(fixtures) {
     if (relationship.from_id === relationship.to_id) {
       throw new Error(`relationship ${relationship.id} cannot point to itself`);
     }
-    const type = byTable.get("relationship_types").find((row) => row.type === relationship.type);
+    const type = rowsFor("relationship_types").find((row) => row.type === relationship.type);
     if (type.is_symmetric === 1 && relationship.from_id > relationship.to_id) {
       throw new Error(`symmetric relationship ${relationship.id} is not canonically ordered`);
     }
   }
 
-  for (const annotation of byTable.get("ai_annotations")) {
+  for (const annotation of rowsFor("ai_annotations")) {
     requireId(workspaces, annotation.workspace_id, `annotation ${annotation.id} workspace_id`);
     requireId(items, annotation.item_id, `annotation ${annotation.id} item_id`);
   }
 
-  for (const event of byTable.get("item_events")) {
+  for (const event of rowsFor("item_events")) {
     requireId(workspaces, event.workspace_id, `event ${event.id} workspace_id`);
     requireId(items, event.item_id, `event ${event.id} item_id`);
   }
 
-  const canaryRelationships = byTable
-    .get("relationships")
+  const canaryRelationships = rowsFor("relationships")
     .filter((relationship) => relationship.from_id === "seed:canary" && relationship.type === "references");
 
   if (!items.has("seed:canary")) {
@@ -334,8 +421,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   assertNodeRuntime();
   const DatabaseSync = await loadDatabaseSync();
-  const fixtures = readFixtures(options.fixturesDir);
-  validateFixtureIntegrity(fixtures);
+  const rawFixtures = readFixtures(options.fixturesDir);
 
   if (!fs.existsSync(options.dbPath)) {
     throw new Error(`PocketBase data database not found: ${options.dbPath}`);
@@ -348,6 +434,8 @@ async function main() {
     db.exec("PRAGMA trusted_schema = ON");
 
     validateMigrationApplied(db);
+    const fixtures = prepareFixturesForDatabase(db, rawFixtures);
+    validateFixtureIntegrity(fixtures);
     validateFixtureColumns(db, fixtures);
 
     if (options.dryRun) {
