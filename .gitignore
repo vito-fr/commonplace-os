@@ -42,6 +42,11 @@ Thumbs.db
 # Test artifacts
 coverage/
 .vitest-cache/
+screenshots/current/
+screenshots/reference/
+
+# Local agent workspaces
+.claude/
 
 # Local seed scratch (the loader's intermediate state if it produces any)
 seed/.scratch/

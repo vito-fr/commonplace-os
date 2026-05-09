@@ -12,6 +12,8 @@
     "seed:load": "node seed/load.js",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "visual:qa": "node scripts/visual-qa.mjs",
+    "visual:qa:refs": "node scripts/visual-qa.mjs --refs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
