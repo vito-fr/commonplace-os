@@ -3,6 +3,7 @@ import type { ItemStatus, ItemType } from "../atoms";
 import { MasonryGrid } from "../items";
 import type { ArchiveObject, ItemCardProps } from "../items";
 import type { CollectionCardPreviewItem } from "../items/CollectionCard";
+import { ArchiveReturnButton } from "../ui/ArchiveControls";
 import type { CollectionDetail, CollectionDetailItem, CollectionIndexItem } from "../../data/pocketBaseItemCollection";
 
 export type CollectionViewProps = {
@@ -365,19 +366,8 @@ export function CollectionView({
 function CollectionTopBar({ onBack }: { onBack: () => void }) {
   return (
     <div className="collection-view__topbar" aria-label="collection context">
-      <button className="collection-return-button" type="button" onClick={onBack} aria-label="Return to archive">
-        <ReturnArrowIcon />
-        <span className="collection-return-button__label">Return</span>
-      </button>
+      <ArchiveReturnButton onClick={onBack} ariaLabel="Return to archive" />
     </div>
-  );
-}
-
-function ReturnArrowIcon() {
-  return (
-    <svg className="collection-return-button__arrow" aria-hidden="true" viewBox="0 0 11 11" focusable="false">
-      <path d="M2.35 5.5 7.7 1.35v8.3Z" />
-    </svg>
   );
 }
 

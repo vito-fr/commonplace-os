@@ -67,6 +67,7 @@ export function SpotlightDock({
   const pastePreview = useMemo(() => getPastePreview(importValue), [importValue]);
   const readyFileCount = fileQueue.filter((item) => item.status === "ready").length;
   const isBusy = pendingCapture || isQueueImporting;
+  const importPresence = useDeferredPresence(isImportOpen, 260);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -258,126 +259,147 @@ export function SpotlightDock({
     setActiveMode("search");
   };
 
+  const closeImport = () => {
+    setActiveMode(null);
+  };
+
   const portal = (
     <>
-      {isImportOpen ? (
-        <div className="spotlight-import-panel" ref={panelRef} role="dialog" aria-label="import to archive">
+      {importPresence.shouldRender ? (
+        <div
+          className="spotlight-import-panel"
+          data-state={importPresence.state}
+          ref={panelRef}
+          role="dialog"
+          aria-label="import to archive"
+          onMouseLeave={closeImport}
+        >
           <form className="spotlight-import-panel__form" onSubmit={submitImport}>
-            <div className="spotlight-import-panel__modes" aria-label="import mode">
-              <button
-                className="spotlight-dock__cell"
-                data-active={importMode === "paste" ? "true" : "false"}
-                type="button"
-                onClick={() => setImportMode("paste")}
-              >
-                Paste
-              </button>
-              <button
-                className="spotlight-dock__cell"
-                data-active={importMode === "files" ? "true" : "false"}
-                type="button"
-                onClick={() => setImportMode("files")}
-              >
-                Files
-              </button>
-              <button
-                className="spotlight-dock__cell"
-                data-active={importMode === "sources" ? "true" : "false"}
-                type="button"
-                onClick={() => setImportMode("sources")}
-              >
-                Sources
-              </button>
+            <div className="spotlight-import-panel__topbar">
+              <div className="spotlight-import-panel__modes-shell ui-surface-shell">
+                <div className="spotlight-import-panel__modes-membrane ui-surface-membrane" aria-hidden="true" />
+                <div className="spotlight-import-panel__modes ui-surface-content ui-pill-track" aria-label="import mode">
+                  <button
+                    className="spotlight-dock__cell ui-pill-cell"
+                    data-active={importMode === "paste" ? "true" : "false"}
+                    type="button"
+                    onClick={() => setImportMode("paste")}
+                  >
+                    Paste
+                  </button>
+                  <button
+                    className="spotlight-dock__cell ui-pill-cell"
+                    data-active={importMode === "files" ? "true" : "false"}
+                    type="button"
+                    onClick={() => setImportMode("files")}
+                  >
+                    Files
+                  </button>
+                  <button
+                    className="spotlight-dock__cell ui-pill-cell"
+                    data-active={importMode === "sources" ? "true" : "false"}
+                    type="button"
+                    onClick={() => setImportMode("sources")}
+                  >
+                    Sources
+                  </button>
+                </div>
+              </div>
               <span className="spotlight-import-panel__hint">{getImportHint(importMode)}</span>
             </div>
 
-            <div className="spotlight-import-panel__body" data-mode={importMode}>
-              {importMode === "paste" ? (
-                <>
-                  <textarea
-                    ref={importInputRef}
-                    aria-label="paste URL or write note"
-                    disabled={isBusy || !isPocketBaseMode}
-                    name="spotlight-import"
-                    onChange={(event) => setImportValue(event.target.value)}
-                    placeholder={getPastePlaceholder(isPocketBaseMode)}
-                    rows={4}
-                    value={importValue}
-                  />
-                  <div className="spotlight-import-panel__preview" aria-live="polite">
-                    <span>{pastePreview.label}</span>
-                    <small>{pastePreview.detail}</small>
-                  </div>
-                </>
-              ) : null}
+            <div className="spotlight-import-panel__dock-shell ui-surface-shell">
+              <div className="spotlight-import-panel__membrane ui-surface-membrane" aria-hidden="true" />
+              <div className="spotlight-import-panel__content ui-surface-content">
+                <div className="spotlight-import-panel__body" data-mode={importMode}>
+                  {importMode === "paste" ? (
+                    <>
+                      <textarea
+                        ref={importInputRef}
+                        aria-label="paste URL or write note"
+                        disabled={isBusy || !isPocketBaseMode}
+                        name="spotlight-import"
+                        onChange={(event) => setImportValue(event.target.value)}
+                        placeholder={getPastePlaceholder(isPocketBaseMode)}
+                        rows={4}
+                        value={importValue}
+                      />
+                      <div className="spotlight-import-panel__preview" aria-live="polite">
+                        <span>{pastePreview.label}</span>
+                        <small>{pastePreview.detail}</small>
+                      </div>
+                    </>
+                  ) : null}
 
-              {importMode === "files" ? (
-                <>
-                  <div
-                    className="spotlight-import-panel__drop"
-                    onClick={chooseFile}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={stageFileImport}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        chooseFile();
-                      }
-                    }}
+                  {importMode === "files" ? (
+                    <>
+                      <div
+                        className="spotlight-import-panel__drop"
+                        onClick={chooseFile}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={stageFileImport}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            chooseFile();
+                          }
+                        }}
+                      >
+                        Drop or choose images and PDFs
+                        <span>{MAX_BATCH_FILES} files · 25MB each</span>
+                      </div>
+                      <FileQueueList queue={fileQueue} />
+                    </>
+                  ) : null}
+
+                  {importMode === "sources" ? <SourceImportGuide /> : null}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  className="visually-hidden"
+                  type="file"
+                  accept="image/*,application/pdf,video/*,audio/*"
+                  multiple
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      queueFiles(event.target.files);
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
+
+                <div className="spotlight-import-panel__actions">
+                  <button
+                    className="spotlight-dock__cell ui-pill-cell"
+                    type="submit"
+                    disabled={
+                      isBusy ||
+                      !isPocketBaseMode ||
+                      importMode === "sources" ||
+                      (importMode === "paste" && !importValue.trim()) ||
+                      (importMode === "files" && readyFileCount === 0)
+                    }
                   >
-                    Drop or choose images and PDFs
-                    <span>{MAX_BATCH_FILES} files · 25MB each</span>
-                  </div>
-                  <FileQueueList queue={fileQueue} />
-                </>
-              ) : null}
-
-              {importMode === "sources" ? <SourceImportGuide /> : null}
-            </div>
-
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              type="file"
-              accept="image/*,application/pdf,video/*,audio/*"
-              multiple
-              onChange={(event) => {
-                if (event.target.files) {
-                  queueFiles(event.target.files);
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-
-            <div className="spotlight-import-panel__actions">
-              <button
-                className="spotlight-dock__cell"
-                type="submit"
-                disabled={
-                  isBusy ||
-                  !isPocketBaseMode ||
-                  importMode === "sources" ||
-                  (importMode === "paste" && !importValue.trim()) ||
-                  (importMode === "files" && readyFileCount === 0)
-                }
-              >
-                {isBusy ? "Adding" : importMode === "files" ? `Add ${readyFileCount || ""}`.trim() : "Add"}
-              </button>
-              <button className="spotlight-dock__cell" type="button" onClick={() => setActiveMode(null)}>
-                Close
-              </button>
-              {captureNotice ? <span className="spotlight-import-panel__meta">{captureNotice}</span> : null}
-              {captureError ? <span className="spotlight-import-panel__error">{captureError}</span> : null}
-              {batchNotice ? <span className="spotlight-import-panel__meta">{batchNotice}</span> : null}
+                    {isBusy ? "Adding" : importMode === "files" ? `Add ${readyFileCount || ""}`.trim() : "Add"}
+                  </button>
+                  <button className="spotlight-dock__cell ui-pill-cell" type="button" onClick={closeImport}>
+                    Close
+                  </button>
+                  {captureNotice ? <span className="spotlight-import-panel__meta">{captureNotice}</span> : null}
+                  {captureError ? <span className="spotlight-import-panel__error">{captureError}</span> : null}
+                  {batchNotice ? <span className="spotlight-import-panel__meta">{batchNotice}</span> : null}
+                </div>
+              </div>
             </div>
           </form>
         </div>
       ) : null}
 
       <div
-        className={`spotlight-dock${isSearchOpen ? " spotlight-dock--search" : ""}${isImportOpen ? " spotlight-dock--import" : ""}`}
+        className={`spotlight-dock ui-surface-shell${isSearchOpen ? " spotlight-dock--search" : ""}${isImportOpen ? " spotlight-dock--import" : ""}`}
         ref={dockRef}
         onMouseEnter={openSearch}
         onMouseLeave={closeSearch}
@@ -385,30 +407,52 @@ export function SpotlightDock({
         role="search"
         aria-label="archive search and import"
       >
-        <div className="spotlight-dock__input-wrap">
-          <input
-            ref={inputRef}
-            className="spotlight-dock__input"
-            type="search"
-            placeholder="Search archive"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            aria-label="search archive"
-          />
-          <button
-            className="spotlight-dock__import-button"
-            data-active={isImportOpen ? "true" : "false"}
-            type="button"
-            onClick={() => setActiveMode(isImportOpen ? "search" : "import")}
-          >
-            Import
-          </button>
+        <div className="spotlight-dock__membrane ui-surface-membrane" aria-hidden="true" />
+        <div className="spotlight-dock__content ui-surface-content">
+          <div className="spotlight-dock__input-wrap">
+            <input
+              ref={inputRef}
+              className="spotlight-dock__input"
+              type="search"
+              placeholder="Search archive"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              aria-label="search archive"
+            />
+            <button
+              className="spotlight-dock__import-button ui-pill-cell"
+              data-active={isImportOpen ? "true" : "false"}
+              type="button"
+              onClick={() => setActiveMode(isImportOpen ? "search" : "import")}
+            >
+              Import
+            </button>
+          </div>
         </div>
       </div>
     </>
   );
 
   return createPortal(portal, document.body);
+}
+
+function useDeferredPresence(visible: boolean, exitMs: number) {
+  const [shouldRender, setShouldRender] = useState(visible);
+  const [state, setState] = useState<"enter" | "exit">(visible ? "enter" : "exit");
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      setState("enter");
+      return undefined;
+    }
+
+    setState("exit");
+    const timeout = window.setTimeout(() => setShouldRender(false), exitMs);
+    return () => window.clearTimeout(timeout);
+  }, [exitMs, visible]);
+
+  return { shouldRender, state };
 }
 
 function FileQueueList({ queue }: { queue: ImportQueueItem[] }) {

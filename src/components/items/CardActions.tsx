@@ -197,6 +197,7 @@ export function CardGlyph({
       aria-hidden="true"
       className={`card-glyph card-glyph--${name} ${className}`}
       focusable="false"
+      vectorEffect="non-scaling-stroke"
       viewBox="0 0 18 18"
     >
       {renderGlyphPath(name)}
@@ -236,6 +237,10 @@ function renderGlyphPath(name: CardGlyphName) {
 
   if (name === "delete") {
     return <path d="M5.25 6.25h7.5M7 6.25V4.5h4v1.75M6.25 7.5l.45 6h4.6l.45-6" />;
+  }
+
+  if (name === "copy") {
+    return <path d="M6.2 6.2V4.6h7.2v7.2h-1.6M4.6 6.2h7.2v7.2H4.6Z" />;
   }
 
   if (name === "open") {

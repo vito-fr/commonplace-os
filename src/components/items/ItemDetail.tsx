@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { type ItemStatus } from "../atoms";
+import { ArchiveChevronIcon, ArchiveReturnButton } from "../ui/ArchiveControls";
 import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
 import type { CollectionIndexItem, CollectionPreviewItem } from "../../data/pocketBaseItemCollection";
 
@@ -269,11 +270,7 @@ function PanelToggle({
 function PanelChevronIcon({ open, side }: { open: boolean; side: "left" | "right" }) {
   const pointsLeft = side === "left" ? open : !open;
 
-  return (
-    <svg aria-hidden="true" viewBox="0 0 18 18" focusable="false">
-      {pointsLeft ? <path d="M6 9 12 4.25v9.5Z" /> : <path d="m12 9-6 4.75v-9.5Z" />}
-    </svg>
-  );
+  return <ArchiveChevronIcon direction={pointsLeft ? "left" : "right"} />;
 }
 
 function DrawerChevronIcon() {
@@ -1492,19 +1489,8 @@ function DetailTopBar({
 }) {
   return (
     <div className="item-detail__topbar" aria-label="archive detail context">
-      <button className="collection-return-button item-detail__return-button" type="button" onClick={onBack} aria-label={backLabel}>
-        <ReturnArrowIcon />
-        <span className="collection-return-button__label">Return</span>
-      </button>
+      <ArchiveReturnButton className="item-detail__return-button" onClick={onBack} ariaLabel={backLabel} />
     </div>
-  );
-}
-
-function ReturnArrowIcon() {
-  return (
-    <svg className="collection-return-button__arrow" aria-hidden="true" viewBox="0 0 11 11" focusable="false">
-      <path d="M2.35 5.5 7.7 1.35v8.3Z" />
-    </svg>
   );
 }
 

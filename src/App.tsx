@@ -134,6 +134,14 @@ function getDefaultGalleryColumnCount() {
   return Math.min(defaultGalleryColumns, getResponsiveGalleryColumnCap());
 }
 
+function getDefaultMasonryColumnCount() {
+  if (typeof window === "undefined") {
+    return 4;
+  }
+
+  return window.innerWidth >= 1680 ? 5 : 4;
+}
+
 function getResponsiveGalleryColumnCap() {
   if (typeof window === "undefined") {
     return defaultGalleryColumns;
@@ -163,7 +171,7 @@ export function App() {
   const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
   const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
   const [galleryColumns, setGalleryColumns] = useState(() => getDefaultGalleryColumnCount());
-  const [masonryColumns, setMasonryColumns] = useState(4);
+  const [masonryColumns, setMasonryColumns] = useState(() => getDefaultMasonryColumnCount());
   const galleryColumnCap = useResponsiveGalleryColumnCap();
   const effectiveGalleryColumns = Math.min(galleryColumns, galleryColumnCap);
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());

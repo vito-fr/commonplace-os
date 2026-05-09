@@ -131,8 +131,10 @@ export function PillNav(props: PillNavProps) {
   } = props;
   const [activeFilterFamily, setActiveFilterFamily] = useState<FilterFamily>("state");
   const [openFilterFamily, setOpenFilterFamily] = useState<FilterFamily | null>(null);
+  const primaryShellRef = useRef<HTMLDivElement | null>(null);
   const primaryGroupRef = useRef<HTMLDivElement | null>(null);
   useMaskedPillRowIntro(primaryGroupRef, "primary:index|views|filters|settings");
+  useMeasuredPillGroupMembrane(primaryShellRef, primaryGroupRef, "primary:index|views|filters|settings");
 
   const togglePanel = (panel: PillNavPanel) => {
     onPanelChange(activePanel === panel ? null : panel);
@@ -168,14 +170,17 @@ export function PillNav(props: PillNavProps) {
 
   const nav = (
     <header className="pill-nav" aria-label="archive controls">
-      <div className="pill-nav__group" ref={primaryGroupRef} aria-label="primary archive controls">
-        <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
-          <span className="live-logo-dot" aria-hidden="true" />
-        </button>
-        <PrimaryCell label="Index" active={activePanel === "index"} onClick={() => togglePanel("index")} />
-        <PrimaryCell label="Views" active={activePanel === "views"} onClick={() => togglePanel("views")} />
-        <PrimaryCell label="Filters" active={activePanel === "filters"} onClick={() => togglePanel("filters")} />
-        <PrimaryCell label="Settings" active={activePanel === "settings"} onClick={() => togglePanel("settings")} />
+      <div className="pill-group-shell pill-nav__group-shell" ref={primaryShellRef}>
+        <div className="pill-group-membrane pill-nav__membrane" aria-hidden="true" />
+        <div className="pill-nav__group pill-group-track" ref={primaryGroupRef} aria-label="primary archive controls">
+          <button className="nav-cell nav-cell--dot" type="button" onClick={onClearFilters} aria-label="live archive">
+            <span className="live-logo-dot" aria-hidden="true" />
+          </button>
+          <PrimaryCell label="Index" active={activePanel === "index"} onClick={() => togglePanel("index")} />
+          <PrimaryCell label="Views" active={activePanel === "views"} onClick={() => togglePanel("views")} />
+          <PrimaryCell label="Filters" active={activePanel === "filters"} onClick={() => togglePanel("filters")} />
+          <PrimaryCell label="Settings" active={activePanel === "settings"} onClick={() => togglePanel("settings")} />
+        </div>
       </div>
 
       {subnavGroups.length > 0 ? (
@@ -199,6 +204,7 @@ export function PillNav(props: PillNavProps) {
           shortcutError={shortcutError}
           siteTheme={siteTheme}
           onGalleryColumnsChange={onGalleryColumnsChange}
+          onRequestClose={() => onPanelChange(null)}
           onSiteThemeChange={onSiteThemeChange}
           onShortcutChange={onShortcutChange}
           onShortcutReset={onShortcutReset}
@@ -440,6 +446,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
       clearRevealState();
       clearAnimatedStyles();
       measure();
+      row.setAttribute("data-entering", "true");
       gsap.set(row, { clearProps: "height,transform,width" });
       gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
       revealTargets.forEach(({ mask, text }) => {
@@ -455,9 +462,9 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
       logMotionRects("enter-start");
 
       const openRowRect = row.getBoundingClientRect();
+      const openRowWidth = snapToDevicePixel(openRowRect.width);
       const openRowHeight = snapToDevicePixel(openRowRect.height);
 
-      row.setAttribute("data-entering", "true");
       row.setAttribute("data-preparing", "true");
       row.setAttribute("data-reveal-state", "closed");
 
@@ -469,6 +476,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         }
       });
 
+      gsap.set(row, { width: openRowWidth, height: openRowHeight });
       row.getBoundingClientRect();
 
       const closedRowRect = row.getBoundingClientRect();
@@ -482,8 +490,10 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
           width: snapToDevicePixel(rect.width),
         };
       });
-      const closedRowWidth = getMeasuredRowWidth(snapToDevicePixel(closedRowRect.width), closedMetrics);
+      const closedRowWidth = getMeasuredRowWidth(0, closedMetrics);
       const seedWidth = snapToDevicePixel(Math.max(closedRowHeight, closedMetrics[0]?.height ?? 27));
+      const seedClipX = snapToDevicePixel(Math.max(0, (openRowWidth - seedWidth) / 2));
+      const closedClipX = snapToDevicePixel(Math.max(0, (openRowWidth - closedRowWidth) / 2));
       const seedHold = 0.07;
       const splitDuration = 0.26;
       const revealDuration = 0.5;
@@ -497,9 +507,9 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
       const maxRevealDelay = Math.max(0, revealTargets.length - 1) * revealStep;
 
       gsap.set(row, {
-        "--nav-row-clip-x": `${Math.max(0, (closedRowWidth - seedWidth) / 2)}px`,
+        "--nav-row-clip-x": `${seedClipX}px`,
         height: closedRowHeight,
-        width: closedRowWidth,
+        width: openRowWidth,
       });
       cells.forEach((cell, index) => {
         const closedMetric = closedMetrics[index];
@@ -507,7 +517,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
           return;
         }
         const closedCenter = closedMetric.left + closedMetric.width / 2;
-        const splitOrigin = closedRowWidth / 2;
+        const splitOrigin = openRowWidth / 2;
 
         gsap.killTweensOf(cell);
         gsap.set(cell, {
@@ -558,7 +568,7 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         row.setAttribute("data-reveal-state", "split");
       }, undefined, seedHold);
       timeline.to(row, {
-        "--nav-row-clip-x": "0px",
+        "--nav-row-clip-x": `${closedClipX}px`,
         autoRound: false,
         duration: wrapperSplitDuration,
         ease: "power3.out",
@@ -577,10 +587,10 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
 
       timeline.call(() => {
         row.setAttribute("data-reveal-state", "reveal");
-        gsap.set(row, { clearProps: "width" });
         gsap.set(row, {
-          "--nav-row-clip-x": "0px",
+          "--nav-row-clip-x": `${closedClipX}px`,
           height: closedRowHeight,
+          width: openRowWidth,
         });
         gsap.set(cells, { clearProps: "height,left,position,top,transform,width,zIndex" });
         revealTargets.forEach(({ mask, text }) => {
@@ -591,6 +601,13 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
         });
         logMotionRects("reveal-ready");
       }, undefined, revealStart);
+
+      timeline.to(row, {
+        "--nav-row-clip-x": "0px",
+        autoRound: false,
+        duration: revealDuration + maxRevealDelay,
+        ease: "power3.out",
+      }, revealStart);
 
       revealTargets.forEach(({ mask, revealIndex: index, text }) => {
         const measurementTarget = mask.querySelector<HTMLElement>("[data-nav-measure-target]") ?? text;
@@ -670,6 +687,115 @@ function useMaskedPillRowIntro(rowRef: RefObject<HTMLElement | null>, signature:
   }, [rowRef, signature]);
 }
 
+function useMeasuredPillGroupMembrane(
+  shellRef: RefObject<HTMLElement | null>,
+  trackRef: RefObject<HTMLElement | null>,
+  signature: string,
+) {
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    const track = trackRef.current;
+
+    if (!shell || !track) {
+      return;
+    }
+
+    let frame = 0;
+    let cancelled = false;
+    let syncUntil = 0;
+
+    const snapToDevicePixel = (value: number) => {
+      const ratio = window.devicePixelRatio || 1;
+      return Math.round(value * ratio) / ratio;
+    };
+
+    const measure = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const shellRect = shell.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      const trackStyle = window.getComputedStyle(track);
+      const clipX = parseFloat(trackStyle.getPropertyValue("--nav-row-clip-x")) || 0;
+      const visibleX = snapToDevicePixel(trackRect.left - shellRect.left + clipX);
+      const visibleY = snapToDevicePixel(trackRect.top - shellRect.top);
+      const visibleWidth = snapToDevicePixel(Math.max(0, trackRect.width - clipX * 2));
+      const visibleHeight = snapToDevicePixel(trackRect.height);
+
+      shell.style.setProperty("--pill-membrane-x", `${visibleX}px`);
+      shell.style.setProperty("--pill-membrane-y", `${visibleY}px`);
+      shell.style.setProperty("--pill-membrane-w", `${visibleWidth}px`);
+      shell.style.setProperty("--pill-membrane-h", `${visibleHeight}px`);
+    };
+
+    const stopFrameLoop = () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      shell.removeAttribute("data-syncing");
+    };
+
+    const tick = () => {
+      frame = 0;
+      measure();
+
+      if (!cancelled && performance.now() < syncUntil) {
+        frame = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      stopFrameLoop();
+      measure();
+    };
+
+    const startFrameLoop = (durationMs = 1400) => {
+      syncUntil = Math.max(syncUntil, performance.now() + durationMs);
+      shell.setAttribute("data-syncing", "true");
+      if (!frame) {
+        frame = window.requestAnimationFrame(tick);
+      }
+    };
+
+    measure();
+    startFrameLoop(900);
+
+    const resizeObserver = new ResizeObserver(() => {
+      measure();
+      startFrameLoop(260);
+    });
+    resizeObserver.observe(shell);
+    resizeObserver.observe(track);
+
+    const mutationObserver = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => mutation.attributeName?.startsWith("data-"))) {
+        startFrameLoop(1500);
+      }
+    });
+    mutationObserver.observe(track, {
+      attributes: true,
+      attributeFilter: ["data-entering", "data-reveal-state", "data-preparing"],
+    });
+
+    const updateOnViewportChange = () => {
+      measure();
+      startFrameLoop(320);
+    };
+    window.addEventListener("resize", updateOnViewportChange);
+    window.addEventListener("scroll", updateOnViewportChange, true);
+
+    return () => {
+      cancelled = true;
+      stopFrameLoop();
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener("resize", updateOnViewportChange);
+      window.removeEventListener("scroll", updateOnViewportChange, true);
+    };
+  }, [shellRef, signature, trackRef]);
+}
+
 function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
   return (
     <div className="pill-nav__subnav-row">
@@ -681,26 +807,31 @@ function AnimatedSubnavRow({ groups }: { groups: SubnavGroup[] }) {
 }
 
 function AnimatedSubnavGroup({ groupKey, items }: { groupKey: string; items: SubnavItem[] }) {
-  const subnavGroupRef = useRef<HTMLDivElement | null>(null);
+  const subnavShellRef = useRef<HTMLDivElement | null>(null);
+  const subnavTrackRef = useRef<HTMLDivElement | null>(null);
   const animationSignature = `${groupKey}:${items.map((item) => item.key).join("|")}`;
-  useMaskedPillRowIntro(subnavGroupRef, animationSignature);
+  useMaskedPillRowIntro(subnavTrackRef, animationSignature);
+  useMeasuredPillGroupMembrane(subnavShellRef, subnavTrackRef, animationSignature);
 
   return (
-    <div className="pill-subnav__group" ref={subnavGroupRef}>
-      {items.map((item, index) => (
-        <SubnavCell
-          key={item.key}
-          index={index}
-          label={item.label}
-          active={item.active}
-          className={item.className}
-          disabled={item.disabled}
-          node={item.node}
-          onClick={item.onClick}
-        >
-          {item.label}
-        </SubnavCell>
-      ))}
+    <div className="pill-group-shell pill-subnav__shell" ref={subnavShellRef}>
+      <div className="pill-group-membrane pill-subnav__membrane" aria-hidden="true" />
+      <div className="pill-subnav__group pill-subnav__track pill-group-track" ref={subnavTrackRef}>
+        {items.map((item, index) => (
+          <SubnavCell
+            key={item.key}
+            index={index}
+            label={item.label}
+            active={item.active}
+            className={item.className}
+            disabled={item.disabled}
+            node={item.node}
+            onClick={item.onClick}
+          >
+            {item.label}
+          </SubnavCell>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1247,6 +1378,7 @@ function SettingsIsland({
   galleryColumns,
   isPocketBaseMode,
   onGalleryColumnsChange,
+  onRequestClose,
   onSiteThemeChange,
   onShortcutChange,
   onShortcutReset,
@@ -1259,6 +1391,7 @@ function SettingsIsland({
   galleryColumns: number;
   isPocketBaseMode: boolean;
   onGalleryColumnsChange: (columns: number) => void;
+  onRequestClose: () => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
@@ -1290,136 +1423,147 @@ function SettingsIsland({
   };
 
   return (
-    <section className="settings-island" data-state={presenceState} aria-label="archive settings">
-      <div className="settings-island__tabs" aria-label="settings sections">
-        {SETTINGS_SECTIONS.map((section) => (
-          <button
-            key={section.key}
-            className="settings-island__tab"
-            data-active={activeSection === section.key ? "true" : "false"}
-            type="button"
-            onClick={() => setActiveSection(section.key)}
-          >
-            {section.label}
-          </button>
-        ))}
+    <section
+      className="settings-island"
+      data-state={presenceState}
+      aria-label="archive settings"
+      onMouseLeave={onRequestClose}
+    >
+      <div className="settings-island__tabs-shell ui-surface-shell">
+        <div className="settings-island__tabs-membrane ui-surface-membrane" aria-hidden="true" />
+        <div className="settings-island__tabs ui-surface-content ui-pill-track" aria-label="settings sections">
+          {SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.key}
+              className="settings-island__tab ui-pill-cell"
+              data-active={activeSection === section.key ? "true" : "false"}
+              type="button"
+              onClick={() => setActiveSection(section.key)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="settings-island__panel">
-        {activeSection === "appearance" ? (
-          <div className="settings-island__section">
-            <span className="settings-island__label">Appearance</span>
-            <div className="settings-island__cells" aria-label="theme">
-              <button
-                className="settings-island__cell"
-                data-active={siteTheme === "light" ? "true" : "false"}
-                type="button"
-                onClick={() => onSiteThemeChange("light")}
-              >
-                Light
-              </button>
-              <button
-                className="settings-island__cell"
-                data-active={siteTheme === "dark" ? "true" : "false"}
-                type="button"
-                onClick={() => onSiteThemeChange("dark")}
-              >
-                Dark
-              </button>
+      <div className="settings-island__panel-shell ui-surface-shell">
+        <div className="settings-island__panel-membrane ui-surface-membrane" aria-hidden="true" />
+        <div className="settings-island__panel ui-surface-content">
+          {activeSection === "appearance" ? (
+            <div className="settings-island__section">
+              <span className="settings-island__label">Appearance</span>
+              <div className="settings-island__cells ui-pill-track" aria-label="theme">
+                <button
+                  className="settings-island__cell ui-pill-cell"
+                  data-active={siteTheme === "light" ? "true" : "false"}
+                  type="button"
+                  onClick={() => onSiteThemeChange("light")}
+                >
+                  Light
+                </button>
+                <button
+                  className="settings-island__cell ui-pill-cell"
+                  data-active={siteTheme === "dark" ? "true" : "false"}
+                  type="button"
+                  onClick={() => onSiteThemeChange("dark")}
+                >
+                  Dark
+                </button>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {activeSection === "gallery" ? (
-          <div className="settings-island__section">
-            <span className="settings-island__label">Gallery</span>
-            <div className="settings-island__cells" aria-label={`gallery columns ${galleryColumns}`}>
-              <button
-                className="settings-island__cell"
-                type="button"
-                disabled={galleryColumns <= 2}
-                onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
-              >
-                -
-              </button>
-              <span className="settings-island__cell" data-static="true">
-                {galleryColumns} cols
+          {activeSection === "gallery" ? (
+            <div className="settings-island__section">
+              <span className="settings-island__label">Gallery</span>
+              <div className="settings-island__cells ui-pill-track" aria-label={`gallery columns ${galleryColumns}`}>
+                <button
+                  className="settings-island__cell ui-pill-cell"
+                  type="button"
+                  disabled={galleryColumns <= 2}
+                  onClick={() => onGalleryColumnsChange(galleryColumns - 1)}
+                >
+                  -
+                </button>
+                <span className="settings-island__cell ui-pill-cell" data-static="true">
+                  {galleryColumns} cols
+                </span>
+                <button
+                  className="settings-island__cell ui-pill-cell"
+                  type="button"
+                  disabled={galleryColumns >= 8}
+                  onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {activeSection === "shortcuts" ? (
+            <div className="settings-island__section">
+              <div className="settings-island__section-header">
+                <span className="settings-island__label">Shortcuts</span>
+                <button className="settings-island__reset ui-pill-cell" type="button" onClick={onShortcutReset}>
+                  Reset
+                </button>
+              </div>
+              <div className="settings-island__shortcut-list" aria-label="shortcut bindings">
+                <ShortcutCaptureField
+                  action="search"
+                  binding={shortcutBindings.search}
+                  label="Search archive"
+                  recording={recordingAction === "search"}
+                  onFocus={() => setRecordingAction("search")}
+                  onKeyDown={captureShortcut}
+                />
+                <ShortcutCaptureField
+                  action="theme"
+                  binding={shortcutBindings.theme}
+                  label="Toggle theme"
+                  recording={recordingAction === "theme"}
+                  onFocus={() => setRecordingAction("theme")}
+                  onKeyDown={captureShortcut}
+                />
+                <ShortcutCaptureField
+                  action="galleryIncrease"
+                  binding={shortcutBindings.galleryIncrease}
+                  label="More columns"
+                  recording={recordingAction === "galleryIncrease"}
+                  onFocus={() => setRecordingAction("galleryIncrease")}
+                  onKeyDown={captureShortcut}
+                />
+                <ShortcutCaptureField
+                  action="galleryDecrease"
+                  binding={shortcutBindings.galleryDecrease}
+                  label="Fewer columns"
+                  recording={recordingAction === "galleryDecrease"}
+                  onFocus={() => setRecordingAction("galleryDecrease")}
+                  onKeyDown={captureShortcut}
+                />
+              </div>
+              {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
+            </div>
+          ) : null}
+
+          {activeSection === "import" ? (
+            <div className="settings-island__section">
+              <span className="settings-island__label">Import</span>
+              <span className="settings-island__note">
+                {isPocketBaseMode ? "URL, note, image, PDF live" : "Live mode required"}
               </span>
-              <button
-                className="settings-island__cell"
-                type="button"
-                disabled={galleryColumns >= 8}
-                onClick={() => onGalleryColumnsChange(galleryColumns + 1)}
-              >
-                +
-              </button>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {activeSection === "shortcuts" ? (
-          <div className="settings-island__section">
-            <div className="settings-island__section-header">
-              <span className="settings-island__label">Shortcuts</span>
-              <button className="settings-island__reset" type="button" onClick={onShortcutReset}>
-                Reset
-              </button>
+          {activeSection === "system" ? (
+            <div className="settings-island__section">
+              <span className="settings-island__label">System</span>
+              <span className="settings-island__note">
+                {readError ? "Archive read error" : "Archive connected"} · Product Sans/system stack
+              </span>
             </div>
-            <div className="settings-island__shortcut-list" aria-label="shortcut bindings">
-              <ShortcutCaptureField
-                action="search"
-                binding={shortcutBindings.search}
-                label="Search archive"
-                recording={recordingAction === "search"}
-                onFocus={() => setRecordingAction("search")}
-                onKeyDown={captureShortcut}
-              />
-              <ShortcutCaptureField
-                action="theme"
-                binding={shortcutBindings.theme}
-                label="Toggle theme"
-                recording={recordingAction === "theme"}
-                onFocus={() => setRecordingAction("theme")}
-                onKeyDown={captureShortcut}
-              />
-              <ShortcutCaptureField
-                action="galleryIncrease"
-                binding={shortcutBindings.galleryIncrease}
-                label="More columns"
-                recording={recordingAction === "galleryIncrease"}
-                onFocus={() => setRecordingAction("galleryIncrease")}
-                onKeyDown={captureShortcut}
-              />
-              <ShortcutCaptureField
-                action="galleryDecrease"
-                binding={shortcutBindings.galleryDecrease}
-                label="Fewer columns"
-                recording={recordingAction === "galleryDecrease"}
-                onFocus={() => setRecordingAction("galleryDecrease")}
-                onKeyDown={captureShortcut}
-              />
-            </div>
-            {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
-          </div>
-        ) : null}
-
-        {activeSection === "import" ? (
-          <div className="settings-island__section">
-            <span className="settings-island__label">Import</span>
-            <span className="settings-island__note">
-              {isPocketBaseMode ? "URL, note, image, PDF live" : "Live mode required"}
-            </span>
-          </div>
-        ) : null}
-
-        {activeSection === "system" ? (
-          <div className="settings-island__section">
-            <span className="settings-island__label">System</span>
-            <span className="settings-island__note">
-              {readError ? "Archive read error" : "Archive connected"} · Product Sans/system stack
-            </span>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </section>
   );

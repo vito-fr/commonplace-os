@@ -36,14 +36,11 @@ export function useGridFlipAnimation(
         continue;
       }
 
-      const deltaX = previousRect.left - nextRect.left;
-      const deltaY = previousRect.top - nextRect.top;
-      const scaleX = nextRect.width > 0 ? previousRect.width / nextRect.width : 1;
-      const scaleY = nextRect.height > 0 ? previousRect.height / nextRect.height : 1;
+      const deltaX = snapToDevicePixel(previousRect.left - nextRect.left);
+      const deltaY = snapToDevicePixel(previousRect.top - nextRect.top);
       const moved = Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5;
-      const resized = Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01;
 
-      if (!moved && !resized) {
+      if (!moved) {
         continue;
       }
 
@@ -61,12 +58,10 @@ export function useGridFlipAnimation(
       element.animate(
         [
           {
-            transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`,
-            transformOrigin: "top left",
+            transform: `translate3d(${deltaX}px, ${deltaY}px, 0)`,
           },
           {
-            transform: "translate3d(0, 0, 0) scale(1, 1)",
-            transformOrigin: "top left",
+            transform: "translate3d(0, 0, 0)",
           },
         ],
         {
@@ -79,4 +74,13 @@ export function useGridFlipAnimation(
     previousRectsRef.current = nextRects;
     hasMeasuredRef.current = true;
   }, [containerRef, signature]);
+}
+
+function snapToDevicePixel(value: number) {
+  if (typeof window === "undefined") {
+    return Math.round(value);
+  }
+
+  const ratio = window.devicePixelRatio || 1;
+  return Math.round(value * ratio) / ratio;
 }
