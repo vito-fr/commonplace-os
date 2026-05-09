@@ -33,11 +33,12 @@ export type CollectionCardPreviewItem = {
 
 export type CollectionCardProps = {
   collection: CollectionCardModel;
+  mediaLoading?: "eager" | "lazy";
 };
 
 const maxCollectionTitleLength = 50;
 
-export function CollectionCard({ collection }: CollectionCardProps) {
+export function CollectionCard({ collection, mediaLoading = "lazy" }: CollectionCardProps) {
   const href = collection.href ?? `/collections/${encodeURIComponent(collection.id)}`;
   const addItemsHref = `${href}#add-to-collection`;
   const editHref = `${href}#collection-title`;
@@ -109,7 +110,7 @@ export function CollectionCard({ collection }: CollectionCardProps) {
     >
       <a className="collection-card__link" href={href} onClick={openCollection} aria-label={`Open ${collection.name}`}>
         <div className="collection-card__cover" aria-hidden="true" data-empty={collection.previewItems.length === 0 ? "true" : "false"}>
-          {renderCoverTiles(collection)}
+          {renderCoverTiles(collection, mediaLoading)}
         </div>
         <div className="collection-card__body">
           <h2 title={collection.name}>{displayTitle}</h2>
@@ -205,7 +206,7 @@ export function NewCollectionCard({ disabled = false, onCreate }: { disabled?: b
   );
 }
 
-function renderCoverTiles(collection: CollectionCardModel) {
+function renderCoverTiles(collection: CollectionCardModel, mediaLoading: "eager" | "lazy") {
   if (collection.previewItems.length === 0) {
     return (
       <span className="collection-card__cover-empty">
@@ -232,8 +233,9 @@ function renderCoverTiles(collection: CollectionCardModel) {
           <img
             src={imageUrl}
             alt=""
-            loading="lazy"
+            loading={mediaLoading}
             decoding="async"
+            fetchPriority={mediaLoading === "eager" ? "high" : "auto"}
             width={item.width ?? undefined}
             height={item.height ?? undefined}
           />

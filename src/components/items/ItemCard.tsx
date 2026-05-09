@@ -32,6 +32,8 @@ export type ItemMediaPreview = {
   aspectRatio?: number | null;
 };
 
+export type CardMediaLoading = "eager" | "lazy";
+
 export interface ItemCardProps {
   id: string;
   type: ItemType;
@@ -57,6 +59,7 @@ export interface ItemCardProps {
   imageHeight?: number | null;
   aspectRatio?: number | null;
   mediaPreview?: ItemMediaPreview | null;
+  mediaLoading?: CardMediaLoading;
   variant?: "gallery" | "masonry";
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
@@ -99,6 +102,7 @@ export function ItemCard({
   imageHeight = null,
   aspectRatio = null,
   mediaPreview = null,
+  mediaLoading = "lazy",
   variant = "gallery",
   hasPendingAIAnnotations = false,
   rightsStatus = null,
@@ -390,6 +394,7 @@ export function ItemCard({
             ogTitle,
             mediaPreview?.width ?? imageWidth,
             mediaPreview?.height ?? imageHeight,
+            mediaLoading,
           )}
           <span className="item-card__frame-tags" aria-hidden="true">
             {frameTags.map((item) => (
@@ -649,15 +654,19 @@ function renderContent(
   ogTitle: string | null,
   width: number | null | undefined,
   height: number | null | undefined,
+  mediaLoading: CardMediaLoading,
 ) {
+  const fetchPriority = mediaLoading === "eager" ? "high" : "auto";
+
   if (type === "image") {
     return imageUrl ? (
       <img
         className="item-card__image"
         src={imageUrl}
         alt={title ?? ""}
-        loading="lazy"
+        loading={mediaLoading}
         decoding="async"
+        fetchPriority={fetchPriority}
         width={width ?? undefined}
         height={height ?? undefined}
       />
@@ -693,6 +702,7 @@ function renderContent(
           title={title ?? ogTitle ?? "PDF preview"}
           tabIndex={-1}
           scrolling="no"
+          loading={mediaLoading}
         />
       </div>
     );
@@ -707,8 +717,9 @@ function renderContent(
           className="item-card__image"
           src={previewImageUrl}
           alt={ogTitle ?? title ?? ""}
-          loading="lazy"
+          loading={mediaLoading}
           decoding="async"
+          fetchPriority={fetchPriority}
           width={width ?? undefined}
           height={height ?? undefined}
         />

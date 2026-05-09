@@ -94,6 +94,7 @@ export function MasonryView({
           {column.map((object) => {
             const objectKey = getArchiveObjectKey(object);
             const enterIndex = enterIndexByKey.get(objectKey) ?? 0;
+            const mediaLoading = enterIndex < columnCount ? "eager" : "lazy";
 
             return (
               <div
@@ -103,9 +104,9 @@ export function MasonryView({
                 style={{ "--archive-card-index": enterIndex } as MasonryItemStyle}
               >
                 {object.objectType === "item" ? (
-                  <ItemCard {...object.item} variant="masonry" />
+                  <ItemCard {...object.item} mediaLoading={mediaLoading} variant="masonry" />
                 ) : object.objectType === "collection" ? (
-                  <CollectionCard collection={object.collection} />
+                  <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />
                 ) : (
                   <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />
                 )}

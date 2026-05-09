@@ -89,9 +89,9 @@ export function MasonryGrid({
           style={{ "--archive-card-index": leadingTile ? index + 1 : index } as CardEnterStyle}
         >
           {object.objectType === "item" ? (
-            <ItemCard {...object.item} />
+            <ItemCard {...object.item} mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"} />
           ) : object.objectType === "collection" ? (
-            <CollectionCard collection={object.collection} />
+            <CollectionCard collection={object.collection} mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"} />
           ) : (
             <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />
           )}
