@@ -1339,7 +1339,19 @@ function CollectionFilterRow({
       <span className="filter-popover-island__collection-preview" aria-hidden="true">
         {collection.previewItems.slice(0, 3).map((item) => {
           const imageUrl = item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl;
-          return imageUrl ? <img src={imageUrl} alt="" key={item.id} /> : <span key={item.id}>{getCollectionPreviewLabel(item.kind, item.format)}</span>;
+          return imageUrl ? (
+            <img
+              src={imageUrl}
+              alt=""
+              key={item.id}
+              loading="lazy"
+              decoding="async"
+              width={item.width ?? undefined}
+              height={item.height ?? undefined}
+            />
+          ) : (
+            <span key={item.id}>{getCollectionPreviewLabel(item.kind, item.format)}</span>
+          );
         })}
       </span>
       <span className="filter-popover-island__collection-copy">

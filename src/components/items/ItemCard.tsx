@@ -145,12 +145,12 @@ export function ItemCard({
     },
   });
   const resolvedImageUrl =
+    mediaPreview?.thumbnailUrl ??
+    thumbnailUrl ??
     imageUrl ??
     mediaPreview?.imageUrl ??
     mediaPreview?.previewUrl ??
-    mediaPreview?.thumbnailUrl ??
     previewUrl ??
-    thumbnailUrl ??
     null;
   const resolvedOgImageUrl =
     ogImageUrl ??
@@ -709,6 +709,8 @@ function renderContent(
           alt={ogTitle ?? title ?? ""}
           loading="lazy"
           decoding="async"
+          width={width ?? undefined}
+          height={height ?? undefined}
         />
       ) : (
         <Placeholder label="link preview" />

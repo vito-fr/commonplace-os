@@ -1620,6 +1620,8 @@ function ItemHero({
             decoding="async"
             src={item.content.image.fileRef}
             alt={imageAlt}
+            width={item.content.image.width ?? undefined}
+            height={item.content.image.height ?? undefined}
           />
           <button
             className="item-detail__media-action item-detail__media-expand"
@@ -1639,7 +1641,12 @@ function ItemHero({
               >
                 <PanelChevronIcon open side="right" />
               </button>
-              <img src={expandedImage} alt={imageAlt} />
+              <img
+                src={expandedImage}
+                alt={imageAlt}
+                width={item.content.image?.width ?? undefined}
+                height={item.content.image?.height ?? undefined}
+              />
             </div>
           ) : null}
         </figure>
@@ -2044,7 +2051,7 @@ function LinkHero({ item }: { item: ItemDetail }) {
 
   return (
     <div className={heroClassName}>
-      {previewImage ? <img src={previewImage} alt={title} /> : <span className="item-detail__link-glyph">URL</span>}
+      {previewImage ? <img src={previewImage} alt={title} loading="lazy" decoding="async" /> : <span className="item-detail__link-glyph">URL</span>}
       <div>
         <span className="detail-muted">{linkKindLabel}</span>
         <p>{title}</p>
