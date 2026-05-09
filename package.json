@@ -10,6 +10,7 @@
     "pb:serve": "pocketbase/pocketbase serve --dir pocketbase/pb_data --migrationsDir pocketbase/pb_migrations --hooksDir pocketbase/pb_hooks",
     "seed:dry-run": "node seed/load.js --dry-run",
     "seed:load": "node seed/load.js",
+    "thumbnails:backfill": "node scripts/backfill-thumbnails.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "visual:qa": "node scripts/visual-qa.mjs",

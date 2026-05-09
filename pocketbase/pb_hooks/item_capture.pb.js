@@ -457,6 +457,191 @@ routerAdd("POST", "/api/vita/backfill-image-dimensions", (e) => {
   }
 });
 
+routerAdd("POST", "/api/vita/item-thumbnail", (e) => {
+  const localGuard = localThumbnailRequest(e.request);
+  if (!localGuard.ok) {
+    return e.json(403, { error: "thumbnail backfill is only available from localhost" });
+  }
+
+  const body = new DynamicModel({
+    workspace_id: "",
+    item_id: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const itemId = requiredString(body.item_id, "item_id");
+  const uploadedFiles = e.findUploadedFiles("thumbnail_file");
+  const thumbnailFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
+
+  if (!thumbnailFile) {
+    throw new BadRequestError("thumbnail_file is required");
+  }
+
+  const thumbnailFileName = fileOriginalName(thumbnailFile, "thumbnail.webp");
+  const thumbnailMimeType = thumbnailMimeTypeForFileName(thumbnailFileName);
+
+  if (!thumbnailMimeType) {
+    throw new BadRequestError("thumbnail_file must be jpg, png, or webp");
+  }
+
+  const itemRows = arrayOf(
+    new DynamicModel({
+      id: "",
+    }),
+  );
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        SELECT i.id
+        FROM items i
+        INNER JOIN items_image img
+          ON img.item_id = i.id
+        WHERE i.workspace_id = {:workspaceId}
+          AND i.id = {:itemId}
+          AND img.file_ref IS NOT NULL
+          AND img.file_ref != ''
+        LIMIT 1
+      `,
+    )
+    .bind({ workspaceId, itemId })
+    .all(itemRows);
+
+  if (itemRows.length === 0) {
+    throw new NotFoundError("image item not found");
+  }
+
+  const now = new Date().toISOString();
+  const thumbnailFileRef = thumbnailFileKeyFor(workspaceId, itemId, thumbnailFileName);
+  const filesystem = e.app.newFilesystem();
+
+  try {
+    filesystem.uploadFile(thumbnailFile, thumbnailFileRef);
+  } finally {
+    filesystem.close();
+  }
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        DELETE FROM item_assets
+        WHERE workspace_id = {:workspaceId}
+          AND item_id = {:itemId}
+          AND role = 'thumbnail'
+      `,
+    )
+    .bind({ workspaceId, itemId })
+    .execute();
+
+  e.app
+    .db()
+    .newQuery(
+      `
+        INSERT INTO item_assets (
+          id,
+          workspace_id,
+          item_id,
+          role,
+          file_ref,
+          original_name,
+          mime_type,
+          size_bytes,
+          created_at
+        ) VALUES (
+          {:assetId},
+          {:workspaceId},
+          {:itemId},
+          'thumbnail',
+          {:thumbnailFileRef},
+          {:thumbnailFileName},
+          {:thumbnailMimeType},
+          {:thumbnailSize},
+          {:now}
+        )
+      `,
+    )
+    .bind({
+      assetId: `asset:${itemId}:thumbnail`,
+      workspaceId,
+      itemId,
+      thumbnailFileRef,
+      thumbnailFileName,
+      thumbnailMimeType,
+      thumbnailSize: thumbnailFile.size,
+      now,
+    })
+    .execute();
+
+  return e.json(200, {
+    itemId,
+    thumbnailFileRef,
+    thumbnailMimeType,
+    thumbnailSize: thumbnailFile.size,
+  });
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function localThumbnailRequest(request) {
+    const remoteAddr = request && typeof request.remoteAddr === "string" ? request.remoteAddr : "";
+
+    if (remoteAddr === "") {
+      return { ok: true };
+    }
+
+    const host = remoteAddr.startsWith("[") ? remoteAddr.slice(1, remoteAddr.indexOf("]")) : remoteAddr.split(":")[0];
+    return { ok: host === "127.0.0.1" || host === "::1" || host === "localhost" };
+  }
+
+  function fileOriginalName(file, fallbackName) {
+    return sanitizeFileName(file.originalName || file.name || fallbackName, fallbackName);
+  }
+
+  function sanitizeFileName(value, fallbackName) {
+    const cleaned = String(value)
+      .trim()
+      .replace(/[/\\?%*:|"<>]/g, "-")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
+
+    return cleaned || fallbackName;
+  }
+
+  function safePathSegment(value) {
+    return String(value).replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
+  function thumbnailFileKeyFor(workspaceId, itemId, fileName) {
+    return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/thumb-${fileName}`;
+  }
+
+  function thumbnailMimeTypeForFileName(fileName) {
+    const lower = fileName.toLowerCase();
+
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+      return "image/jpeg";
+    }
+
+    if (lower.endsWith(".png")) {
+      return "image/png";
+    }
+
+    if (lower.endsWith(".webp")) {
+      return "image/webp";
+    }
+
+    return "";
+  }
+});
+
 routerAdd("POST", "/api/vita/item-capture", (e) => {
   const body = new DynamicModel({
     workspace_id: "",
@@ -474,6 +659,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   const rawUrl = optionalString(body.url);
   const actor = optionalString(body.actor) || "system";
   let uploadedFile = null;
+  let uploadedThumbnailFile = null;
 
   if (!["note", "link", "image", "pdf"].includes(type)) {
     throw new BadRequestError("capture type must be note, link, image, or pdf");
@@ -490,6 +676,11 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   if (type === "image" || type === "pdf") {
     const uploadedFiles = e.findUploadedFiles("file");
     uploadedFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
+
+    if (type === "image") {
+      const uploadedThumbnailFiles = e.findUploadedFiles("thumbnail_file");
+      uploadedThumbnailFile = uploadedThumbnailFiles.length > 0 ? uploadedThumbnailFiles[0] : null;
+    }
   }
 
   if ((type === "image" || type === "pdf") && !uploadedFile) {
@@ -1146,6 +1337,104 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/${fileName}`;
   }
 
+  function thumbnailFileKeyFor(workspaceId, itemId, fileName) {
+    return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/thumb-${fileName}`;
+  }
+
+  function thumbnailMimeTypeForFileName(fileName) {
+    const lower = fileName.toLowerCase();
+
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+      return "image/jpeg";
+    }
+
+    if (lower.endsWith(".png")) {
+      return "image/png";
+    }
+
+    if (lower.endsWith(".webp")) {
+      return "image/webp";
+    }
+
+    return "";
+  }
+
+  function storeThumbnailAsset(app, workspaceId, itemId, thumbnailFile, now) {
+    if (!thumbnailFile) {
+      return "";
+    }
+
+    const thumbnailFileName = fileOriginalName(thumbnailFile, "thumbnail.webp");
+    const thumbnailMimeType = thumbnailMimeTypeForFileName(thumbnailFileName);
+
+    if (!thumbnailMimeType) {
+      return "";
+    }
+
+    const thumbnailFileRef = thumbnailFileKeyFor(workspaceId, itemId, thumbnailFileName);
+    const filesystem = app.newFilesystem();
+
+    try {
+      filesystem.uploadFile(thumbnailFile, thumbnailFileRef);
+    } finally {
+      filesystem.close();
+    }
+
+    app
+      .db()
+      .newQuery(
+        `
+          DELETE FROM item_assets
+          WHERE workspace_id = {:workspaceId}
+            AND item_id = {:itemId}
+            AND role = 'thumbnail'
+        `,
+      )
+      .bind({ workspaceId, itemId })
+      .execute();
+
+    app
+      .db()
+      .newQuery(
+        `
+          INSERT INTO item_assets (
+            id,
+            workspace_id,
+            item_id,
+            role,
+            file_ref,
+            original_name,
+            mime_type,
+            size_bytes,
+            created_at
+          ) VALUES (
+            {:assetId},
+            {:workspaceId},
+            {:itemId},
+            'thumbnail',
+            {:thumbnailFileRef},
+            {:thumbnailFileName},
+            {:thumbnailMimeType},
+            {:thumbnailSize},
+            {:now}
+          )
+        `,
+      )
+      .bind({
+        assetId: `asset:${itemId}:thumbnail`,
+        workspaceId,
+        itemId,
+        thumbnailFileRef,
+        thumbnailFileName,
+        thumbnailMimeType,
+        thumbnailSize: thumbnailFile.size,
+        now,
+      })
+      .execute();
+
+    return thumbnailFileRef;
+  }
+
   function pdfMimeTypeForFile(file, fileName) {
     const uploadedType = typeof file.type === "string" ? file.type.toLowerCase() : "";
 
@@ -1390,6 +1679,8 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
             .execute();
         }
 
+        storeThumbnailAsset(txApp, workspaceId, existing.id, uploadedThumbnailFile, now);
+
         result = {
           created: false,
           item: {
@@ -1591,6 +1882,8 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         )
         .bind({ itemId, assetFileRef, assetMimeType, imageWidth, imageHeight })
         .execute();
+
+      storeThumbnailAsset(txApp, workspaceId, itemId, uploadedThumbnailFile, now);
     }
 
     if (type === "pdf") {

@@ -187,6 +187,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       ogMetadata: nullString(),
       assetFileRef: nullString(),
       assetMimeType: nullString(),
+      thumbnailFileRef: nullString(),
       hasPendingAIAnnotations: 0,
       rightsStatus: "",
     }),
@@ -228,6 +229,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           link.og_metadata AS ogMetadata,
           asset.file_ref AS assetFileRef,
           asset.mime_type AS assetMimeType,
+          thumb.file_ref AS thumbnailFileRef,
           EXISTS (
             SELECT 1
             FROM ai_annotations annotation
@@ -252,6 +254,10 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           ON asset.item_id = i.id
           AND asset.workspace_id = i.workspace_id
           AND asset.role = 'source_file'
+        LEFT JOIN item_assets thumb
+          ON thumb.item_id = i.id
+          AND thumb.workspace_id = i.workspace_id
+          AND thumb.role = 'thumbnail'
         WHERE i.workspace_id = {:workspaceId}
           ${itemIdFilter}
           ${statusFilter}
@@ -343,6 +349,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     const assetMimeType = nullableString(row.assetMimeType);
     const imageWidth = nullableNumber(row.imageWidth);
     const imageHeight = nullableNumber(row.imageHeight);
+    const thumbnailFileRef = nullableString(row.thumbnailFileRef);
     const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
     const fallbackImageUrl = !openGraph.image && isDirectImageUrl(rowUrl) ? rowUrl : null;
     const ogImageUrl = openGraph.image || fallbackImageUrl;
@@ -368,7 +375,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       assetFileUrl,
       assetMimeType,
       previewUrl,
-      thumbnailUrl: imageUrl || ogImageUrl,
+      thumbnailUrl: thumbnailFileRef || imageUrl || ogImageUrl,
       videoPosterUrl,
       imageWidth,
       imageHeight,
@@ -376,7 +383,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       mediaPreview: {
         previewUrl,
         imageUrl,
-        thumbnailUrl: imageUrl || ogImageUrl,
+        thumbnailUrl: thumbnailFileRef || imageUrl || ogImageUrl,
         ogImageUrl,
         videoPosterUrl,
         assetFileUrl,

@@ -226,6 +226,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       imageHeight: nullString(),
       ogMetadata: nullString(),
       assetFileRef: nullString(),
+      thumbnailFileRef: nullString(),
       textPreview: nullString(),
       sourceUrl: nullString(),
       sourceKind: nullString(),
@@ -249,6 +250,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
             link.og_metadata AS ogMetadata,
             asset.file_ref AS assetFileRef,
+            thumb.file_ref AS thumbnailFileRef,
             SUBSTR(
               COALESCE(
                 i.title,
@@ -310,6 +312,10 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             ON asset.item_id = i.id
             AND asset.workspace_id = i.workspace_id
             AND asset.role = 'source_file'
+          LEFT JOIN item_assets thumb
+            ON thumb.item_id = i.id
+            AND thumb.workspace_id = i.workspace_id
+            AND thumb.role = 'thumbnail'
           WHERE c.workspace_id = {:workspaceId}
         )
         SELECT
@@ -323,6 +329,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
           imageHeight,
           ogMetadata,
           assetFileRef,
+          thumbnailFileRef,
           textPreview,
           sourceUrl,
           sourceKind
@@ -349,6 +356,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     const ogImageUrl = openGraph.image || (isDirectImageUrl(sourceUrl) ? sourceUrl : null);
     const format = nullableString(row.format);
     const assetFileRef = nullableString(row.assetFileRef);
+    const thumbnailFileRef = nullableString(row.thumbnailFileRef);
     const videoPosterUrl = format === "video" ? ogImageUrl : null;
     const previewUrl = imageUrl || ogImageUrl || videoPosterUrl || (format === "pdf" ? assetFileRef : null);
     const previewItem = {
@@ -356,7 +364,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       title: nullableString(row.title) || openGraph.title,
       kind: row.kind,
       format,
-      thumbnailUrl: imageUrl || ogImageUrl,
+      thumbnailUrl: thumbnailFileRef || imageUrl || ogImageUrl,
       previewUrl,
       imageUrl,
       ogImageUrl,
@@ -535,7 +543,8 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         link.content_type AS linkContentType,
         link.og_metadata AS ogMetadata,
         asset.file_ref AS assetFileUrl,
-        asset.mime_type AS assetMimeType
+        asset.mime_type AS assetMimeType,
+        thumb.file_ref AS thumbnailFileRef
       FROM collection_items ci
       INNER JOIN collections c
         ON c.id = ci.collection_id
@@ -557,6 +566,10 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         ON asset.item_id = i.id
         AND asset.workspace_id = i.workspace_id
         AND asset.role = 'source_file'
+      LEFT JOIN item_assets thumb
+        ON thumb.item_id = i.id
+        AND thumb.workspace_id = i.workspace_id
+        AND thumb.role = 'thumbnail'
       WHERE c.workspace_id = {:workspaceId}
         AND c.id = {:collectionId}
       ORDER BY ci.added_at ASC, ci.item_id ASC
@@ -584,6 +597,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       ogMetadata: nullString(),
       assetFileUrl: nullString(),
       assetMimeType: nullString(),
+      thumbnailFileRef: nullString(),
     },
     { workspaceId, collectionId },
   );
@@ -601,6 +615,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     const linkContentType = nullableString(row.linkContentType);
     const assetFileUrl = nullableString(row.assetFileUrl);
     const assetMimeType = nullableString(row.assetMimeType);
+    const thumbnailFileRef = nullableString(row.thumbnailFileRef);
     const videoPosterUrl = linkContentType === "video" ? openGraph.image : null;
     const previewUrl = imageUrl || openGraph.image || videoPosterUrl || (linkContentType === "pdf" ? assetFileUrl : null);
     const sourceLabel =
@@ -640,12 +655,12 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       assetFileUrl,
       assetMimeType,
       previewUrl,
-      thumbnailUrl: imageUrl || openGraph.image,
+      thumbnailUrl: thumbnailFileRef || imageUrl || openGraph.image,
       videoPosterUrl,
       mediaPreview: {
         previewUrl,
         imageUrl,
-        thumbnailUrl: imageUrl || openGraph.image,
+        thumbnailUrl: thumbnailFileRef || imageUrl || openGraph.image,
         ogImageUrl: openGraph.image,
         videoPosterUrl,
         assetFileUrl,
