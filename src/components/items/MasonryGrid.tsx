@@ -1,7 +1,8 @@
-import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import { ItemCard } from "./ItemCard";
+import { getArchiveObjectKey, getArchiveObjectRenderSignature } from "./archiveObjectIdentity";
 import { useGridFlipAnimation } from "./useGridFlip";
 
 export type MasonryDensity = "comfortable" | "dense" | "editorial";
@@ -25,7 +26,14 @@ type CardEnterStyle = CSSProperties & {
   "--archive-card-index": number;
 };
 
+type GridObjectContentProps = {
+  mediaLoading: "eager" | "lazy";
+  object: ArchiveObject;
+  renderSignature: string;
+};
+
 const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => `loading-${index}`);
+const gridInitialEntryDurationMs = 920;
 
 export function MasonryGrid({
   objects,
@@ -43,12 +51,23 @@ export function MasonryGrid({
   const gridStyle: GalleryGridStyle = { "--gallery-columns": columns };
   const gridRef = useRef<HTMLElement | null>(null);
   const hasLeadingTile = Boolean(leadingTile);
+  const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
   const layoutSignature = useMemo(
     () => [columns, density, hasLeadingTile ? "leading" : "none", objects.map(getArchiveObjectKey).join("|")].join("::"),
     [columns, density, hasLeadingTile, objects],
   );
 
   useGridFlipAnimation(gridRef, layoutSignature);
+
+  useEffect(() => {
+    const hasRenderableContent = objects.length > 0 || hasLeadingTile;
+    if (loading || !hasRenderableContent || entryState === "settled") {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setEntryState("settled"), gridInitialEntryDurationMs);
+    return () => window.clearTimeout(timeout);
+  }, [entryState, loading, objects.length, hasLeadingTile]);
 
   if (loading) {
     return (
@@ -71,7 +90,7 @@ export function MasonryGrid({
   }
 
   return (
-    <section ref={gridRef} className={gridClassName} style={gridStyle} aria-label={ariaLabel}>
+    <section ref={gridRef} className={gridClassName} data-entry-state={entryState} style={gridStyle} aria-label={ariaLabel}>
       {leadingTile ? (
         <div
           className="masonry-grid__item masonry-grid__item--leading"
@@ -88,13 +107,11 @@ export function MasonryGrid({
           key={getArchiveObjectKey(object)}
           style={{ "--archive-card-index": leadingTile ? index + 1 : index } as CardEnterStyle}
         >
-          {object.objectType === "item" ? (
-            <ItemCard {...object.item} mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"} />
-          ) : object.objectType === "collection" ? (
-            <CollectionCard collection={object.collection} mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"} />
-          ) : (
-            <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />
-          )}
+          <GridObjectContent
+            mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"}
+            object={object}
+            renderSignature={getArchiveObjectRenderSignature(object)}
+          />
         </div>
       ))}
       {objects.length === 0 && emptyState ? <div className="masonry-grid__empty masonry-grid__empty--inline">{emptyState}</div> : null}
@@ -102,14 +119,22 @@ export function MasonryGrid({
   );
 }
 
-function getArchiveObjectKey(object: ArchiveObject) {
+const GridObjectContent = memo(function GridObjectContent({
+  mediaLoading,
+  object,
+  renderSignature: _renderSignature,
+}: GridObjectContentProps) {
   if (object.objectType === "item") {
-    return `item:${object.item.id}`;
+    return <ItemCard {...object.item} mediaLoading={mediaLoading} />;
   }
 
   if (object.objectType === "collection") {
-    return `collection:${object.collection.id}`;
+    return <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />;
   }
 
-  return "collection:create";
+  return <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />;
+}, areGridObjectContentPropsEqual);
+
+function areGridObjectContentPropsEqual(previousProps: GridObjectContentProps, nextProps: GridObjectContentProps) {
+  return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
 }
