@@ -173,14 +173,17 @@ export function ItemCard({
     width: imageWidth,
   });
   const isRemoteImageReference = type === "link" && isDirectImageUrl(url);
-  const naturalMasonryImageUrl = type === "image" ? resolvedImageUrl : isRemoteImageReference ? url : null;
+  const masonryPreviewImageUrl =
+    type === "image"
+      ? resolvedImageUrl
+      : linkContentType === "pdf"
+        ? null
+        : resolvedOgImageUrl || (isRemoteImageReference ? url : null);
   const masonryImageRatioState =
-    variant === "masonry" && (type === "image" || isRemoteImageReference)
+    variant === "masonry" && masonryPreviewImageUrl
       ? resolvedAspectRatio
         ? "reserved"
-        : naturalMasonryImageUrl
-          ? "natural"
-          : "fallback"
+        : "natural"
       : variant === "masonry"
         ? "fallback"
       : undefined;

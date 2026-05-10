@@ -31,6 +31,8 @@ type MasonryObjectContentProps = {
   renderSignature: string;
 };
 
+type NaturalMediaRatioMap = Record<string, number>;
+
 const loadingPlaceholders = Array.from({ length: 10 }, (_, index) => `masonry-loading-${index}`);
 const masonryGap = 12;
 const initialEntryDurationMs = 920;
@@ -51,9 +53,14 @@ export function MasonryView({
   const viewRef = useRef<HTMLElement | null>(null);
   const measuredContainerWidth = useMasonryContainerWidth(viewRef);
   const layoutSignature = useMemo(() => objects.map(getArchiveObjectLayoutSignature).join("|"), [objects]);
+  const naturalMediaRatios = useMasonryNaturalMediaRatios(viewRef, layoutSignature);
+  const naturalMediaRatioSignature = useMemo(
+    () => Object.entries(naturalMediaRatios).map(([key, ratio]) => `${key}:${ratio}`).join("|"),
+    [naturalMediaRatios],
+  );
   const layout = useMemo(
-    () => buildMasonryLayout(objects, columnCount, measuredContainerWidth),
-    [objects, columnCount, measuredContainerWidth, layoutSignature],
+    () => buildMasonryLayout(objects, columnCount, measuredContainerWidth, naturalMediaRatios),
+    [objects, columnCount, measuredContainerWidth, layoutSignature, naturalMediaRatioSignature, naturalMediaRatios],
   );
   const viewClassName = ["masonry-view", className].filter(Boolean).join(" ");
   const viewStyle: MasonryViewStyle = {
@@ -228,6 +235,72 @@ function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCo
   return responsiveColumns;
 }
 
+function useMasonryNaturalMediaRatios(ref: RefObject<HTMLElement | null>, objectSignature: string) {
+  const [naturalMediaRatios, setNaturalMediaRatios] = useState<NaturalMediaRatioMap>({});
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
+    let frame = 0;
+    const scheduleRatioRead = () => {
+      if (frame) {
+        return;
+      }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const nextRatios: NaturalMediaRatioMap = {};
+
+        element.querySelectorAll<HTMLElement>(".masonry-view__item[data-archive-key]").forEach((itemElement) => {
+          const key = itemElement.dataset.archiveKey;
+          const image = itemElement.querySelector<HTMLImageElement>("img.item-card__image");
+          if (!key || !image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+            return;
+          }
+
+          nextRatios[key] = roundRatio(image.naturalWidth / image.naturalHeight);
+        });
+
+        setNaturalMediaRatios((currentRatios) => {
+          let didChange = false;
+          const mergedRatios = { ...currentRatios };
+
+          for (const [key, ratio] of Object.entries(nextRatios)) {
+            if (Math.abs((mergedRatios[key] ?? 0) - ratio) > 0.001) {
+              mergedRatios[key] = ratio;
+              didChange = true;
+            }
+          }
+
+          return didChange ? mergedRatios : currentRatios;
+        });
+      });
+    };
+
+    const images = Array.from(element.querySelectorAll<HTMLImageElement>(".masonry-view__item img.item-card__image"));
+    images.forEach((image) => {
+      image.addEventListener("load", scheduleRatioRead);
+      image.addEventListener("error", scheduleRatioRead);
+    });
+    scheduleRatioRead();
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      images.forEach((image) => {
+        image.removeEventListener("load", scheduleRatioRead);
+        image.removeEventListener("error", scheduleRatioRead);
+      });
+    };
+  }, [ref, objectSignature]);
+
+  return naturalMediaRatios;
+}
+
 function getResponsiveMasonryColumns(includeDefaultCount: boolean) {
   return {
     columnCap: getResponsiveMasonryColumnCap(),
@@ -274,7 +347,12 @@ function getResponsiveMasonryColumnCap() {
   return 2;
 }
 
-function buildMasonryLayout(objects: ArchiveObject[], columnCount: number, containerWidth: number) {
+function buildMasonryLayout(
+  objects: ArchiveObject[],
+  columnCount: number,
+  containerWidth: number,
+  naturalMediaRatios: NaturalMediaRatioMap = {},
+) {
   const safeColumnCount = Math.max(1, columnCount);
   const safeContainerWidth = Math.max(1, containerWidth);
   const columnWidth = Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount);
@@ -283,8 +361,8 @@ function buildMasonryLayout(objects: ArchiveObject[], columnCount: number, conta
     const columnIndex = getShortestColumnIndex(columnHeights);
     const x = columnIndex * (columnWidth + masonryGap);
     const y = columnHeights[columnIndex];
-    const estimatedHeight = estimateObjectHeight(object, columnWidth);
     const objectKey = getArchiveObjectKey(object);
+    const estimatedHeight = estimateObjectHeight(object, columnWidth, naturalMediaRatios[objectKey]);
 
     columnHeights[columnIndex] += estimatedHeight + masonryGap;
 
@@ -347,7 +425,7 @@ function getArchiveObjectLayoutSignature(object: ArchiveObject) {
   ].join(":");
 }
 
-function estimateObjectHeight(object: ArchiveObject, columnWidth = 220) {
+function estimateObjectHeight(object: ArchiveObject, columnWidth = 220, naturalMediaRatio?: number) {
   if (object.objectType === "collection-create") {
     return columnWidth + 44;
   }
@@ -358,7 +436,10 @@ function estimateObjectHeight(object: ArchiveObject, columnWidth = 220) {
   }
 
   const item = object.item;
-  const [width, height] = getRatioParts(getItemEstimatedRatio(item));
+  const [width, height] =
+    naturalMediaRatio && Number.isFinite(naturalMediaRatio) && naturalMediaRatio > 0
+      ? [naturalMediaRatio, 1]
+      : getRatioParts(getItemEstimatedRatio(item));
   const labelHeight = item.type === "caption" || item.type === "note" ? 38 : 31;
   return (height / width) * columnWidth + labelHeight;
 }
