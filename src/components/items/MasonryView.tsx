@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import type { CollectionCardModel } from "./CollectionCard";
 import { ItemCard, type ItemCardProps } from "./ItemCard";
-import { useGridFlipAnimation } from "./useGridFlip";
 
 export type MasonryViewProps = {
   objects: ArchiveObject[];
@@ -16,13 +15,24 @@ export type MasonryViewProps = {
 
 type MasonryViewStyle = CSSProperties & {
   "--masonry-columns": number;
+  height?: number;
 };
 
 type MasonryItemStyle = CSSProperties & {
   "--archive-card-index": number;
+  transform: string;
+  width: number;
+};
+
+type MasonryObjectContentProps = {
+  mediaLoading: "eager" | "lazy";
+  object: ArchiveObject;
+  renderSignature: string;
 };
 
 const loadingPlaceholders = Array.from({ length: 10 }, (_, index) => `masonry-loading-${index}`);
+const masonryGap = 12;
+const initialEntryDurationMs = 920;
 
 export function MasonryView({
   ariaLabel = "masonry archive objects",
@@ -32,42 +42,45 @@ export function MasonryView({
   loading = false,
   objects,
 }: MasonryViewProps) {
-  const responsiveColumnCount = useResponsiveMasonryColumns();
-  const responsiveColumnCap = useResponsiveMasonryColumnCap();
-  const requestedColumnCount = controlledColumns ?? responsiveColumnCount;
-  const columnCount = Math.max(1, Math.min(requestedColumnCount, responsiveColumnCap));
+  const responsiveColumns = useResponsiveMasonryColumns({
+    includeDefaultCount: controlledColumns == null,
+  });
+  const requestedColumnCount = controlledColumns ?? responsiveColumns.columnCount;
+  const columnCount = Math.max(1, Math.min(requestedColumnCount, responsiveColumns.columnCap));
+  const viewRef = useRef<HTMLElement | null>(null);
+  const measuredContainerWidth = useMasonryContainerWidth(viewRef);
   const layoutSignature = useMemo(() => objects.map(getArchiveObjectLayoutSignature).join("|"), [objects]);
-  const objectByKey = useMemo(() => {
-    const map = new Map<string, ArchiveObject>();
-    objects.forEach((object) => map.set(getArchiveObjectKey(object), object));
-    return map;
-  }, [objects]);
-  const enterIndexByKey = useMemo(() => {
-    const map = new Map<string, number>();
-    objects.forEach((object, index) => map.set(getArchiveObjectKey(object), index));
-    return map;
-  }, [layoutSignature]);
-  const columnKeys = useMemo(() => assignMasonryColumnKeys(objects, columnCount), [columnCount, layoutSignature]);
-  const columns = useMemo(
-    () =>
-      columnKeys.map((column) =>
-        column.flatMap((key) => {
-          const object = objectByKey.get(key);
-          return object ? [object] : [];
-        }),
-      ),
-    [columnKeys, objectByKey],
+  const layout = useMemo(
+    () => buildMasonryLayout(objects, columnCount, measuredContainerWidth),
+    [objects, columnCount, measuredContainerWidth, layoutSignature],
   );
   const viewClassName = ["masonry-view", className].filter(Boolean).join(" ");
-  const viewStyle: MasonryViewStyle = { "--masonry-columns": columnCount };
-  const viewRef = useRef<HTMLElement | null>(null);
-  const flipSignature = `${columnCount}::${layoutSignature}`;
+  const viewStyle: MasonryViewStyle = {
+    "--masonry-columns": columnCount,
+    height: layout.containerHeight,
+  };
+  const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
+  const hasStartedEntryRef = useRef(false);
 
-  useGridFlipAnimation(viewRef, flipSignature);
+  useEffect(() => {
+    if (loading || objects.length === 0 || hasStartedEntryRef.current) {
+      return;
+    }
+
+    hasStartedEntryRef.current = true;
+    const timeout = window.setTimeout(() => setEntryState("settled"), initialEntryDurationMs);
+    return () => window.clearTimeout(timeout);
+  }, [loading, objects.length]);
 
   if (loading) {
     return (
-      <section ref={viewRef} className={viewClassName} style={viewStyle} aria-label={ariaLabel} aria-busy="true">
+      <section
+        ref={viewRef}
+        className={`${viewClassName} masonry-view--loading`}
+        style={{ "--masonry-columns": columnCount } as MasonryViewStyle}
+        aria-label={ariaLabel}
+        aria-busy="true"
+      >
         {buildPlaceholderColumns(columnCount).map((column, columnIndex) => (
           <div className="masonry-view__column" key={`placeholder-column-${columnIndex}`}>
             {column.map((id, itemIndex) => (
@@ -88,59 +101,139 @@ export function MasonryView({
   }
 
   return (
-    <section ref={viewRef} className={viewClassName} style={viewStyle} aria-label={ariaLabel}>
-      {columns.map((column, columnIndex) => (
-        <div className="masonry-view__column" key={`masonry-column-${columnIndex}`}>
-          {column.map((object) => {
-            const objectKey = getArchiveObjectKey(object);
-            const enterIndex = enterIndexByKey.get(objectKey) ?? 0;
-            const mediaLoading = enterIndex < columnCount ? "eager" : "lazy";
+    <section
+      ref={viewRef}
+      className={viewClassName}
+      data-entry-state={entryState}
+      style={viewStyle}
+      aria-label={ariaLabel}
+    >
+      {layout.items.map(({ enterIndex, object, objectKey, renderSignature, width, x, y }) => {
+        const mediaLoading = enterIndex < columnCount ? "eager" : "lazy";
+        const itemStyle: MasonryItemStyle = {
+          "--archive-card-index": enterIndex,
+          transform: `translate3d(${roundLayoutPixel(x)}px, ${roundLayoutPixel(y)}px, 0)`,
+          width: roundLayoutPixel(width),
+        };
 
-            return (
-              <div
-                className="masonry-view__item"
-                data-archive-key={objectKey}
-                key={objectKey}
-                style={{ "--archive-card-index": enterIndex } as MasonryItemStyle}
-              >
-                {object.objectType === "item" ? (
-                  <ItemCard {...object.item} mediaLoading={mediaLoading} variant="masonry" />
-                ) : object.objectType === "collection" ? (
-                  <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />
-                ) : (
-                  <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+        return (
+          <div className="masonry-view__item" data-archive-key={objectKey} key={objectKey} style={itemStyle}>
+            <MasonryObjectContent mediaLoading={mediaLoading} object={object} renderSignature={renderSignature} />
+          </div>
+        );
+      })}
     </section>
   );
 }
 
-function useResponsiveMasonryColumns() {
-  const [columnCount, setColumnCount] = useState(() => getResponsiveMasonryColumnCount());
+const MasonryObjectContent = memo(function MasonryObjectContent({
+  mediaLoading,
+  object,
+  renderSignature: _renderSignature,
+}: MasonryObjectContentProps) {
+  if (object.objectType === "item") {
+    return <ItemCard {...object.item} mediaLoading={mediaLoading} variant="masonry" />;
+  }
 
-  useEffect(() => {
-    const updateColumnCount = () => setColumnCount(getResponsiveMasonryColumnCount());
-    window.addEventListener("resize", updateColumnCount);
-    return () => window.removeEventListener("resize", updateColumnCount);
-  }, []);
+  if (object.objectType === "collection") {
+    return <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />;
+  }
 
-  return columnCount;
+  return <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />;
+}, areMasonryObjectContentPropsEqual);
+
+function areMasonryObjectContentPropsEqual(
+  previousProps: MasonryObjectContentProps,
+  nextProps: MasonryObjectContentProps,
+) {
+  return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
 }
 
-function useResponsiveMasonryColumnCap() {
-  const [columnCap, setColumnCap] = useState(() => getResponsiveMasonryColumnCap());
+function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
+  const [containerWidth, setContainerWidth] = useState(() => getInitialMasonryContainerWidth());
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
+    let frame = 0;
+    const updateWidth = (width: number) => {
+      const roundedWidth = Math.max(1, Math.round(width));
+      setContainerWidth((currentWidth) => (currentWidth === roundedWidth ? currentWidth : roundedWidth));
+    };
+    const scheduleWidthUpdate = (width: number) => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateWidth(width);
+      });
+    };
+
+    updateWidth(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width ?? element.getBoundingClientRect().width;
+      scheduleWidthUpdate(nextWidth);
+    });
+    observer.observe(element);
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      observer.disconnect();
+    };
+  }, [ref]);
+
+  return containerWidth;
+}
+
+function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCount: boolean }) {
+  const [responsiveColumns, setResponsiveColumns] = useState(() =>
+    getResponsiveMasonryColumns(includeDefaultCount),
+  );
 
   useEffect(() => {
-    const updateColumnCap = () => setColumnCap(getResponsiveMasonryColumnCap());
-    window.addEventListener("resize", updateColumnCap);
-    return () => window.removeEventListener("resize", updateColumnCap);
-  }, []);
+    let frame = 0;
+    const updateColumns = () => {
+      frame = 0;
+      const nextColumns = getResponsiveMasonryColumns(includeDefaultCount);
+      setResponsiveColumns((currentColumns) =>
+        currentColumns.columnCount === nextColumns.columnCount &&
+        currentColumns.columnCap === nextColumns.columnCap
+          ? currentColumns
+          : nextColumns,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(updateColumns);
+    };
 
-  return columnCap;
+    updateColumns();
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [includeDefaultCount]);
+
+  return responsiveColumns;
+}
+
+function getResponsiveMasonryColumns(includeDefaultCount: boolean) {
+  return {
+    columnCap: getResponsiveMasonryColumnCap(),
+    columnCount: includeDefaultCount ? getResponsiveMasonryColumnCount() : 1,
+  };
 }
 
 function getResponsiveMasonryColumnCount() {
@@ -182,18 +275,48 @@ function getResponsiveMasonryColumnCap() {
   return 2;
 }
 
-function assignMasonryColumnKeys(objects: ArchiveObject[], columnCount: number): string[][] {
+function buildMasonryLayout(objects: ArchiveObject[], columnCount: number, containerWidth: number) {
   const safeColumnCount = Math.max(1, columnCount);
-  const columns = Array.from({ length: safeColumnCount }, () => [] as string[]);
+  const safeContainerWidth = Math.max(1, containerWidth);
+  const columnWidth = Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount);
   const columnHeights = Array.from({ length: safeColumnCount }, () => 0);
+  const items = objects.map((object, enterIndex) => {
+    const columnIndex = getShortestColumnIndex(columnHeights);
+    const x = columnIndex * (columnWidth + masonryGap);
+    const y = columnHeights[columnIndex];
+    const estimatedHeight = estimateObjectHeight(object, columnWidth);
+    const objectKey = getArchiveObjectKey(object);
 
-  for (const object of objects) {
-    const shortestColumnIndex = columnHeights.indexOf(Math.min(...columnHeights));
-    columns[shortestColumnIndex].push(getArchiveObjectKey(object));
-    columnHeights[shortestColumnIndex] += estimateObjectHeight(object);
+    columnHeights[columnIndex] += estimatedHeight + masonryGap;
+
+    return {
+      enterIndex,
+      object,
+      objectKey,
+      renderSignature: getArchiveObjectRenderSignature(object),
+      width: columnWidth,
+      x,
+      y,
+    };
+  });
+  const containerHeight = Math.max(0, ...columnHeights.map((height) => height - masonryGap));
+
+  return { containerHeight, items };
+}
+
+function getShortestColumnIndex(columnHeights: number[]) {
+  let shortestIndex = 0;
+  let shortestHeight = columnHeights[0] ?? 0;
+
+  for (let index = 1; index < columnHeights.length; index += 1) {
+    const height = columnHeights[index] ?? 0;
+    if (height < shortestHeight) {
+      shortestHeight = height;
+      shortestIndex = index;
+    }
   }
 
-  return columns;
+  return shortestIndex;
 }
 
 function getArchiveObjectKey(object: ArchiveObject) {
@@ -237,20 +360,109 @@ function getArchiveObjectLayoutSignature(object: ArchiveObject) {
   ].join(":");
 }
 
-function estimateObjectHeight(object: ArchiveObject) {
+function getArchiveObjectRenderSignature(object: ArchiveObject) {
   if (object.objectType === "collection-create") {
-    return 338;
+    return ["collection:create", object.disabled ? "disabled" : "enabled"].join(":");
+  }
+
+  if (object.objectType === "collection") {
+    const collection = object.collection;
+    return [
+      "collection",
+      collection.id,
+      collection.name,
+      collection.description ?? "",
+      collection.href ?? "",
+      collection.kindSummary,
+      collection.lastUpdatedAt,
+      collection.pieceCount,
+      collection.previewItems
+        .map((item) =>
+          [
+            item.id,
+            item.title ?? "",
+            item.kind,
+            item.format ?? "",
+            item.thumbnailUrl ?? "",
+            item.previewUrl ?? "",
+            item.imageUrl ?? "",
+            item.ogImageUrl ?? "",
+            item.videoPosterUrl ?? "",
+            item.width ?? "",
+            item.height ?? "",
+            item.aspectRatio ?? "",
+            item.textPreview ?? "",
+            item.sourceUrl ?? "",
+            item.source ?? "",
+          ].join("\u001f"),
+        )
+        .join("\u001e"),
+    ].join("\u001f");
+  }
+
+  const item = object.item;
+  const preview = item.mediaPreview;
+  return [
+    "item",
+    item.id,
+    item.type,
+    item.status,
+    item.source,
+    item.usageCount,
+    item.collectionCount ?? "",
+    item.createdAt ?? "",
+    item.title ?? "",
+    item.imageUrl ?? "",
+    item.captionText ?? "",
+    item.noteParagraph ?? "",
+    item.url ?? "",
+    item.linkContentType ?? "",
+    item.ogImageUrl ?? "",
+    item.ogTitle ?? "",
+    item.assetFileUrl ?? "",
+    item.assetMimeType ?? "",
+    item.previewUrl ?? "",
+    item.thumbnailUrl ?? "",
+    item.videoPosterUrl ?? "",
+    item.imageWidth ?? "",
+    item.imageHeight ?? "",
+    item.aspectRatio ?? "",
+    preview?.previewUrl ?? "",
+    preview?.imageUrl ?? "",
+    preview?.thumbnailUrl ?? "",
+    preview?.ogImageUrl ?? "",
+    preview?.videoPosterUrl ?? "",
+    preview?.assetFileUrl ?? "",
+    preview?.assetMimeType ?? "",
+    preview?.width ?? "",
+    preview?.height ?? "",
+    preview?.aspectRatio ?? "",
+    item.hasPendingAIAnnotations ? "ai" : "",
+    item.rightsStatus ?? "",
+    item.isSelected ? "selected" : "",
+    item.isCollectionPickerOpen ? "picker" : "",
+    item.detailHref ?? "",
+    item.activeFilters?.status ?? "",
+    item.activeFilters?.type ?? "",
+    item.activeFilters?.source ?? "",
+    item.activeFilters?.text ?? "",
+  ].join("\u001f");
+}
+
+function estimateObjectHeight(object: ArchiveObject, columnWidth = 220) {
+  if (object.objectType === "collection-create") {
+    return columnWidth + 44;
   }
 
   if (object.objectType === "collection") {
     const [width = 4, height = 3] = getRatioParts(getCollectionRatio(object.collection));
-    return (height / width) * 220 + 64;
+    return (height / width) * columnWidth + 38;
   }
 
   const item = object.item;
   const [width, height] = getRatioParts(getItemEstimatedRatio(item));
-  const textBonus = item.type === "caption" || item.type === "note" ? Math.min(140, getItemTextPreview(item).length * 0.75) : 52;
-  return (height / width) * 220 + textBonus;
+  const labelHeight = item.type === "caption" || item.type === "note" ? 38 : 31;
+  return (height / width) * columnWidth + labelHeight;
 }
 
 function getRatioParts(value: string): [number, number] {
@@ -298,6 +510,9 @@ function getItemFallbackRatio(item: ItemCardProps) {
   if (item.linkContentType === "video") {
     return "16 / 9";
   }
+  if (item.type === "link" && isDirectImageUrl(item.url)) {
+    return "4 / 5";
+  }
   if (item.ogImageUrl || item.linkContentType === "website") {
     return "1.2 / 1";
   }
@@ -320,6 +535,19 @@ function ratioFromDimensions(width: number | null | undefined, height: number | 
 
 function roundRatio(value: number) {
   return Math.round(value * 1000) / 1000;
+}
+
+function roundLayoutPixel(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getInitialMasonryContainerWidth() {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+
+  const desktopGutter = window.innerWidth >= 720 ? 160 : 36;
+  return Math.max(1, Math.min(1920, window.innerWidth - desktopGutter));
 }
 
 function getCollectionRatio(_collection: CollectionCardModel) {
@@ -374,4 +602,27 @@ function formatItemKind(item: ItemCardProps) {
 
 function formatSource(source: string) {
   return source.replace(/_/g, " ");
+}
+
+function isDirectImageUrl(url: string | null | undefined) {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    const path = parsedUrl.pathname.toLowerCase();
+
+    return (
+      parsedUrl.hostname === "i.pinimg.com" ||
+      path.endsWith(".jpg") ||
+      path.endsWith(".jpeg") ||
+      path.endsWith(".png") ||
+      path.endsWith(".webp") ||
+      path.endsWith(".gif") ||
+      path.endsWith(".avif")
+    );
+  } catch {
+    return false;
+  }
 }

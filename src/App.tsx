@@ -128,9 +128,29 @@ function useResponsiveGalleryColumnCap() {
   const [columnCap, setColumnCap] = useState(() => getResponsiveGalleryColumnCap());
 
   useEffect(() => {
-    const updateColumnCap = () => setColumnCap(getResponsiveGalleryColumnCap());
-    window.addEventListener("resize", updateColumnCap);
-    return () => window.removeEventListener("resize", updateColumnCap);
+    let frame = 0;
+    const updateColumnCap = () => {
+      frame = 0;
+      const nextColumnCap = getResponsiveGalleryColumnCap();
+      setColumnCap((currentColumnCap) =>
+        currentColumnCap === nextColumnCap ? currentColumnCap : nextColumnCap,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(updateColumnCap);
+    };
+
+    updateColumnCap();
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      window.removeEventListener("resize", scheduleUpdate);
+    };
   }, []);
 
   return columnCap;

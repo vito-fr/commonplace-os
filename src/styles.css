@@ -122,7 +122,7 @@ html {
   width: 100%;
   max-width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   background: var(--color-paper);
 }
 
@@ -131,7 +131,7 @@ body {
   max-width: 100%;
   min-height: 100%;
   margin: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   overscroll-behavior-y: none;
   color: var(--color-ink);
   background: var(--color-paper);
@@ -194,7 +194,7 @@ select:focus-visible {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .app-shell {
@@ -5260,16 +5260,22 @@ select:focus-visible {
 }
 
 .masonry-view {
-  display: grid;
+  position: relative;
+  display: block;
   width: 100%;
   max-width: min(var(--masonry-shell-max-width), 100%);
   min-width: 0;
   margin-right: auto;
   margin-left: auto;
+  overflow-x: clip;
+}
+
+.masonry-view--loading {
+  display: grid;
+  height: auto;
   grid-template-columns: repeat(var(--masonry-columns, 4), minmax(0, 1fr));
   gap: 12px;
   align-items: start;
-  overflow-x: clip;
 }
 
 .masonry-view__column {
@@ -5290,9 +5296,20 @@ select:focus-visible {
 }
 
 .masonry-view__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 0;
+  max-width: none;
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: 0 0;
+}
+
+.masonry-view--loading .masonry-view__item {
+  position: static;
   width: 100%;
   max-width: 100%;
-  min-width: 0;
+  transition: none;
 }
 
 .masonry-view .item-card,
@@ -5421,10 +5438,15 @@ select:focus-visible {
   min-width: 0;
 }
 
-.masonry-grid__item,
-.masonry-view__item {
+.masonry-grid__item {
   animation: archive-card-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: min(calc(var(--archive-card-index, 0) * 38ms), 560ms);
+}
+
+.masonry-view[data-entry-state="initial"] .masonry-view__item {
+  animation: masonry-view-card-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: min(calc(var(--archive-card-index, 0) * 38ms), 560ms);
+  transition: none;
 }
 
 @keyframes archive-card-enter {
@@ -5442,6 +5464,22 @@ select:focus-visible {
     opacity: 1;
     filter: blur(0);
     transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes masonry-view-card-enter {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+
+  58% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
   }
 }
 
@@ -5465,6 +5503,7 @@ select:focus-visible {
   .masonry-grid__item,
   .masonry-view__item {
     animation: none;
+    transition: none;
     will-change: auto;
   }
 }
