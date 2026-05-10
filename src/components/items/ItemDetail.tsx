@@ -2049,9 +2049,34 @@ function LinkHero({ item }: { item: ItemDetail }) {
     .filter(Boolean)
     .join(" ");
 
+  if (previewImage) {
+    return (
+      <figure className="item-detail__media-figure item-detail__media-figure--link">
+        <img
+          className="item-detail__link-preview-image"
+          src={previewImage}
+          alt={title}
+          loading="lazy"
+          decoding="async"
+        />
+        {url ? (
+          <a
+            className="item-detail__media-action item-detail__media-open-link"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Open source"
+          >
+            <OpenMediaIcon />
+          </a>
+        ) : null}
+      </figure>
+    );
+  }
+
   return (
     <div className={heroClassName}>
-      {previewImage ? <img src={previewImage} alt={title} loading="lazy" decoding="async" /> : <span className="item-detail__link-glyph">URL</span>}
+      <span className="item-detail__link-glyph">URL</span>
       <div>
         <span className="detail-muted">{linkKindLabel}</span>
         <p>{title}</p>

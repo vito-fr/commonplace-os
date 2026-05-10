@@ -5836,7 +5836,7 @@ select:focus-visible {
 }
 
 .item-detail--object .item-detail__hero-image,
-.item-detail--object .item-detail__link-hero img {
+.item-detail--object .item-detail__link-preview-image {
   display: block;
   width: auto;
   max-width: 100%;
@@ -5896,6 +5896,8 @@ select:focus-visible {
 
 .item-detail__media-figure:hover .item-detail__media-expand,
 .item-detail__media-figure:focus-within .item-detail__media-expand,
+.item-detail__media-figure--link:hover .item-detail__media-open-link,
+.item-detail__media-figure--link:focus-within .item-detail__media-open-link,
 .item-detail__pdf-hero:hover .item-detail__media-action,
 .item-detail__pdf-hero:focus-within .item-detail__media-action {
   opacity: 1;
