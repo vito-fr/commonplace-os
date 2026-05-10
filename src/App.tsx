@@ -160,14 +160,6 @@ function getDefaultGalleryColumnCount() {
   return Math.min(defaultGalleryColumns, getResponsiveGalleryColumnCap());
 }
 
-function getDefaultMasonryColumnCount() {
-  if (typeof window === "undefined") {
-    return 4;
-  }
-
-  return window.innerWidth >= 1680 ? 5 : 4;
-}
-
 function getResponsiveGalleryColumnCap() {
   if (typeof window === "undefined") {
     return defaultGalleryColumns;
@@ -189,6 +181,61 @@ function getResponsiveGalleryColumnCap() {
   return 2;
 }
 
+function getResponsiveMasonryColumnConfig() {
+  if (typeof window === "undefined") {
+    return { columnCap: 8, columnCount: 4 };
+  }
+
+  const width = window.innerWidth;
+  if (width >= 1440) {
+    return { columnCap: 8, columnCount: 5 };
+  }
+  if (width >= 1180) {
+    return { columnCap: 7, columnCount: 4 };
+  }
+  if (width >= 980) {
+    return { columnCap: 6, columnCount: 4 };
+  }
+  if (width >= 680) {
+    return { columnCap: 4, columnCount: 3 };
+  }
+  return { columnCap: 2, columnCount: 2 };
+}
+
+function useResponsiveMasonryColumnConfig() {
+  const [config, setConfig] = useState(() => getResponsiveMasonryColumnConfig());
+
+  useEffect(() => {
+    let frame = 0;
+    const updateConfig = () => {
+      frame = 0;
+      const nextConfig = getResponsiveMasonryColumnConfig();
+      setConfig((currentConfig) =>
+        currentConfig.columnCap === nextConfig.columnCap && currentConfig.columnCount === nextConfig.columnCount
+          ? currentConfig
+          : nextConfig,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(updateConfig);
+    };
+
+    updateConfig();
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, []);
+
+  return config;
+}
+
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [items, setItems] = useState<ItemCardProps[]>([]);
@@ -197,9 +244,15 @@ export function App() {
   const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
   const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
   const [galleryColumns, setGalleryColumns] = useState(() => getDefaultGalleryColumnCount());
-  const [masonryColumns, setMasonryColumns] = useState(() => getDefaultMasonryColumnCount());
+  const [masonryColumnOffset, setMasonryColumnOffset] = useState(() => 0);
   const galleryColumnCap = useResponsiveGalleryColumnCap();
   const effectiveGalleryColumns = Math.min(galleryColumns, galleryColumnCap);
+  const responsiveMasonryColumns = useResponsiveMasonryColumnConfig();
+  const masonryColumns = Math.min(
+    maxMasonryColumns,
+    responsiveMasonryColumns.columnCap,
+    Math.max(minMasonryColumns, responsiveMasonryColumns.columnCount + masonryColumnOffset),
+  );
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
   const [shortcutError, setShortcutError] = useState<string | null>(null);
@@ -297,7 +350,15 @@ export function App() {
 
       if (route.kind === "grid" && archiveViewMode === "masonry" && matchesShortcut(event, shortcutBindings.galleryIncrease)) {
         event.preventDefault();
-        setMasonryColumns((currentColumns) => Math.min(maxMasonryColumns, currentColumns + 1));
+        setMasonryColumnOffset((currentOffset) => {
+          const currentColumns = Math.min(
+            maxMasonryColumns,
+            responsiveMasonryColumns.columnCap,
+            Math.max(minMasonryColumns, responsiveMasonryColumns.columnCount + currentOffset),
+          );
+          const nextColumns = Math.min(maxMasonryColumns, responsiveMasonryColumns.columnCap, currentColumns + 1);
+          return nextColumns - responsiveMasonryColumns.columnCount;
+        });
         return;
       }
 
@@ -309,7 +370,15 @@ export function App() {
 
       if (route.kind === "grid" && archiveViewMode === "masonry" && matchesShortcut(event, shortcutBindings.galleryDecrease)) {
         event.preventDefault();
-        setMasonryColumns((currentColumns) => Math.max(minMasonryColumns, currentColumns - 1));
+        setMasonryColumnOffset((currentOffset) => {
+          const currentColumns = Math.min(
+            maxMasonryColumns,
+            responsiveMasonryColumns.columnCap,
+            Math.max(minMasonryColumns, responsiveMasonryColumns.columnCount + currentOffset),
+          );
+          const nextColumns = Math.max(minMasonryColumns, currentColumns - 1);
+          return nextColumns - responsiveMasonryColumns.columnCount;
+        });
       }
     };
 
@@ -317,7 +386,7 @@ export function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [archiveViewMode, route.kind, shortcutBindings]);
+  }, [archiveViewMode, responsiveMasonryColumns, route.kind, shortcutBindings]);
 
   useEffect(() => {
     const nextUrl =
@@ -1538,7 +1607,12 @@ export function App() {
   };
 
   const updateMasonryColumns = (columns: number) => {
-    setMasonryColumns(Math.min(maxMasonryColumns, Math.max(minMasonryColumns, columns)));
+    const nextColumns = Math.min(
+      maxMasonryColumns,
+      responsiveMasonryColumns.columnCap,
+      Math.max(minMasonryColumns, columns),
+    );
+    setMasonryColumnOffset(nextColumns - responsiveMasonryColumns.columnCount);
   };
 
   const updateArchiveViewMode = (mode: ArchiveViewMode) => {

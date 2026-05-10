@@ -5411,6 +5411,10 @@ select:focus-visible {
   transition: none;
 }
 
+.masonry-view[data-resizing="true"] .masonry-view__item {
+  transition: none;
+}
+
 .masonry-view .item-card,
 .masonry-view .collection-card {
   contain: layout style;

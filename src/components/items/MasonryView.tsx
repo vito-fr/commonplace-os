@@ -51,7 +51,7 @@ export function MasonryView({
   const requestedColumnCount = controlledColumns ?? responsiveColumns.columnCount;
   const columnCount = Math.max(1, Math.min(requestedColumnCount, responsiveColumns.columnCap));
   const viewRef = useRef<HTMLElement | null>(null);
-  const measuredContainerWidth = useMasonryContainerWidth(viewRef);
+  const { containerWidth: measuredContainerWidth, isResizing } = useMasonryContainerWidth(viewRef);
   const layoutSignature = useMemo(() => objects.map(getArchiveObjectLayoutSignature).join("|"), [objects]);
   const naturalMediaRatios = useMasonryNaturalMediaRatios(viewRef, layoutSignature);
   const naturalMediaRatioSignature = useMemo(
@@ -111,6 +111,7 @@ export function MasonryView({
       ref={viewRef}
       className={viewClassName}
       data-entry-state={entryState}
+      data-resizing={isResizing ? "true" : undefined}
       style={viewStyle}
       aria-label={ariaLabel}
     >
@@ -156,7 +157,10 @@ function areMasonryObjectContentPropsEqual(
 }
 
 function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
-  const [containerWidth, setContainerWidth] = useState(() => getInitialMasonryContainerWidth());
+  const [containerState, setContainerState] = useState(() => ({
+    containerWidth: getInitialMasonryContainerWidth(),
+    isResizing: false,
+  }));
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -165,9 +169,27 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
     }
 
     let frame = 0;
-    const updateWidth = (width: number) => {
+    let settleTimeout = 0;
+    const setResizeSettled = () => {
+      settleTimeout = 0;
+      setContainerState((currentState) =>
+        currentState.isResizing ? { ...currentState, isResizing: false } : currentState,
+      );
+    };
+    const updateWidth = (width: number, isResizing: boolean) => {
       const roundedWidth = Math.max(1, Math.round(width));
-      setContainerWidth((currentWidth) => (currentWidth === roundedWidth ? currentWidth : roundedWidth));
+      setContainerState((currentState) =>
+        currentState.containerWidth === roundedWidth && currentState.isResizing === isResizing
+          ? currentState
+          : { containerWidth: roundedWidth, isResizing },
+      );
+
+      if (isResizing) {
+        if (settleTimeout) {
+          window.clearTimeout(settleTimeout);
+        }
+        settleTimeout = window.setTimeout(setResizeSettled, 180);
+      }
     };
     const scheduleWidthUpdate = (width: number) => {
       if (frame) {
@@ -175,11 +197,11 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
       }
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        updateWidth(width);
+        updateWidth(width, true);
       });
     };
 
-    updateWidth(element.getBoundingClientRect().width);
+    updateWidth(element.getBoundingClientRect().width, false);
 
     const observer = new ResizeObserver((entries) => {
       const nextWidth = entries[0]?.contentRect.width ?? element.getBoundingClientRect().width;
@@ -191,11 +213,14 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
       if (frame) {
         window.cancelAnimationFrame(frame);
       }
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
+      }
       observer.disconnect();
     };
   }, [ref]);
 
-  return containerWidth;
+  return containerState;
 }
 
 function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCount: boolean }) {
