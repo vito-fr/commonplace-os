@@ -1794,7 +1794,7 @@ export function App() {
     }));
 
     routeContent = (
-      <main className="app-shell" aria-label="Vita archive">
+      <main className="app-shell app-shell--detail" aria-label="Vita archive">
         <Suspense fallback={<RouteChunkLoadingState label="Loading archive object." />}>
           <LazyItemDetailView
             item={renderedDetail}

@@ -228,6 +228,10 @@ select:focus-visible {
   padding: 112px var(--archive-page-gutter) 116px;
 }
 
+.app-shell--detail {
+  padding: 0;
+}
+
 @media (max-width: 720px) {
   .app-shell--archive {
     padding: 112px 10px 116px;
@@ -5151,12 +5155,16 @@ select:focus-visible {
 
 .collection-card__preview-tile--text small {
   display: -webkit-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: var(--color-muted);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.14;
+  overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
