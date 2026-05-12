@@ -1562,19 +1562,19 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="search"
                     binding={shortcutBindings.search}
-                    context="Focus archive search"
+                    context="Archive search"
                     label="Search archive"
                     recording={recordingAction === "search"}
                     onFocus={() => setRecordingAction("search")}
                     onKeyDown={captureShortcut}
                   />
-                  <ShortcutStaticField context="Close menu, panel, or overlay" label="Close or dismiss" value="Esc" />
+                  <ShortcutStaticField context="Dismiss" label="Close or dismiss" value="Esc" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Views">
                   <ShortcutCaptureField
                     action="theme"
                     binding={shortcutBindings.theme}
-                    context="Switch light and dark"
+                    context="Theme"
                     label="Toggle theme"
                     recording={recordingAction === "theme"}
                     onFocus={() => setRecordingAction("theme")}
@@ -1583,7 +1583,7 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="galleryIncrease"
                     binding={shortcutBindings.galleryIncrease}
-                    context="Gallery or masonry density"
+                    context="Density"
                     label="More columns"
                     recording={recordingAction === "galleryIncrease"}
                     onFocus={() => setRecordingAction("galleryIncrease")}
@@ -1592,7 +1592,7 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="galleryDecrease"
                     binding={shortcutBindings.galleryDecrease}
-                    context="Gallery or masonry density"
+                    context="Density"
                     label="Fewer columns"
                     recording={recordingAction === "galleryDecrease"}
                     onFocus={() => setRecordingAction("galleryDecrease")}
@@ -1600,14 +1600,14 @@ function SettingsIsland({
                   />
                 </ShortcutGroup>
                 <ShortcutGroup title="Item actions">
-                  <ShortcutStaticField context="When supported on detail" label="Download current item" value="D" />
-                  <ShortcutStaticField context="Pending delete window" label="Undo delete" value="⌘/Ctrl Z" />
+                  <ShortcutStaticField context="Detail" label="Download current item" value="D" />
+                  <ShortcutStaticField context="Undo window" label="Undo delete" value="⌘/Ctrl Z" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Panels">
-                  <ShortcutStaticField context="Item detail right rail" label="Toggle detail panel" value="R" />
+                  <ShortcutStaticField context="Detail rail" label="Toggle detail panel" value="R" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Import/Writing">
-                  <ShortcutStaticField context="While editing notes" label="Save note edit" value="⌘/Ctrl Enter" />
+                  <ShortcutStaticField context="Note editor" label="Save note edit" value="⌘/Ctrl Enter" />
                 </ShortcutGroup>
               </div>
               {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
@@ -1663,6 +1663,8 @@ function ShortcutCaptureField({
   onKeyDown: (action: ShortcutAction, event: ReactKeyboardEvent<HTMLInputElement>) => void;
   recording: boolean;
 }) {
+  const displayValue = recording ? "Press" : formatShortcutBinding(binding);
+
   return (
     <label className="settings-island__shortcut-row">
       <span className="settings-island__shortcut-copy">
@@ -1674,7 +1676,8 @@ function ShortcutCaptureField({
         aria-label={`${label} shortcut`}
         className="settings-island__shortcut-key"
         data-recording={recording ? "true" : "false"}
-        value={recording ? "Press" : formatShortcutBinding(binding)}
+        size={Math.min(12, Math.max(3, displayValue.length))}
+        value={displayValue}
         onFocus={onFocus}
         onClick={onFocus}
         onKeyDown={(event) => onKeyDown(action, event)}

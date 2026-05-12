@@ -34,9 +34,14 @@ export function SettingSlider({
 
   return (
     <label className="setting-slider">
-      <span className="setting-slider__copy">
-        <strong>{label}</strong>
-        {description ? <small>{description}</small> : null}
+      <span className="setting-slider__header">
+        <span className="setting-slider__copy">
+          <strong>{label}</strong>
+          {description ? <small>{description}</small> : null}
+        </span>
+        <output className="setting-slider__value" aria-live="polite">
+          {displayValue}
+        </output>
       </span>
       <span className="setting-slider__control">
         <input
@@ -50,9 +55,6 @@ export function SettingSlider({
           value={value}
           onChange={(event) => onChange(Number(event.currentTarget.value))}
         />
-        <output className="setting-slider__value" aria-live="polite">
-          {displayValue}
-        </output>
       </span>
     </label>
   );

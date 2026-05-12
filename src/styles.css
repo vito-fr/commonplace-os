@@ -816,7 +816,7 @@ select:focus-visible {
 .settings-island__shortcut-list {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 7px;
 }
 
@@ -841,7 +841,7 @@ select:focus-visible {
 
 .settings-island__shortcut-row {
   display: grid;
-  min-height: 34px;
+  min-height: 33px;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -868,15 +868,18 @@ select:focus-visible {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .settings-island__shortcut-copy strong {
+  display: -webkit-box;
   color: color-mix(in srgb, var(--nav-cell-ink) 78%, transparent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: -0.012em;
-  line-height: 1.24;
+  line-height: 1.22;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .settings-island__shortcut-copy small {
@@ -885,23 +888,25 @@ select:focus-visible {
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .settings-island__shortcut-key {
   width: auto;
-  height: 25px;
-  min-height: 25px;
-  min-width: 0;
+  height: 22px;
+  min-height: 22px;
+  min-width: 30px;
+  max-width: 88px;
   border: 0;
   border-radius: 999px;
   background: var(--nav-cell-bg);
   color: var(--nav-cell-ink);
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: -0.012em;
   line-height: 1.28;
-  padding: 6px 9px 7px;
+  padding: 4px 7px 5px;
   text-align: center;
   text-decoration: none;
   white-space: nowrap;
@@ -945,13 +950,19 @@ select:focus-visible {
 .setting-slider {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 230px);
-  align-items: center;
-  gap: 12px;
-  border-radius: var(--capsule-radius);
-  background: var(--nav-cell-bg);
+  gap: 7px;
+  border-radius: calc(var(--panel-inner-radius) - 6px);
+  background: color-mix(in srgb, var(--nav-cell-bg) 72%, transparent);
   color: var(--nav-cell-ink);
-  padding: 8px 8px 8px 11px;
+  padding: 9px;
+}
+
+.setting-slider__header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
 }
 
 .setting-slider__copy {
@@ -984,20 +995,19 @@ select:focus-visible {
 }
 
 .setting-slider__control {
-  display: grid;
+  position: relative;
+  display: block;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
+  height: 32px;
 }
 
 .setting-slider__input {
   --setting-slider-fill: color-mix(in srgb, var(--nav-cell-ink) 68%, transparent);
-  --setting-slider-rest: color-mix(in srgb, var(--nav-cell-ink) 10%, var(--nav-cell-bg));
+  --setting-slider-rest: color-mix(in srgb, var(--nav-cell-ink) 9%, var(--nav-cell-bg));
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
-  height: 28px;
+  height: 32px;
   min-width: 0;
   border-radius: var(--capsule-radius);
   background: transparent;
@@ -1014,7 +1024,7 @@ select:focus-visible {
 }
 
 .setting-slider__input::-webkit-slider-runnable-track {
-  height: 28px;
+  height: 8px;
   border: 0;
   border-radius: var(--capsule-radius);
   background:
@@ -1028,30 +1038,30 @@ select:focus-visible {
 .setting-slider__input::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 26px;
-  height: 26px;
-  margin-top: 1px;
+  width: 22px;
+  height: 22px;
+  margin-top: -7px;
   border: 1px solid color-mix(in srgb, var(--nav-cell-ink) 18%, transparent);
   border-radius: 999px;
   background: var(--nav-cell-bg);
 }
 
 .setting-slider__input::-moz-range-track {
-  height: 28px;
+  height: 8px;
   border: 0;
   border-radius: var(--capsule-radius);
   background: var(--setting-slider-rest);
 }
 
 .setting-slider__input::-moz-range-progress {
-  height: 28px;
+  height: 8px;
   border-radius: var(--capsule-radius);
   background: var(--setting-slider-fill);
 }
 
 .setting-slider__input::-moz-range-thumb {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border: 1px solid color-mix(in srgb, var(--nav-cell-ink) 18%, transparent);
   border-radius: 999px;
   background: var(--nav-cell-bg);
@@ -1059,18 +1069,18 @@ select:focus-visible {
 
 .setting-slider__value {
   display: inline-flex;
-  min-width: 42px;
-  min-height: 28px;
+  min-width: 36px;
+  min-height: 22px;
   align-items: center;
   justify-content: center;
   border-radius: var(--capsule-radius);
-  background: var(--nav-cell-bg);
-  color: var(--nav-cell-ink);
-  font-size: 10px;
+  background: color-mix(in srgb, var(--nav-cell-bg) 58%, transparent);
+  color: color-mix(in srgb, var(--nav-cell-ink) 68%, transparent);
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: -0.012em;
   line-height: 1.2;
-  padding: 7px 9px;
+  padding: 4px 7px 5px;
   white-space: nowrap;
 }
 
@@ -2092,6 +2102,17 @@ select:focus-visible {
   .settings-island__shortcut-list,
   .setting-slider {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .setting-slider__header {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .setting-slider__value {
+    justify-self: start;
   }
 }
 
