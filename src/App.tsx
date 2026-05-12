@@ -4,6 +4,11 @@ import type { ItemStatus, ItemType } from "./components/atoms";
 import { MasonryGrid, MasonryView } from "./components/items";
 import type { ArchiveObject, CollectionCardModel, ItemCardActionAnchor, ItemCardProps } from "./components/items";
 import type { DetailArchiveFlow } from "./components/items/ItemDetail";
+import { readCachedArchiveItemCards, writeCachedArchiveItemCards } from "./data/archiveBootstrapCache";
+import { readCachedArchiveCollectionIndex, writeCachedArchiveCollectionIndex } from "./data/archiveCollectionIndexCache";
+import { preloadCriticalArchiveImages } from "./data/archiveCriticalPreload";
+import { SafariCardRepro } from "./components/debug/SafariCardRepro";
+import { SafariRasterOverlay } from "./components/debug/SafariRasterOverlay";
 import type { ItemCardFilters, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./data/itemCardReader";
 import { createPocketBaseItemCaptureWriter } from "./data/pocketBaseItemCapture";
 import {
@@ -36,7 +41,8 @@ type AppRoute =
   | { kind: "grid" }
   | { kind: "item"; itemId: string; returnCollectionId?: string }
   | { kind: "collection"; collectionId: string; returnTo?: string }
-  | { kind: "pdfPreview"; src: string; name?: string; surface?: "card" | "reader" };
+  | { kind: "pdfPreview"; src: string; name?: string; surface?: "card" | "reader" }
+  | { kind: "safariRepro" };
 type ArchiveStatusFilter = ItemStatus | "all";
 type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
@@ -89,6 +95,7 @@ const workspaceId = "seed:ws001";
 const readerMode = import.meta.env.VITE_ITEM_CARD_READER;
 const pocketBaseUrl = import.meta.env.VITE_POCKETBASE_URL ?? "http://127.0.0.1:8090";
 const isPocketBaseMode = readerMode === "pocketbase";
+const archiveCacheScope = isPocketBaseMode ? `pocketbase:${pocketBaseUrl}` : "seed-fixture";
 const itemCardReader: ItemCardReader =
   isPocketBaseMode
     ? createPocketBaseItemCardReader({
@@ -122,6 +129,26 @@ const itemCardSurfaceEvent = "vita:item-card-surface-open";
 type ItemCardSurfaceDetail = {
   itemId: string;
   surface: "actions" | "collection";
+};
+const itemDeleteUndoWindowMs = 8000;
+
+type PendingItemDeleteNotice = {
+  expiresAt: number;
+  itemId: string;
+  title: string;
+  token: string;
+};
+
+type PendingItemDeleteSnapshot = {
+  collectionDetailSnapshot: CollectionDetail | null;
+  collectionIndexSnapshot: CollectionIndexItem[];
+  detailSnapshot: ItemDetail | null;
+  itemId: string;
+  itemIndex: number;
+  itemSnapshot: ItemCardProps | null;
+  title: string;
+  token: string;
+  wasSelected: boolean;
 };
 
 function useResponsiveGalleryColumnCap() {
@@ -238,13 +265,18 @@ function useResponsiveMasonryColumnConfig() {
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
-  const [items, setItems] = useState<ItemCardProps[]>([]);
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
+  const [items, setItems] = useState<ItemCardProps[]>(() =>
+    route.kind === "grid"
+      ? readCachedArchiveItemCards({ workspaceId, cacheScope: archiveCacheScope, filters: itemCardFilters }) ?? []
+      : [],
+  );
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
   const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
   const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
   const [galleryColumns, setGalleryColumns] = useState(() => getDefaultGalleryColumnCount());
   const [masonryColumnOffset, setMasonryColumnOffset] = useState(() => 0);
+  const [archiveCardRadius, setArchiveCardRadius] = useState(() => getInitialArchiveCardRadius());
   const galleryColumnCap = useResponsiveGalleryColumnCap();
   const effectiveGalleryColumns = Math.min(galleryColumns, galleryColumnCap);
   const responsiveMasonryColumns = useResponsiveMasonryColumnConfig();
@@ -257,13 +289,19 @@ export function App() {
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showArchiveLoadingFallback, setShowArchiveLoadingFallback] = useState(false);
+  const [archiveRevealReady, setArchiveRevealReady] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
-  const [collectionIndex, setCollectionIndex] = useState<CollectionIndexItem[]>([]);
+  const [collectionIndex, setCollectionIndex] = useState<CollectionIndexItem[]>(() =>
+    route.kind === "grid" || route.kind === "item"
+      ? readCachedArchiveCollectionIndex(workspaceId, archiveCacheScope) ?? []
+      : [],
+  );
   const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
   const [isCollectionIndexLoading, setIsCollectionIndexLoading] = useState(false);
   const [isCollectionLoading, setIsCollectionLoading] = useState(false);
@@ -295,6 +333,17 @@ export function App() {
   const [noteWriteError, setNoteWriteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteWriteError, setDeleteWriteError] = useState<string | null>(null);
+  const [pendingItemDeletes, setPendingItemDeletes] = useState<PendingItemDeleteNotice[]>([]);
+  const pendingItemDeleteSnapshotsRef = useRef<Map<string, PendingItemDeleteSnapshot>>(new Map());
+  const pendingItemDeleteTimersRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      pendingItemDeleteTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      pendingItemDeleteTimersRef.current.clear();
+      pendingItemDeleteSnapshotsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -314,6 +363,11 @@ export function App() {
     document.documentElement.dataset.theme = siteTheme;
     window.localStorage.setItem("vita:theme", siteTheme);
   }, [siteTheme]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--archive-card-radius", `${archiveCardRadius}px`);
+    window.localStorage.setItem("vita:card-radius", String(archiveCardRadius));
+  }, [archiveCardRadius]);
 
   useEffect(() => {
     window.localStorage.setItem(shortcutStorageKey, JSON.stringify(shortcutBindings));
@@ -418,19 +472,31 @@ export function App() {
       };
     }
 
-    setIsLoading(true);
+    const itemCardQuery = { workspaceId, cacheScope: archiveCacheScope, filters: itemCardFilters };
+    const cachedItems = readCachedArchiveItemCards(itemCardQuery);
+    if (cachedItems?.length) {
+      preloadCriticalArchiveImages(cachedItems);
+      setItems(cachedItems);
+      setReadError(null);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+
     itemCardReader
-      .listItemCards({ workspaceId, filters: itemCardFilters })
+      .listItemCards(itemCardQuery)
       .then((nextItems) => {
         if (isCurrent) {
+          preloadCriticalArchiveImages(nextItems);
           setItems(nextItems);
+          writeCachedArchiveItemCards(itemCardQuery, nextItems);
           setReadError(null);
         }
       })
       .catch((error: unknown) => {
         if (isCurrent) {
           console.error(error);
-          setReadError(getReadableLoadError(error, "archive"));
+          setReadError(cachedItems?.length ? null : getReadableLoadError(error, "archive"));
         }
       })
       .finally(() => {
@@ -443,6 +509,96 @@ export function App() {
       isCurrent = false;
     };
   }, [itemCardFilters, route.kind]);
+
+  useEffect(() => {
+    const isWaitingForArchiveItems =
+      route.kind === "grid" && galleryObjectMode !== "collections" && isLoading && items.length === 0 && !readError;
+    const isWaitingForArchiveCollections =
+      route.kind === "grid" &&
+      galleryObjectMode !== "items" &&
+      isCollectionIndexLoading &&
+      collectionIndex.length === 0 &&
+      !collectionIndexError;
+
+    if (!isWaitingForArchiveItems && !isWaitingForArchiveCollections) {
+      setShowArchiveLoadingFallback(false);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowArchiveLoadingFallback(true);
+    }, 240);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    collectionIndex.length,
+    collectionIndexError,
+    galleryObjectMode,
+    isCollectionIndexLoading,
+    isLoading,
+    items.length,
+    readError,
+    route.kind,
+  ]);
+
+  const archiveRevealHasSettledRef = useRef(false);
+
+  useEffect(() => {
+    if (route.kind !== "grid" || (archiveViewMode !== "gallery" && archiveViewMode !== "masonry")) {
+      setArchiveRevealReady(true);
+      return undefined;
+    }
+
+    const waitingForItems = galleryObjectMode !== "collections" && isLoading && items.length === 0 && !readError;
+    const waitingForCollections =
+      galleryObjectMode !== "items" &&
+      isCollectionIndexLoading &&
+      collectionIndex.length === 0 &&
+      !collectionIndexError;
+
+    if (waitingForItems || waitingForCollections) {
+      if (!archiveRevealHasSettledRef.current) {
+        setArchiveRevealReady(false);
+      }
+      return undefined;
+    }
+
+    if (archiveRevealHasSettledRef.current) {
+      setArchiveRevealReady(true);
+      return undefined;
+    }
+
+    setArchiveRevealReady(false);
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        archiveRevealHasSettledRef.current = true;
+        setArchiveRevealReady(true);
+      });
+    });
+
+    return () => {
+      if (firstFrame) {
+        window.cancelAnimationFrame(firstFrame);
+      }
+      if (secondFrame) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [
+    archiveViewMode,
+    collectionIndex.length,
+    collectionIndexError,
+    galleryObjectMode,
+    isCollectionIndexLoading,
+    isLoading,
+    items.length,
+    readError,
+    route.kind,
+  ]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -577,6 +733,7 @@ export function App() {
       .then((nextCollections) => {
         if (isCurrent) {
           setCollectionIndex(nextCollections);
+          writeCachedArchiveCollectionIndex(workspaceId, nextCollections, archiveCacheScope);
         }
       })
       .catch((error: unknown) => {
@@ -726,7 +883,7 @@ export function App() {
   };
 
   const deleteItem = async () => {
-    if (!detail || !isPocketBaseMode) {
+    if (!detail) {
       return;
     }
 
@@ -734,17 +891,7 @@ export function App() {
     setDeleteWriteError(null);
 
     try {
-      await itemDeleteWriter.deleteItem({
-        workspaceId,
-        itemId: detail.id,
-        actor: "system",
-      });
-
-      const nextItems = await itemCardReader.listItemCards({
-        workspaceId,
-        filters: itemCardFilters,
-      });
-      setItems(nextItems);
+      schedulePendingItemDelete(detail.id);
 
       if (route.kind === "item" && route.returnCollectionId) {
         window.history.pushState(null, "", buildCollectionUrl(route.returnCollectionId));
@@ -755,42 +902,19 @@ export function App() {
       }
     } catch (error: unknown) {
       console.error(error);
-      setDeleteWriteError("Unable to delete item.");
+      setDeleteWriteError("Unable to schedule delete.");
       throw error;
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const deleteArchiveCardItem = async (itemId: string) => {
-    if (!isPocketBaseMode) {
-      throw new Error("Live archive mode required.");
-    }
-
-    await itemDeleteWriter.deleteItem({
-      workspaceId,
-      itemId,
-      actor: "system",
-    });
-    await refreshArchiveCollectionState();
-    setSelectedItemIds((currentSelection) => currentSelection.filter((selectedItemId) => selectedItemId !== itemId));
-
-    if (cardCollectionItem?.id === itemId) {
-      closeArchiveCardCollection();
-    }
+  const deleteArchiveCardItem = (itemId: string, itemSnapshot?: ItemCardProps) => {
+    schedulePendingItemDelete(itemId, itemSnapshot ?? null);
   };
 
-  const deleteCollectionWorkspaceItem = async (itemId: string, collectionId: string) => {
-    if (!isPocketBaseMode) {
-      throw new Error("Live archive mode required.");
-    }
-
-    await itemDeleteWriter.deleteItem({
-      workspaceId,
-      itemId,
-      actor: "system",
-    });
-    await refreshCollectionWorkspaceState(collectionId);
+  const deleteCollectionWorkspaceItem = (itemId: string, _collectionId: string) => {
+    schedulePendingItemDelete(itemId);
   };
 
   const createItemRelationship = async ({ toId, note }: { toId: string; note: string | null }) => {
@@ -1023,6 +1147,207 @@ export function App() {
     setItems(nextItems);
     setCollectionIndex(nextCollections);
   };
+
+  const restorePendingItemDeleteSnapshot = (snapshot: PendingItemDeleteSnapshot) => {
+    const itemSnapshot = snapshot.itemSnapshot;
+
+    if (itemSnapshot) {
+      setItems((currentItems) => {
+        if (currentItems.some((item) => item.id === snapshot.itemId)) {
+          return currentItems;
+        }
+
+        return insertAt(currentItems, snapshot.itemIndex, itemSnapshot);
+      });
+    }
+
+    if (snapshot.wasSelected) {
+      setSelectedItemIds((currentSelection) =>
+        currentSelection.includes(snapshot.itemId) ? currentSelection : [...currentSelection, snapshot.itemId],
+      );
+    }
+
+    if (snapshot.detailSnapshot) {
+      setDetail((currentDetail) => currentDetail ?? snapshot.detailSnapshot);
+    }
+
+    if (snapshot.collectionDetailSnapshot) {
+      setCollectionDetail((currentCollection) => {
+        if (!currentCollection || currentCollection.id === snapshot.collectionDetailSnapshot?.id) {
+          return snapshot.collectionDetailSnapshot;
+        }
+
+        return currentCollection;
+      });
+    }
+
+    setCollectionIndex(snapshot.collectionIndexSnapshot);
+  };
+
+  const clearPendingItemDelete = (token: string) => {
+    const timer = pendingItemDeleteTimersRef.current.get(token);
+    if (timer) {
+      window.clearTimeout(timer);
+      pendingItemDeleteTimersRef.current.delete(token);
+    }
+
+    pendingItemDeleteSnapshotsRef.current.delete(token);
+    setPendingItemDeletes((currentDeletes) => currentDeletes.filter((deleteNotice) => deleteNotice.token !== token));
+  };
+
+  const commitPendingItemDelete = async (token: string) => {
+    const snapshot = pendingItemDeleteSnapshotsRef.current.get(token);
+    if (!snapshot) {
+      return;
+    }
+
+    clearPendingItemDelete(token);
+
+    if (!isPocketBaseMode) {
+      return;
+    }
+
+    try {
+      await itemDeleteWriter.deleteItem({
+        workspaceId,
+        itemId: snapshot.itemId,
+        actor: "system",
+      });
+    } catch (error: unknown) {
+      console.error(error);
+      restorePendingItemDeleteSnapshot(snapshot);
+      setDeleteWriteError("Unable to delete item. Restored locally.");
+    }
+  };
+
+  const undoPendingItemDelete = (token?: string) => {
+    const resolvedToken = token ?? pendingItemDeletes.at(-1)?.token;
+    if (!resolvedToken) {
+      return;
+    }
+
+    const snapshot = pendingItemDeleteSnapshotsRef.current.get(resolvedToken);
+    if (!snapshot) {
+      return;
+    }
+
+    clearPendingItemDelete(resolvedToken);
+    restorePendingItemDeleteSnapshot(snapshot);
+    setDeleteWriteError(null);
+  };
+
+  const schedulePendingItemDelete = (itemId: string, itemSnapshotOverride: ItemCardProps | null = null) => {
+    const foundItemIndex = items.findIndex((item) => item.id === itemId);
+    const itemIndex = foundItemIndex >= 0 ? foundItemIndex : 0;
+    const itemSnapshot = itemSnapshotOverride ?? (foundItemIndex >= 0 ? items[foundItemIndex] : null);
+    const detailSnapshot = detail?.id === itemId ? detail : null;
+    const collectionDetailSnapshot =
+      collectionDetail?.items.some((collectionItem) => collectionItem.id === itemId)
+        ? collectionDetail
+        : null;
+    const title =
+      itemSnapshot?.title ??
+      itemSnapshot?.ogTitle ??
+      itemSnapshot?.url ??
+      detailSnapshot?.title ??
+      `${detailSnapshot?.type ?? "Archive"} item`;
+    const token = `delete:${itemId}:${Date.now()}`;
+    const snapshot: PendingItemDeleteSnapshot = {
+      collectionDetailSnapshot,
+      collectionIndexSnapshot: collectionIndex,
+      detailSnapshot,
+      itemId,
+      itemIndex,
+      itemSnapshot,
+      title,
+      token,
+      wasSelected: selectedItemIds.includes(itemId),
+    };
+    const affectedCollectionIds = new Set<string>();
+    detailSnapshot?.collections.forEach((collection) => affectedCollectionIds.add(collection.id));
+    if (collectionDetailSnapshot) {
+      affectedCollectionIds.add(collectionDetailSnapshot.id);
+    }
+
+    pendingItemDeleteSnapshotsRef.current.set(token, snapshot);
+    setPendingItemDeletes((currentDeletes) => [
+      ...currentDeletes,
+      {
+        expiresAt: Date.now() + itemDeleteUndoWindowMs,
+        itemId,
+        title,
+        token,
+      },
+    ]);
+    setDeleteWriteError(null);
+    setItems((currentItems) => currentItems.filter((item) => item.id !== itemId));
+    setSelectedItemIds((currentSelection) => currentSelection.filter((selectedItemId) => selectedItemId !== itemId));
+    setDetail((currentDetail) => (currentDetail?.id === itemId ? null : currentDetail));
+    setCollectionDetail((currentCollection) => {
+      if (!currentCollection?.items.some((collectionItem) => collectionItem.id === itemId)) {
+        return currentCollection;
+      }
+
+      return {
+        ...currentCollection,
+        items: currentCollection.items.filter((collectionItem) => collectionItem.id !== itemId),
+        pieceCount: Math.max(0, currentCollection.pieceCount - 1),
+      };
+    });
+    setCollectionIndex((currentCollections) =>
+      currentCollections.map((collection) => {
+        const hasPreviewItem = collection.previewItems.some((item) => item.id === itemId);
+        if (!hasPreviewItem && !affectedCollectionIds.has(collection.id)) {
+          return collection;
+        }
+
+        return {
+          ...collection,
+          pieceCount: Math.max(0, collection.pieceCount - 1),
+          previewItems: collection.previewItems.filter((item) => item.id !== itemId),
+        };
+      }),
+    );
+
+    if (cardCollectionItem?.id === itemId) {
+      setCardCollectionItem(null);
+      setCardCollectionAnchor(null);
+      setCardCollectionOptions([]);
+      setCardCollectionError(null);
+      setIsCardCollectionLoading(false);
+      setIsCardCollectionWriting(false);
+    }
+
+    const timer = window.setTimeout(() => {
+      void commitPendingItemDelete(token);
+    }, itemDeleteUndoWindowMs);
+    pendingItemDeleteTimersRef.current.set(token, timer);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || pendingItemDeletes.length === 0 || !isUndoShortcut(event)) {
+        return;
+      }
+
+      const target = event.target;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if (isTypingTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      undoPendingItemDelete();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingItemDeletes]);
 
   const openCreateCollectionIsland = () => {
     setIsCreateCollectionOpen(true);
@@ -1704,6 +2029,7 @@ export function App() {
         collectionIndex={collectionIndex}
         filters={itemCardFilters}
         galleryColumns={effectiveGalleryColumns}
+        cardRadius={archiveCardRadius}
         itemCount={items.length}
         masonryColumns={masonryColumns}
         viewMode={archiveViewMode}
@@ -1715,6 +2041,7 @@ export function App() {
         onObjectModeChange={setGalleryObjectMode}
         onViewModeChange={updateArchiveViewMode}
         onGalleryColumnsChange={updateGalleryColumns}
+        onCardRadiusChange={setArchiveCardRadius}
         onMasonryColumnsChange={updateMasonryColumns}
         onFormatChange={updateFormatFilter}
         onPanelChange={setArchivePanel}
@@ -1734,7 +2061,9 @@ export function App() {
       />
     ) : null;
 
-  if (renderedRoute.kind === "pdfPreview") {
+  if (renderedRoute.kind === "safariRepro") {
+    routeContent = <SafariCardRepro />;
+  } else if (renderedRoute.kind === "pdfPreview") {
     routeContent = (
       <PdfPreview
         src={renderedRoute.src}
@@ -1832,7 +2161,9 @@ export function App() {
       </main>
     );
   } else {
-    const showInitialArchiveLoading = isLoading && items.length === 0;
+    const needsItemObjects = galleryObjectMode !== "collections";
+    const isWaitingForInitialItems = needsItemObjects && isLoading && items.length === 0 && !readError;
+    const showInitialArchiveLoading = isWaitingForInitialItems && showArchiveLoadingFallback;
     const renderedItems = items.map((item) => ({
       ...item,
       activeFilters: itemCardFilters,
@@ -1842,7 +2173,7 @@ export function App() {
             isSelected: selectedItemIds.includes(item.id),
             isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
-            onDelete: deleteArchiveCardItem,
+            onDelete: (itemId: string) => deleteArchiveCardItem(itemId, item),
             onNavigate: openItemDetail,
             onSelectToggle: toggleArchiveItemSelection,
           }
@@ -1850,7 +2181,7 @@ export function App() {
             isSelected: selectedItemIds.includes(item.id),
             isCollectionPickerOpen: cardCollectionItem?.id === item.id,
             onAddToCollection: openArchiveCardCollection,
-            onDelete: undefined,
+            onDelete: (itemId: string) => deleteArchiveCardItem(itemId, item),
             onNavigate: openItemDetail,
             onSelectToggle: toggleArchiveItemSelection,
           }),
@@ -1858,6 +2189,9 @@ export function App() {
     const renderedCollections = filterCollectionCards(collectionIndex, itemCardFilters).map((collection) =>
       toCollectionCardModel(collection, openCollection),
     );
+    const needsCollectionObjects = galleryObjectMode !== "items";
+    const isWaitingForInitialCollections =
+      needsCollectionObjects && isCollectionIndexLoading && collectionIndex.length === 0 && !collectionIndexError;
     const archiveObjects = buildArchiveObjects({
       collections: renderedCollections,
       items: renderedItems,
@@ -1865,16 +2199,21 @@ export function App() {
       onCreateCollection: openCreateCollectionIsland,
     });
     const showInitialCollectionsLoading =
-      galleryObjectMode === "collections" && isCollectionIndexLoading && collectionIndex.length === 0;
+      isWaitingForInitialCollections && showArchiveLoadingFallback;
     const galleryLoading = showInitialArchiveLoading || showInitialCollectionsLoading;
+    const visibleArchiveObjects = isWaitingForInitialItems || isWaitingForInitialCollections ? [] : archiveObjects;
 
     routeContent = (
-      <main className="app-shell app-shell--archive" aria-label="Vita archive">
+      <main
+        className="app-shell app-shell--archive"
+        data-archive-reveal={archiveRevealReady ? "ready" : "preparing"}
+        aria-label="Vita archive"
+      >
         <h1 className="visually-hidden">Archive</h1>
         <section className="archive-canvas" aria-label="archive objects">
           {archiveViewMode === "gallery" ? (
             <MasonryGrid
-              objects={archiveObjects}
+              objects={visibleArchiveObjects}
               density="comfortable"
               columns={effectiveGalleryColumns}
               loading={galleryLoading}
@@ -1891,7 +2230,7 @@ export function App() {
             />
           ) : archiveViewMode === "masonry" ? (
             <MasonryView
-              objects={archiveObjects}
+              objects={visibleArchiveObjects}
               columns={masonryColumns}
               loading={galleryLoading}
               emptyState={
@@ -1913,6 +2252,9 @@ export function App() {
             />
           )}
         </section>
+        {archiveViewMode === "gallery" || archiveViewMode === "masonry" ? (
+          <div className="archive-preload-veil" aria-hidden="true" />
+        ) : null}
       </main>
     );
   }
@@ -1920,7 +2262,11 @@ export function App() {
   return (
     <>
       {archiveNav}
-      <div className="app-route-shell" key={routeTransitionToken}>
+      <div
+        className="app-route-shell"
+        data-route-kind={renderedRoute.kind}
+        key={routeTransitionToken}
+      >
         {routeContent}
       </div>
       {renderedRoute.kind === "grid" && cardCollectionItem ? (
@@ -1957,6 +2303,10 @@ export function App() {
           onCreate={createCollectionFromSelectedItems}
         />
       ) : null}
+      {pendingItemDeletes.length > 0 ? (
+        <PendingDeleteUndoToast deletes={pendingItemDeletes} onUndo={undoPendingItemDelete} />
+      ) : null}
+      <SafariRasterOverlay />
       {renderedRoute.kind === "grid" ? (
         <SpotlightDock
           value={itemCardFilters.text ?? ""}
@@ -1974,6 +2324,32 @@ export function App() {
   );
 }
 
+function PendingDeleteUndoToast({
+  deletes,
+  onUndo,
+}: {
+  deletes: PendingItemDeleteNotice[];
+  onUndo: (token?: string) => void;
+}) {
+  const latestDelete = deletes.at(-1);
+
+  if (!latestDelete) {
+    return null;
+  }
+
+  return (
+    <div className="pending-delete-toast" role="status" aria-live="polite">
+      <span>
+        Deleted <strong>{latestDelete.title}</strong>.
+      </span>
+      <button type="button" onClick={() => onUndo(latestDelete.token)}>
+        Undo
+      </button>
+      <kbd>⌘Z</kbd>
+    </div>
+  );
+}
+
 function routeKey(r: AppRoute): string {
   if (r.kind === "grid") {
     return "grid";
@@ -1987,7 +2363,22 @@ function routeKey(r: AppRoute): string {
     return `pdf-preview:${r.surface ?? "reader"}:${r.src}`;
   }
 
+  if (r.kind === "safariRepro") {
+    return "safari-repro";
+  }
+
   return `item:${r.itemId}`;
+}
+
+function insertAt<T>(items: T[], index: number, item: T) {
+  const nextItems = [...items];
+  const safeIndex = index < 0 ? nextItems.length : Math.min(index, nextItems.length);
+  nextItems.splice(safeIndex, 0, item);
+  return nextItems;
+}
+
+function isUndoShortcut(event: globalThis.KeyboardEvent) {
+  return event.key.toLowerCase() === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
 }
 
 function buildArchiveObjects({
@@ -2015,7 +2406,7 @@ function buildArchiveObjects({
   return [
     ...collections.map((collection) => ({ objectType: "collection" as const, collection })),
     ...items.map((item) => ({ objectType: "item" as const, item })),
-  ];
+  ].sort(compareArchiveObjectsByCreatedAt);
 }
 
 function getCollectionImportFileKind(file: File): "image" | "pdf" | null {
@@ -2039,6 +2430,7 @@ function toCollectionCardModel(
     id: collection.id,
     name: collection.name,
     description: collection.description,
+    createdAt: collection.createdAt,
     pieceCount: collection.pieceCount,
     kindSummary: collection.kindSummary,
     lastUpdatedAt: collection.lastUpdatedAt,
@@ -2046,6 +2438,31 @@ function toCollectionCardModel(
     href: buildCollectionUrl(collection.id),
     onNavigate,
   };
+}
+
+function compareArchiveObjectsByCreatedAt(left: ArchiveObject, right: ArchiveObject) {
+  return getArchiveObjectCreatedTime(right) - getArchiveObjectCreatedTime(left);
+}
+
+function getArchiveObjectCreatedTime(object: ArchiveObject) {
+  if (object.objectType === "item") {
+    return getSortableTime(object.item.createdAt);
+  }
+
+  if (object.objectType === "collection") {
+    return getSortableTime(object.collection.createdAt);
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+function getSortableTime(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function filterCollectionCards(collections: CollectionIndexItem[], filters: ItemCardFilters) {
@@ -2751,6 +3168,10 @@ function PdfPreview({
 }
 
 function getRouteFromLocation(): AppRoute {
+  if (window.location.pathname === "/debug/safari-card-repro") {
+    return { kind: "safariRepro" };
+  }
+
   if (window.location.pathname === "/pdf-preview") {
     const searchParams = new URLSearchParams(window.location.search);
     return {
@@ -3251,4 +3672,14 @@ function getInitialSiteTheme(): SiteTheme {
   }
 
   return "light";
+}
+
+function getInitialArchiveCardRadius() {
+  const savedRadius = Number.parseFloat(window.localStorage.getItem("vita:card-radius") ?? "");
+
+  if (Number.isFinite(savedRadius)) {
+    return Math.min(18, Math.max(0, Math.round(savedRadius)));
+  }
+
+  return 3;
 }

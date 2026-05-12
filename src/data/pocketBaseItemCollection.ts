@@ -1,4 +1,4 @@
-import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
+import { normalizeRemoteMediaUrl, resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 import type { ItemMediaPreview } from "../components/items";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -279,19 +279,21 @@ export function createPocketBaseItemCollectionClient({
         ...collection,
         previewItems: (collection.previewItems ?? []).map((item) => {
           const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
-          const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? item.ogImageUrl ?? null;
-          const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? item.ogImageUrl ?? null;
+          const ogImageUrl = normalizeRemoteMediaUrl(item.ogImageUrl);
+          const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
+          const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
           const previewUrl =
             resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
             thumbnailUrl ??
             imageUrl ??
             videoPosterUrl ??
-            item.ogImageUrl ??
+            ogImageUrl ??
             null;
 
           return {
             ...item,
             imageUrl,
+            ogImageUrl,
             previewUrl,
             thumbnailUrl,
             videoPosterUrl,
@@ -530,14 +532,16 @@ function formatPocketBaseHttpError(prefix: string, status: number, message: stri
 function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem): CollectionDetailItem {
   const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
   const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl);
-  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? item.ogImageUrl ?? null;
-  const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? item.ogImageUrl ?? null;
+  const ogImageUrl = normalizeRemoteMediaUrl(item.ogImageUrl);
+  const mediaPreviewOgImageUrl = normalizeRemoteMediaUrl(item.mediaPreview?.ogImageUrl) ?? ogImageUrl;
+  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
+  const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
   const previewUrl =
     resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
     imageUrl ??
     thumbnailUrl ??
     videoPosterUrl ??
-    item.ogImageUrl ??
+    ogImageUrl ??
     assetFileUrl ??
     null;
 
@@ -545,6 +549,7 @@ function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem
     ...item,
     assetFileUrl,
     imageUrl,
+    ogImageUrl,
     previewUrl,
     thumbnailUrl,
     videoPosterUrl,
@@ -553,7 +558,7 @@ function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem
       assetFileUrl,
       assetMimeType: item.mediaPreview?.assetMimeType ?? item.assetMimeType,
       imageUrl,
-      ogImageUrl: item.mediaPreview?.ogImageUrl ?? item.ogImageUrl,
+      ogImageUrl: mediaPreviewOgImageUrl,
       previewUrl,
       thumbnailUrl,
       videoPosterUrl,

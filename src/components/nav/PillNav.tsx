@@ -24,7 +24,7 @@ export type GalleryObjectMode = "all" | "items" | "collections";
 export type ArchiveViewMode = "gallery" | "masonry" | "list" | "graph";
 type FilterFamily = "state" | "kind" | "source" | "collection" | "more";
 type SiteTheme = "light" | "dark";
-type SettingsSection = "appearance" | "gallery" | "shortcuts" | "import" | "system";
+type SettingsSection = "appearance" | "views" | "shortcuts" | "import" | "system";
 export type ShortcutAction = "search" | "theme" | "galleryIncrease" | "galleryDecrease";
 export type ShortcutBinding = {
   key: string;
@@ -38,7 +38,7 @@ type NavCellStyle = CSSProperties & {
 
 const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "appearance", label: "Appearance" },
-  { key: "gallery", label: "Gallery" },
+  { key: "views", label: "Views" },
   { key: "shortcuts", label: "Shortcuts" },
   { key: "import", label: "Import" },
   { key: "system", label: "System" },
@@ -55,6 +55,7 @@ export type PillNavProps = {
   objectMode: GalleryObjectMode;
   viewMode: ArchiveViewMode;
   galleryColumns: number;
+  cardRadius: number;
   masonryColumns: number;
   isPocketBaseMode: boolean;
   readError: string | null;
@@ -62,6 +63,7 @@ export type PillNavProps = {
   shortcutError: string | null;
   siteTheme: SiteTheme;
   onGalleryColumnsChange: (columns: number) => void;
+  onCardRadiusChange: (radius: number) => void;
   onMasonryColumnsChange: (columns: number) => void;
   onFormatChange: (format: ArchiveFormatFilter) => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
@@ -100,12 +102,14 @@ export function PillNav(props: PillNavProps) {
     collectionIndex,
     collectionCount,
     filters,
+    cardRadius,
     galleryColumns,
     isPocketBaseMode,
     itemCount,
     loading,
     masonryColumns,
     onClearFilters,
+    onCardRadiusChange,
     onCollectionFilterChange,
     onObjectModeChange,
     onViewModeChange,
@@ -197,6 +201,7 @@ export function PillNav(props: PillNavProps) {
       {settingsPresence.shouldRender ? (
         <SettingsIsland
           galleryColumns={galleryColumns}
+          cardRadius={cardRadius}
           isPocketBaseMode={isPocketBaseMode}
           presenceState={settingsPresence.state}
           readError={readError}
@@ -204,6 +209,7 @@ export function PillNav(props: PillNavProps) {
           shortcutError={shortcutError}
           siteTheme={siteTheme}
           onGalleryColumnsChange={onGalleryColumnsChange}
+          onCardRadiusChange={onCardRadiusChange}
           onRequestClose={() => onPanelChange(null)}
           onSiteThemeChange={onSiteThemeChange}
           onShortcutChange={onShortcutChange}
@@ -778,6 +784,13 @@ function useMeasuredPillGroupMembrane(
       attributeFilter: ["data-entering", "data-reveal-state", "data-preparing"],
     });
 
+    const syncOnTrackMotion = () => {
+      startFrameLoop(900);
+    };
+    track.addEventListener("transitionrun", syncOnTrackMotion, true);
+    track.addEventListener("transitionstart", syncOnTrackMotion, true);
+    track.addEventListener("animationstart", syncOnTrackMotion, true);
+
     const updateOnViewportChange = () => {
       measure();
       startFrameLoop(320);
@@ -790,6 +803,9 @@ function useMeasuredPillGroupMembrane(
       stopFrameLoop();
       resizeObserver.disconnect();
       mutationObserver.disconnect();
+      track.removeEventListener("transitionrun", syncOnTrackMotion, true);
+      track.removeEventListener("transitionstart", syncOnTrackMotion, true);
+      track.removeEventListener("animationstart", syncOnTrackMotion, true);
       window.removeEventListener("resize", updateOnViewportChange);
       window.removeEventListener("scroll", updateOnViewportChange, true);
     };
@@ -1387,8 +1403,10 @@ function PrimaryCell({
 }
 
 function SettingsIsland({
+  cardRadius,
   galleryColumns,
   isPocketBaseMode,
+  onCardRadiusChange,
   onGalleryColumnsChange,
   onRequestClose,
   onSiteThemeChange,
@@ -1400,8 +1418,10 @@ function SettingsIsland({
   shortcutError,
   siteTheme,
 }: {
+  cardRadius: number;
   galleryColumns: number;
   isPocketBaseMode: boolean;
+  onCardRadiusChange: (radius: number) => void;
   onGalleryColumnsChange: (columns: number) => void;
   onRequestClose: () => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
@@ -1482,12 +1502,27 @@ function SettingsIsland({
                   Dark
                 </button>
               </div>
+              <label className="settings-island__range-row">
+                <span>
+                  <strong>Card radius</strong>
+                  <small>{cardRadius}px</small>
+                </span>
+                <input
+                  aria-label="card corner radius"
+                  max={18}
+                  min={0}
+                  step={1}
+                  type="range"
+                  value={cardRadius}
+                  onChange={(event) => onCardRadiusChange(Number(event.currentTarget.value))}
+                />
+              </label>
             </div>
           ) : null}
 
-          {activeSection === "gallery" ? (
+          {activeSection === "views" ? (
             <div className="settings-island__section">
-              <span className="settings-island__label">Gallery</span>
+              <span className="settings-island__label">Views</span>
               <div className="settings-island__cells ui-pill-track" aria-label={`gallery columns ${galleryColumns}`}>
                 <button
                   className="settings-island__cell ui-pill-cell"
@@ -1521,38 +1556,52 @@ function SettingsIsland({
                 </button>
               </div>
               <div className="settings-island__shortcut-list" aria-label="shortcut bindings">
-                <ShortcutCaptureField
-                  action="search"
-                  binding={shortcutBindings.search}
-                  label="Search archive"
-                  recording={recordingAction === "search"}
-                  onFocus={() => setRecordingAction("search")}
-                  onKeyDown={captureShortcut}
-                />
-                <ShortcutCaptureField
-                  action="theme"
-                  binding={shortcutBindings.theme}
-                  label="Toggle theme"
-                  recording={recordingAction === "theme"}
-                  onFocus={() => setRecordingAction("theme")}
-                  onKeyDown={captureShortcut}
-                />
-                <ShortcutCaptureField
-                  action="galleryIncrease"
-                  binding={shortcutBindings.galleryIncrease}
-                  label="More columns"
-                  recording={recordingAction === "galleryIncrease"}
-                  onFocus={() => setRecordingAction("galleryIncrease")}
-                  onKeyDown={captureShortcut}
-                />
-                <ShortcutCaptureField
-                  action="galleryDecrease"
-                  binding={shortcutBindings.galleryDecrease}
-                  label="Fewer columns"
-                  recording={recordingAction === "galleryDecrease"}
-                  onFocus={() => setRecordingAction("galleryDecrease")}
-                  onKeyDown={captureShortcut}
-                />
+                <ShortcutGroup title="Navigation">
+                  <ShortcutCaptureField
+                    action="search"
+                    binding={shortcutBindings.search}
+                    label="Search archive"
+                    recording={recordingAction === "search"}
+                    onFocus={() => setRecordingAction("search")}
+                    onKeyDown={captureShortcut}
+                  />
+                  <ShortcutStaticField label="Close or dismiss" value="Esc" />
+                </ShortcutGroup>
+                <ShortcutGroup title="Appearance">
+                  <ShortcutCaptureField
+                    action="theme"
+                    binding={shortcutBindings.theme}
+                    label="Toggle theme"
+                    recording={recordingAction === "theme"}
+                    onFocus={() => setRecordingAction("theme")}
+                    onKeyDown={captureShortcut}
+                  />
+                </ShortcutGroup>
+                <ShortcutGroup title="Views">
+                  <ShortcutCaptureField
+                    action="galleryIncrease"
+                    binding={shortcutBindings.galleryIncrease}
+                    label="More columns"
+                    recording={recordingAction === "galleryIncrease"}
+                    onFocus={() => setRecordingAction("galleryIncrease")}
+                    onKeyDown={captureShortcut}
+                  />
+                  <ShortcutCaptureField
+                    action="galleryDecrease"
+                    binding={shortcutBindings.galleryDecrease}
+                    label="Fewer columns"
+                    recording={recordingAction === "galleryDecrease"}
+                    onFocus={() => setRecordingAction("galleryDecrease")}
+                    onKeyDown={captureShortcut}
+                  />
+                </ShortcutGroup>
+                <ShortcutGroup title="Item detail">
+                  <ShortcutStaticField label="Toggle detail panel" value="R" />
+                  <ShortcutStaticField label="Download current item" value="D" />
+                </ShortcutGroup>
+                <ShortcutGroup title="Editing">
+                  <ShortcutStaticField label="Undo delete" value="⌘/Ctrl Z" />
+                </ShortcutGroup>
               </div>
               {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
             </div>
@@ -1571,13 +1620,22 @@ function SettingsIsland({
             <div className="settings-island__section">
               <span className="settings-island__label">System</span>
               <span className="settings-island__note">
-                {readError ? "Archive read error" : "Archive connected"} · Product Sans/system stack
+                {readError ? "Archive needs attention" : "Archive is connected"} · {isPocketBaseMode ? "Live data" : "Demo data"}
               </span>
             </div>
           ) : null}
         </div>
       </div>
     </section>
+  );
+}
+
+function ShortcutGroup({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <div className="settings-island__shortcut-group">
+      <span className="settings-island__shortcut-group-title">{title}</span>
+      {children}
+    </div>
   );
 }
 
@@ -1609,6 +1667,15 @@ function ShortcutCaptureField({
         onKeyDown={(event) => onKeyDown(action, event)}
       />
     </label>
+  );
+}
+
+function ShortcutStaticField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="settings-island__shortcut settings-island__shortcut--static">
+      <span>{label}</span>
+      <kbd>{value}</kbd>
+    </div>
   );
 }
 

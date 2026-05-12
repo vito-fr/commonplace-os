@@ -1,10 +1,12 @@
-import { useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 import { CardActionMenu, CardGlyph, useCardActionMenu } from "./CardActions";
+import { CardMediaImage } from "./CardMediaImage";
 
 export type CollectionCardModel = {
   id: string;
   name: string;
   description: string | null;
+  createdAt?: string | null;
   pieceCount: number;
   kindSummary: string;
   lastUpdatedAt: string;
@@ -43,8 +45,30 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
   const addItemsHref = `${href}#add-to-collection`;
   const editHref = `${href}#collection-title`;
   const displayTitle = formatCollectionTitle(collection.name);
+  const relativeAddedTime = formatAddedTime(collection.createdAt ?? null);
+  const cardClassName = ["collection-card", relativeAddedTime ? "collection-card--has-added-time" : ""]
+    .filter(Boolean)
+    .join(" ");
+  const frameTags = [
+    { key: "kind", label: collection.kindSummary },
+    { key: "count", label: formatPieceCount(collection.pieceCount) },
+  ].filter((tag) => tag.label.trim() !== "");
   const [copied, setCopied] = useState(false);
+  const previewSourceSignature = collection.previewItems
+    .map((item) => [item.id, item.thumbnailUrl, item.imageUrl, item.ogImageUrl, item.videoPosterUrl].join("|"))
+    .join(";");
+  const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
   const actionMenu = useCardActionMenu({ id: `collection:${collection.id}` });
+
+  useEffect(() => {
+    setFailedPreviewUrls([]);
+  }, [collection.id, previewSourceSignature]);
+
+  const markPreviewUrlFailed = useCallback((failedUrl: string) => {
+    setFailedPreviewUrls((currentUrls) =>
+      currentUrls.includes(failedUrl) ? currentUrls : [...currentUrls, failedUrl],
+    );
+  }, []);
 
   const openCollectionTarget = (event: MouseEvent<HTMLAnchorElement>, targetId?: string) => {
     if (
@@ -97,7 +121,7 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
 
   return (
     <article
-      className="collection-card"
+      className={cardClassName}
       onPointerLeave={(event) => {
         actionMenu.close();
         if (event.pointerType === "mouse") {
@@ -110,10 +134,26 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
     >
       <a className="collection-card__link" href={href} onClick={openCollection} aria-label={`Open ${collection.name}`}>
         <div className="collection-card__cover" aria-hidden="true" data-empty={collection.previewItems.length === 0 ? "true" : "false"}>
-          {renderCoverTiles(collection, mediaLoading)}
+          {renderCoverTiles(collection, mediaLoading, failedPreviewUrls, markPreviewUrlFailed)}
+          {frameTags.length > 0 ? (
+            <span className="collection-card__frame-tags" aria-hidden="true">
+              {frameTags.map((tag, index) => (
+                <span
+                  className="collection-card__frame-tag"
+                  key={tag.key}
+                  style={{ "--card-label-delay": `${Math.min(index, 8) * 16}ms` } as CSSProperties}
+                >
+                  {tag.label}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </div>
         <div className="collection-card__body">
-          <h2 title={collection.name}>{displayTitle}</h2>
+          <h2 title={collection.name}>
+            <span className="collection-card__title-text">{displayTitle}</span>
+            {relativeAddedTime ? <span className="collection-card__title-time">{relativeAddedTime}</span> : null}
+          </h2>
           <span className="collection-card__count">{formatPieceCount(collection.pieceCount)}</span>
         </div>
       </a>
@@ -145,15 +185,6 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
           menuRef={actionMenu.menuRef}
           onToggle={actionMenu.toggle}
         >
-          <a
-            className="item-card__menu-action item-card__menu-action--open collection-card__more-menu-link"
-            href={href}
-            onClick={openCollection}
-            role="menuitem"
-          >
-            <CardGlyph name="open" className="item-card__menu-icon" />
-            <span className="item-card__menu-label">Open</span>
-          </a>
           <a
             className="item-card__menu-action item-card__menu-action--add collection-card__more-menu-link"
             href={addItemsHref}
@@ -206,7 +237,12 @@ export function NewCollectionCard({ disabled = false, onCreate }: { disabled?: b
   );
 }
 
-function renderCoverTiles(collection: CollectionCardModel, mediaLoading: "eager" | "lazy") {
+function renderCoverTiles(
+  collection: CollectionCardModel,
+  mediaLoading: "eager" | "lazy",
+  failedPreviewUrls: string[],
+  onMediaError: (url: string) => void,
+) {
   if (collection.previewItems.length === 0) {
     return (
       <span className="collection-card__cover-empty">
@@ -226,11 +262,14 @@ function renderCoverTiles(collection: CollectionCardModel, mediaLoading: "eager"
   }
 
   return slots.map((item, index) => {
-    const imageUrl = item.thumbnailUrl || item.imageUrl || item.ogImageUrl || item.videoPosterUrl || null;
+    const imageUrl = getFirstAvailablePreviewUrl(
+      [item.thumbnailUrl, item.imageUrl, item.ogImageUrl, item.videoPosterUrl],
+      failedPreviewUrls,
+    );
     if (imageUrl) {
       return (
         <span className="collection-card__preview-tile collection-card__preview-tile--visual" key={`${item.id}:${index}`}>
-          <img
+          <CardMediaImage
             src={imageUrl}
             alt=""
             loading={mediaLoading}
@@ -238,6 +277,7 @@ function renderCoverTiles(collection: CollectionCardModel, mediaLoading: "eager"
             fetchPriority={mediaLoading === "eager" ? "high" : "auto"}
             width={item.width ?? undefined}
             height={item.height ?? undefined}
+            onMediaError={onMediaError}
           />
         </span>
       );
@@ -277,6 +317,17 @@ function getCoverLabel(name: string) {
   return letters || "C";
 }
 
+function getFirstAvailablePreviewUrl(
+  candidates: Array<string | null | undefined>,
+  failedUrls: string[],
+) {
+  return (
+    candidates.find(
+      (candidate): candidate is string => candidate != null && candidate !== "" && !failedUrls.includes(candidate),
+    ) ?? null
+  );
+}
+
 function getDomain(url: string | null | undefined) {
   if (!url) {
     return null;
@@ -291,6 +342,36 @@ function getDomain(url: string | null | undefined) {
 
 function formatPieceCount(count: number) {
   return `${count} ${count === 1 ? "item" : "items"}`;
+}
+
+function formatAddedTime(createdAt: string | null) {
+  if (!createdAt) {
+    return null;
+  }
+
+  const timestamp = Date.parse(createdAt);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 31536000],
+    ["month", 2592000],
+    ["week", 604800],
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+
+  for (const [unit, seconds] of units) {
+    if (elapsedSeconds >= seconds) {
+      const value = Math.floor(elapsedSeconds / seconds);
+      return `added ${value} ${unit}${value === 1 ? "" : "s"} ago`;
+    }
+  }
+
+  return "added just now";
 }
 
 function formatCollectionTitle(name: string) {

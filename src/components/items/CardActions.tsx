@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { ArchiveIcon, type ArchiveIconName } from "../ui/ArchiveIcons";
 
 export type CardActionSurface = "actions" | "collection";
 
@@ -192,64 +193,17 @@ export function CardGlyph({
   className?: string;
   name: CardGlyphName;
 }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={`card-glyph card-glyph--${name} ${className}`}
-      focusable="false"
-      vectorEffect="non-scaling-stroke"
-      viewBox="0 0 18 18"
-    >
-      {renderGlyphPath(name)}
-    </svg>
-  );
+  return <ArchiveIcon className={`card-glyph card-glyph--${name} ${className}`} name={getArchiveIconName(name)} />;
 }
 
-function renderGlyphPath(name: CardGlyphName) {
-  if (name === "add") {
-    return <path d="M9 4.25v9.5M4.25 9h9.5" />;
-  }
-
-  if (name === "more") {
-    return (
-      <>
-        <circle cx="5" cy="9" r="1.25" />
-        <circle cx="9" cy="9" r="1.25" />
-        <circle cx="13" cy="9" r="1.25" />
-      </>
-    );
-  }
-
-  if (name === "download") {
-    return <path d="M9 3.75v7.4m0 0 3-3m-3 3-3-3M4.5 13.75h9" />;
-  }
-
-  if (name === "share") {
-    return (
-      <>
-        <path d="m7.35 6.35 3.3-1.9M7.35 11.65l3.3 1.9" />
-        <circle cx="5.75" cy="7.25" r="1.55" />
-        <circle cx="12.25" cy="3.55" r="1.55" />
-        <circle cx="12.25" cy="14.45" r="1.55" />
-      </>
-    );
-  }
-
-  if (name === "delete") {
-    return <path d="M5.25 6.25h7.5M7 6.25V4.5h4v1.75M6.25 7.5l.45 6h4.6l.45-6" />;
-  }
-
-  if (name === "copy") {
-    return <path d="M6.2 6.2V4.6h7.2v7.2h-1.6M4.6 6.2h7.2v7.2H4.6Z" />;
-  }
-
+function getArchiveIconName(name: CardGlyphName): ArchiveIconName {
   if (name === "open") {
-    return <path d="M6 12 12 6M8 5.25h4.75V10" />;
+    return "external";
   }
 
   if (name === "edit") {
-    return <path d="m5 12.75 2.4-.45 5.2-5.2-1.95-1.95-5.2 5.2L5 12.75Z" />;
+    return "copy";
   }
 
-  return <path d="M5 9h8M9 5v8" />;
+  return name;
 }

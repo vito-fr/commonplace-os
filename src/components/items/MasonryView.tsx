@@ -1,9 +1,10 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode, type RefObject } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import type { CollectionCardModel } from "./CollectionCard";
 import { ItemCard, type ItemCardProps } from "./ItemCard";
 import { getArchiveObjectKey, getArchiveObjectRenderSignature } from "./archiveObjectIdentity";
+import { useGridFlipAnimation } from "./useGridFlip";
 
 export type MasonryViewProps = {
   objects: ArchiveObject[];
@@ -21,21 +22,29 @@ type MasonryViewStyle = CSSProperties & {
 
 type MasonryItemStyle = CSSProperties & {
   "--archive-card-index": number;
-  transform: string;
+  "--masonry-media-height": string;
+  height: number;
+  left: number;
+  top: number;
   width: number;
 };
 
 type MasonryObjectContentProps = {
   mediaLoading: "eager" | "lazy";
+  measuredAspectRatio: number | null;
   object: ArchiveObject;
+  onMediaAspectRatio: (id: string, aspectRatio: number, sourceUrl: string | null) => void;
   renderSignature: string;
 };
 
-type NaturalMediaRatioMap = Record<string, number>;
-
 const loadingPlaceholders = Array.from({ length: 10 }, (_, index) => `masonry-loading-${index}`);
 const masonryGap = 12;
-const initialEntryDurationMs = 920;
+const masonryMediaRatioStorageKey = "vita:masonry-media-ratios:v1";
+const masonryMediaRatioCacheLimit = 500;
+const masonryIntroAnimationNames = new Set([
+  "masonry-view-card-enter",
+  "masonry-view-card-enter-no-scale",
+]);
 
 export function MasonryView({
   ariaLabel = "masonry archive objects",
@@ -51,32 +60,61 @@ export function MasonryView({
   const requestedColumnCount = controlledColumns ?? responsiveColumns.columnCount;
   const columnCount = Math.max(1, Math.min(requestedColumnCount, responsiveColumns.columnCap));
   const viewRef = useRef<HTMLElement | null>(null);
-  const { containerWidth: measuredContainerWidth, isResizing } = useMasonryContainerWidth(viewRef);
-  const layoutSignature = useMemo(() => objects.map(getArchiveObjectLayoutSignature).join("|"), [objects]);
-  const naturalMediaRatios = useMasonryNaturalMediaRatios(viewRef, layoutSignature);
-  const naturalMediaRatioSignature = useMemo(
-    () => Object.entries(naturalMediaRatios).map(([key, ratio]) => `${key}:${ratio}`).join("|"),
-    [naturalMediaRatios],
+  const {
+    containerWidth: measuredContainerWidth,
+    introViewportBottom,
+    isResizing,
+  } = useMasonryContainerWidth(viewRef);
+  const cachedMediaRatios = useMemo(() => readCachedMasonryMediaRatios(objects), [objects]);
+  const runtimeMediaRatios = cachedMediaRatios;
+  const layoutSignature = useMemo(
+    () => objects.map((object) => getArchiveObjectLayoutSignature(object, runtimeMediaRatios)).join("|"),
+    [objects, runtimeMediaRatios],
   );
   const layout = useMemo(
-    () => buildMasonryLayout(objects, columnCount, measuredContainerWidth, naturalMediaRatios),
-    [objects, columnCount, measuredContainerWidth, layoutSignature, naturalMediaRatioSignature, naturalMediaRatios],
+    () => buildMasonryLayout(objects, columnCount, measuredContainerWidth, runtimeMediaRatios),
+    [objects, columnCount, measuredContainerWidth, layoutSignature, runtimeMediaRatios],
   );
   const viewClassName = ["masonry-view", className].filter(Boolean).join(" ");
   const viewStyle: MasonryViewStyle = {
     "--masonry-columns": columnCount,
-    height: layout.containerHeight,
+    height: roundLayoutPixel(layout.containerHeight),
   };
-  const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
+  const introOrderByKey = useMemo(
+    () => buildInitialIntroOrder(layout.items, introViewportBottom),
+    [introViewportBottom, layout.items],
+  );
+  const flipSignature = useMemo(
+    () =>
+      layout.items
+        .map(({ height, objectKey, width, x, y }) =>
+          `${objectKey}:${roundLayoutPixel(x)}:${roundLayoutPixel(y)}:${roundLayoutPixel(width)}:${roundLayoutPixel(height)}`,
+        )
+        .join("|"),
+    [layout.items],
+  );
+  useGridFlipAnimation(viewRef, flipSignature);
 
-  useEffect(() => {
-    if (loading || objects.length === 0 || entryState === "settled") {
+  const handleMediaAspectRatio = useCallback((id: string, aspectRatio: number, sourceUrl: string | null) => {
+    if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
       return;
     }
 
-    const timeout = window.setTimeout(() => setEntryState("settled"), initialEntryDurationMs);
-    return () => window.clearTimeout(timeout);
-  }, [entryState, loading, objects.length]);
+    const safeAspectRatio = roundRatio(aspectRatio);
+    writeCachedMasonryMediaRatio(id, safeAspectRatio, sourceUrl);
+  }, []);
+  const settleIntroMotion = useCallback((event: AnimationEvent<HTMLElement>) => {
+    if (!masonryIntroAnimationNames.has(event.animationName)) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.classList.contains("masonry-view__motion")) {
+      return;
+    }
+
+    target.dataset.introState = "settled";
+  }, []);
 
   if (loading) {
     return (
@@ -110,22 +148,47 @@ export function MasonryView({
     <section
       ref={viewRef}
       className={viewClassName}
-      data-entry-state={entryState}
       data-resizing={isResizing ? "true" : undefined}
+      onAnimationEnd={settleIntroMotion}
       style={viewStyle}
       aria-label={ariaLabel}
     >
-      {layout.items.map(({ enterIndex, object, objectKey, renderSignature, width, x, y }) => {
-        const mediaLoading = enterIndex < columnCount ? "eager" : "lazy";
+      {layout.items.map(({ enterIndex, height, mediaHeight, object, objectKey, renderSignature, width, x, y }) => {
+        const mediaLoading = enterIndex < Math.max(8, columnCount) ? "eager" : "lazy";
+        const introIndex = introOrderByKey.get(objectKey);
+        const isIntroEntry = introIndex != null;
+        const measuredAspectRatio =
+          object.objectType === "item" ? runtimeMediaRatios[object.item.id] ?? null : null;
         const itemStyle: MasonryItemStyle = {
-          "--archive-card-index": enterIndex,
-          transform: `translate3d(${roundLayoutPixel(x)}px, ${roundLayoutPixel(y)}px, 0)`,
+          "--archive-card-index": introIndex ?? enterIndex,
+          "--masonry-media-height": `${roundLayoutPixel(mediaHeight)}px`,
+          height: roundLayoutPixel(height),
+          left: roundLayoutPixel(x),
+          top: roundLayoutPixel(y),
           width: roundLayoutPixel(width),
         };
 
         return (
-          <div className="masonry-view__item" data-archive-key={objectKey} key={objectKey} style={itemStyle}>
-            <MasonryObjectContent mediaLoading={mediaLoading} object={object} renderSignature={renderSignature} />
+          <div
+            className="masonry-view__item"
+            data-archive-key={objectKey}
+            data-entry-card={isIntroEntry ? "intro" : undefined}
+            key={objectKey}
+            style={itemStyle}
+          >
+            <div
+              className="masonry-view__motion"
+              data-entry-card={isIntroEntry ? "intro" : undefined}
+              data-intro-state={isIntroEntry ? "active" : undefined}
+            >
+              <MasonryObjectContent
+                mediaLoading={mediaLoading}
+                measuredAspectRatio={measuredAspectRatio}
+                object={object}
+                onMediaAspectRatio={handleMediaAspectRatio}
+                renderSignature={renderSignature}
+              />
+            </div>
           </div>
         );
       })}
@@ -135,11 +198,21 @@ export function MasonryView({
 
 const MasonryObjectContent = memo(function MasonryObjectContent({
   mediaLoading,
+  measuredAspectRatio,
   object,
+  onMediaAspectRatio,
   renderSignature: _renderSignature,
 }: MasonryObjectContentProps) {
   if (object.objectType === "item") {
-    return <ItemCard {...object.item} mediaLoading={mediaLoading} variant="masonry" />;
+    return (
+      <ItemCard
+        {...object.item}
+        measuredAspectRatio={measuredAspectRatio}
+        mediaLoading={mediaLoading}
+        onMediaAspectRatio={onMediaAspectRatio}
+        variant="masonry"
+      />
+    );
   }
 
   if (object.objectType === "collection") {
@@ -153,12 +226,31 @@ function areMasonryObjectContentPropsEqual(
   previousProps: MasonryObjectContentProps,
   nextProps: MasonryObjectContentProps,
 ) {
-  return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
+  return (
+    previousProps.mediaLoading === nextProps.mediaLoading &&
+    previousProps.measuredAspectRatio === nextProps.measuredAspectRatio &&
+    previousProps.renderSignature === nextProps.renderSignature
+  );
+}
+
+type MasonryLayout = ReturnType<typeof buildMasonryLayout>;
+
+function buildInitialIntroOrder(items: MasonryLayout["items"], introViewportBottom: number) {
+  const introOrder = new Map<string, number>();
+  items
+    .filter((item) => item.y < introViewportBottom && item.y + item.height > -80)
+    .sort((a, b) => a.y - b.y || a.x - b.x || a.enterIndex - b.enterIndex)
+    .forEach((item, index) => {
+      introOrder.set(item.objectKey, index);
+    });
+
+  return introOrder;
 }
 
 function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
   const [containerState, setContainerState] = useState(() => ({
     containerWidth: getInitialMasonryContainerWidth(),
+    introViewportBottom: getInitialMasonryIntroViewportBottom(),
     isResizing: false,
   }));
 
@@ -178,10 +270,17 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
     };
     const updateWidth = (width: number, isResizing: boolean) => {
       const roundedWidth = Math.max(1, Math.round(width));
+      const nextIntroViewportBottom = getMasonryIntroViewportBottom(element);
       setContainerState((currentState) =>
-        currentState.containerWidth === roundedWidth && currentState.isResizing === isResizing
+        currentState.containerWidth === roundedWidth &&
+        currentState.introViewportBottom === nextIntroViewportBottom &&
+        currentState.isResizing === isResizing
           ? currentState
-          : { containerWidth: roundedWidth, isResizing },
+          : {
+              containerWidth: roundedWidth,
+              introViewportBottom: nextIntroViewportBottom,
+              isResizing,
+            },
       );
 
       if (isResizing) {
@@ -260,72 +359,6 @@ function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCo
   return responsiveColumns;
 }
 
-function useMasonryNaturalMediaRatios(ref: RefObject<HTMLElement | null>, objectSignature: string) {
-  const [naturalMediaRatios, setNaturalMediaRatios] = useState<NaturalMediaRatioMap>({});
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) {
-      return;
-    }
-
-    let frame = 0;
-    const scheduleRatioRead = () => {
-      if (frame) {
-        return;
-      }
-
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        const nextRatios: NaturalMediaRatioMap = {};
-
-        element.querySelectorAll<HTMLElement>(".masonry-view__item[data-archive-key]").forEach((itemElement) => {
-          const key = itemElement.dataset.archiveKey;
-          const image = itemElement.querySelector<HTMLImageElement>("img.item-card__image");
-          if (!key || !image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
-            return;
-          }
-
-          nextRatios[key] = roundRatio(image.naturalWidth / image.naturalHeight);
-        });
-
-        setNaturalMediaRatios((currentRatios) => {
-          let didChange = false;
-          const mergedRatios = { ...currentRatios };
-
-          for (const [key, ratio] of Object.entries(nextRatios)) {
-            if (Math.abs((mergedRatios[key] ?? 0) - ratio) > 0.001) {
-              mergedRatios[key] = ratio;
-              didChange = true;
-            }
-          }
-
-          return didChange ? mergedRatios : currentRatios;
-        });
-      });
-    };
-
-    const images = Array.from(element.querySelectorAll<HTMLImageElement>(".masonry-view__item img.item-card__image"));
-    images.forEach((image) => {
-      image.addEventListener("load", scheduleRatioRead);
-      image.addEventListener("error", scheduleRatioRead);
-    });
-    scheduleRatioRead();
-
-    return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-      }
-      images.forEach((image) => {
-        image.removeEventListener("load", scheduleRatioRead);
-        image.removeEventListener("error", scheduleRatioRead);
-      });
-    };
-  }, [ref, objectSignature]);
-
-  return naturalMediaRatios;
-}
-
 function getResponsiveMasonryColumns(includeDefaultCount: boolean) {
   return {
     columnCap: getResponsiveMasonryColumnCap(),
@@ -376,23 +409,28 @@ function buildMasonryLayout(
   objects: ArchiveObject[],
   columnCount: number,
   containerWidth: number,
-  naturalMediaRatios: NaturalMediaRatioMap = {},
+  mediaRatios: Record<string, number>,
 ) {
   const safeColumnCount = Math.max(1, columnCount);
   const safeContainerWidth = Math.max(1, containerWidth);
-  const columnWidth = Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount);
+  const columnWidth = roundLayoutPixel(
+    Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount),
+  );
   const columnHeights = Array.from({ length: safeColumnCount }, () => 0);
   const items = objects.map((object, enterIndex) => {
     const columnIndex = getShortestColumnIndex(columnHeights);
-    const x = columnIndex * (columnWidth + masonryGap);
-    const y = columnHeights[columnIndex];
+    const x = roundLayoutPixel(columnIndex * (columnWidth + masonryGap));
+    const y = roundLayoutPixel(columnHeights[columnIndex]);
     const objectKey = getArchiveObjectKey(object);
-    const estimatedHeight = estimateObjectHeight(object, columnWidth, naturalMediaRatios[objectKey]);
+    const metrics = estimateObjectLayoutMetrics(object, columnWidth, mediaRatios);
+    const estimatedHeight = roundLayoutPixel(metrics.height);
 
-    columnHeights[columnIndex] += estimatedHeight + masonryGap;
+    columnHeights[columnIndex] = roundLayoutPixel(y + estimatedHeight + masonryGap);
 
     return {
       enterIndex,
+      height: estimatedHeight,
+      mediaHeight: roundLayoutPixel(metrics.mediaHeight),
       object,
       objectKey,
       renderSignature: getArchiveObjectRenderSignature(object),
@@ -401,7 +439,7 @@ function buildMasonryLayout(
       y,
     };
   });
-  const containerHeight = Math.max(0, ...columnHeights.map((height) => height - masonryGap));
+  const containerHeight = roundLayoutPixel(Math.max(0, ...columnHeights.map((height) => height - masonryGap)));
 
   return { containerHeight, items };
 }
@@ -421,7 +459,7 @@ function getShortestColumnIndex(columnHeights: number[]) {
   return shortestIndex;
 }
 
-function getArchiveObjectLayoutSignature(object: ArchiveObject) {
+function getArchiveObjectLayoutSignature(object: ArchiveObject, mediaRatios: Record<string, number>) {
   if (object.objectType === "collection-create") {
     return getArchiveObjectKey(object);
   }
@@ -443,30 +481,38 @@ function getArchiveObjectLayoutSignature(object: ArchiveObject) {
     getArchiveObjectKey(object),
     item.type,
     item.linkContentType ?? "",
-    getItemEstimatedRatio(item),
+    getItemEstimatedRatio(item, mediaRatios[item.id] ?? null),
     getTextLengthBucket(getItemTextPreview(item)),
     getItemPreviewUrl(item) ? "preview" : "",
-    getItemMediaAspectRatio(item) ? "measured" : "",
+    getItemMediaAspectRatio(item, mediaRatios[item.id] ?? null) ? "measured" : "",
   ].join(":");
 }
 
-function estimateObjectHeight(object: ArchiveObject, columnWidth = 220, naturalMediaRatio?: number) {
+function estimateObjectLayoutMetrics(object: ArchiveObject, columnWidth = 220, mediaRatios: Record<string, number>) {
   if (object.objectType === "collection-create") {
-    return columnWidth + 44;
+    return {
+      height: columnWidth + 44,
+      mediaHeight: columnWidth,
+    };
   }
 
   if (object.objectType === "collection") {
     const [width = 4, height = 3] = getRatioParts(getCollectionRatio(object.collection));
-    return (height / width) * columnWidth + 38;
+    const mediaHeight = (height / width) * columnWidth;
+    return {
+      height: mediaHeight + 38,
+      mediaHeight,
+    };
   }
 
   const item = object.item;
-  const [width, height] =
-    naturalMediaRatio && Number.isFinite(naturalMediaRatio) && naturalMediaRatio > 0
-      ? [naturalMediaRatio, 1]
-      : getRatioParts(getItemEstimatedRatio(item));
+  const [width, height] = getRatioParts(getItemEstimatedRatio(item, mediaRatios[item.id] ?? null));
   const labelHeight = item.type === "caption" || item.type === "note" ? 38 : 31;
-  return (height / width) * columnWidth + labelHeight;
+  const mediaHeight = (height / width) * columnWidth;
+  return {
+    height: mediaHeight + labelHeight,
+    mediaHeight,
+  };
 }
 
 function getRatioParts(value: string): [number, number] {
@@ -483,8 +529,8 @@ function buildPlaceholderColumns(columnCount: number) {
   return columns;
 }
 
-function getItemEstimatedRatio(item: ItemCardProps) {
-  const mediaAspectRatio = getItemMediaAspectRatio(item);
+function getItemEstimatedRatio(item: ItemCardProps, measuredAspectRatio: number | null = null) {
+  const mediaAspectRatio = getItemMediaAspectRatio(item, measuredAspectRatio);
   if (mediaAspectRatio) {
     return `${mediaAspectRatio} / 1`;
   }
@@ -523,9 +569,14 @@ function getItemFallbackRatio(item: ItemCardProps) {
   return "4 / 5";
 }
 
-function getItemMediaAspectRatio(item: ItemCardProps) {
+function getItemMediaAspectRatio(item: ItemCardProps, measuredAspectRatio: number | null = null) {
   const preview = item.mediaPreview;
-  const aspectRatio = preview?.aspectRatio ?? item.aspectRatio ?? ratioFromDimensions(preview?.width, preview?.height) ?? ratioFromDimensions(item.imageWidth, item.imageHeight);
+  const aspectRatio =
+    preview?.aspectRatio ??
+    item.aspectRatio ??
+    ratioFromDimensions(preview?.width, preview?.height) ??
+    ratioFromDimensions(item.imageWidth, item.imageHeight) ??
+    measuredAspectRatio;
   return Number.isFinite(aspectRatio) && aspectRatio && aspectRatio > 0 ? roundRatio(aspectRatio) : null;
 }
 
@@ -542,7 +593,7 @@ function roundRatio(value: number) {
 }
 
 function roundLayoutPixel(value: number) {
-  return Math.round(value * 100) / 100;
+  return Math.round(value);
 }
 
 function getInitialMasonryContainerWidth() {
@@ -550,8 +601,129 @@ function getInitialMasonryContainerWidth() {
     return 1;
   }
 
-  const desktopGutter = window.innerWidth >= 720 ? 160 : 36;
-  return Math.max(1, Math.min(1920, window.innerWidth - desktopGutter));
+  const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  const archiveGutter = getInitialArchivePageGutter(viewportWidth);
+  return Math.max(1, Math.min(1760, 1920, viewportWidth - archiveGutter * 2));
+}
+
+function getInitialArchivePageGutter(viewportWidth: number) {
+  if (viewportWidth >= 1800) {
+    return 32;
+  }
+
+  if (viewportWidth >= 1280) {
+    return 28;
+  }
+
+  if (viewportWidth >= 980) {
+    return 24;
+  }
+
+  return 20;
+}
+
+function getInitialMasonryIntroViewportBottom() {
+  if (typeof window === "undefined") {
+    return 900;
+  }
+
+  return Math.max(320, Math.ceil(window.innerHeight - 112 + 128));
+}
+
+function getMasonryIntroViewportBottom(element: HTMLElement) {
+  if (typeof window === "undefined") {
+    return 900;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return Math.max(320, Math.ceil(window.innerHeight - rect.top + 128));
+}
+
+function readCachedMasonryMediaRatios(objects: ArchiveObject[]) {
+  const cache = readMasonryMediaRatioCache();
+  if (!cache) {
+    return {};
+  }
+
+  return objects.reduce<Record<string, number>>((ratios, object) => {
+    if (object.objectType !== "item") {
+      return ratios;
+    }
+
+    const item = object.item;
+    if (getItemMediaAspectRatio(item)) {
+      return ratios;
+    }
+
+    const sourceUrl = getItemPreviewUrl(item);
+    const cachedRatio = readCachedMasonryMediaRatio(cache, item.id, sourceUrl);
+    if (cachedRatio) {
+      ratios[item.id] = cachedRatio;
+    }
+
+    return ratios;
+  }, {});
+}
+
+type MasonryMediaRatioCacheEntry = {
+  aspectRatio: number;
+  measuredAt: number;
+  sourceUrl: string | null;
+};
+
+function readMasonryMediaRatioCache() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawCache = window.localStorage.getItem(masonryMediaRatioStorageKey);
+    if (!rawCache) {
+      return null;
+    }
+
+    const parsedCache = JSON.parse(rawCache) as Record<string, MasonryMediaRatioCacheEntry>;
+    return parsedCache && typeof parsedCache === "object" ? parsedCache : null;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedMasonryMediaRatio(
+  cache: Record<string, MasonryMediaRatioCacheEntry>,
+  itemId: string,
+  sourceUrl: string | null,
+) {
+  const entry = cache[itemId];
+  if (!entry || entry.sourceUrl !== sourceUrl) {
+    return null;
+  }
+
+  const aspectRatio = entry.aspectRatio;
+  return Number.isFinite(aspectRatio) && aspectRatio > 0 ? roundRatio(aspectRatio) : null;
+}
+
+function writeCachedMasonryMediaRatio(itemId: string, aspectRatio: number, sourceUrl: string | null) {
+  if (typeof window === "undefined" || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    return;
+  }
+
+  try {
+    const cache = readMasonryMediaRatioCache() ?? {};
+    cache[itemId] = {
+      aspectRatio: roundRatio(aspectRatio),
+      measuredAt: Date.now(),
+      sourceUrl,
+    };
+
+    const entries = Object.entries(cache)
+      .sort(([, left], [, right]) => right.measuredAt - left.measuredAt)
+      .slice(0, masonryMediaRatioCacheLimit);
+
+    window.localStorage.setItem(masonryMediaRatioStorageKey, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Runtime media ratios are an optimization; layout remains stable without storage.
+  }
 }
 
 function getCollectionRatio(_collection: CollectionCardModel) {

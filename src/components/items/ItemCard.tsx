@@ -1,6 +1,8 @@
-import { useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
 import { CardActionMenu, CardGlyph, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
+import { CardMediaImage } from "./CardMediaImage";
+import { downloadArchiveFile } from "../../data/archiveDownload";
 
 export type ItemCardActionAnchor = {
   bottom: number;
@@ -60,6 +62,7 @@ export interface ItemCardProps {
   aspectRatio?: number | null;
   mediaPreview?: ItemMediaPreview | null;
   mediaLoading?: CardMediaLoading;
+  measuredAspectRatio?: number | null;
   variant?: "gallery" | "masonry";
   hasPendingAIAnnotations?: boolean;
   rightsStatus?: RightsStatus | string | null;
@@ -74,6 +77,7 @@ export interface ItemCardProps {
   };
   onAddToCollection?: (id: string, anchor: ItemCardActionAnchor) => void;
   onDelete?: (id: string) => Promise<void> | void;
+  onMediaAspectRatio?: (id: string, aspectRatio: number, sourceUrl: string | null) => void;
   onNavigate?: (id: string) => void;
   onSelectToggle?: (id: string) => void;
 }
@@ -103,6 +107,7 @@ export function ItemCard({
   aspectRatio = null,
   mediaPreview = null,
   mediaLoading = "lazy",
+  measuredAspectRatio = null,
   variant = "gallery",
   hasPendingAIAnnotations = false,
   rightsStatus = null,
@@ -112,6 +117,7 @@ export function ItemCard({
   activeFilters,
   onAddToCollection,
   onDelete,
+  onMediaAspectRatio,
   onNavigate,
   onSelectToggle,
 }: ItemCardProps) {
@@ -137,7 +143,7 @@ export function ItemCard({
   const isPdf = type === "link" && linkContentType === "pdf";
   const [isShareIslandOpen, setIsShareIslandOpen] = useState(false);
   const [copiedShareAction, setCopiedShareAction] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const actionMenu = useCardActionMenu({
@@ -145,53 +151,80 @@ export function ItemCard({
     onClose: () => {
       setIsShareIslandOpen(false);
       setIsDeleteConfirming(false);
-      setDeleteError(null);
+      setMenuError(null);
     },
   });
-  const resolvedImageUrl =
-    mediaPreview?.thumbnailUrl ??
-    thumbnailUrl ??
-    imageUrl ??
-    mediaPreview?.imageUrl ??
-    mediaPreview?.previewUrl ??
-    previewUrl ??
-    null;
-  const resolvedOgImageUrl =
-    ogImageUrl ??
-    mediaPreview?.ogImageUrl ??
-    mediaPreview?.videoPosterUrl ??
-    videoPosterUrl ??
-    mediaPreview?.thumbnailUrl ??
-    previewUrl ??
-    thumbnailUrl ??
-    null;
+  const mediaSourceSignature = [
+    id,
+    mediaPreview?.thumbnailUrl,
+    thumbnailUrl,
+    imageUrl,
+    mediaPreview?.imageUrl,
+    mediaPreview?.previewUrl,
+    previewUrl,
+    ogImageUrl,
+    mediaPreview?.ogImageUrl,
+    mediaPreview?.videoPosterUrl,
+    videoPosterUrl,
+    url,
+  ].join("|");
+  const [failedMediaUrls, setFailedMediaUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    setFailedMediaUrls([]);
+  }, [mediaSourceSignature]);
+
+  const markMediaUrlFailed = useCallback((failedUrl: string) => {
+    setFailedMediaUrls((currentUrls) =>
+      currentUrls.includes(failedUrl) ? currentUrls : [...currentUrls, failedUrl],
+    );
+  }, []);
+
+  const resolvedImageUrl = getFirstAvailableMediaUrl(
+    [
+      mediaPreview?.thumbnailUrl,
+      thumbnailUrl,
+      imageUrl,
+      mediaPreview?.imageUrl,
+      mediaPreview?.previewUrl,
+      previewUrl,
+    ],
+    failedMediaUrls,
+  );
+  const resolvedOgImageUrl = getFirstAvailableMediaUrl(
+    [
+      ogImageUrl,
+      mediaPreview?.ogImageUrl,
+      mediaPreview?.videoPosterUrl,
+      videoPosterUrl,
+      mediaPreview?.thumbnailUrl,
+      previewUrl,
+      thumbnailUrl,
+    ],
+    failedMediaUrls,
+  );
   const resolvedAssetFileUrl = assetFileUrl ?? mediaPreview?.assetFileUrl ?? null;
   const resolvedAspectRatio = getMediaAspectRatio({
     aspectRatio,
     height: imageHeight,
     mediaPreview,
+    measuredAspectRatio,
     width: imageWidth,
   });
   const isRemoteImageReference = type === "link" && isDirectImageUrl(url);
+  const directRemoteImageUrl = isRemoteImageReference && url && !failedMediaUrls.includes(url) ? url : null;
   const masonryPreviewImageUrl =
     type === "image"
       ? resolvedImageUrl
       : linkContentType === "pdf"
         ? null
-        : resolvedOgImageUrl || (isRemoteImageReference ? url : null);
-  const masonryImageRatioState =
-    variant === "masonry" && masonryPreviewImageUrl
-      ? resolvedAspectRatio
-        ? "reserved"
-        : "natural"
-      : variant === "masonry"
-        ? "fallback"
-      : undefined;
+        : resolvedOgImageUrl || directRemoteImageUrl;
+  const masonryImageRatioState = variant === "masonry" ? (resolvedAspectRatio ? "reserved" : "fallback") : undefined;
   const masonryAspectRatio =
     variant === "masonry"
       ? masonryImageRatioState === "reserved" && resolvedAspectRatio
         ? `${resolvedAspectRatio} / 1`
-        : masonryImageRatioState === "fallback"
+        : masonryImageRatioState === "fallback" || masonryPreviewImageUrl
           ? getMasonryFallbackRatio({
               captionText,
               linkContentType,
@@ -285,22 +318,22 @@ export function ItemCard({
     event.stopPropagation();
     onSelectToggle?.(id);
   };
-  const downloadItem = (event: MouseEvent<HTMLButtonElement>) => {
+  const downloadItem = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
 
-    if (!downloadUrl || typeof document === "undefined") {
+    if (!downloadUrl) {
       return;
     }
 
-    const anchor = document.createElement("a");
-    anchor.href = downloadUrl;
-    anchor.download = getDownloadFilename(downloadUrl, primaryLabel, type, linkContentType);
-    anchor.rel = "noopener";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    actionMenu.close();
+    const downloaded = await downloadArchiveFile({
+      filename: getDownloadFilename(downloadUrl, primaryLabel, type, linkContentType),
+      url: downloadUrl,
+    });
+    setMenuError(downloaded ? null : "Download failed");
+    if (downloaded) {
+      actionMenu.close();
+    }
   };
   const openShareIsland = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -317,21 +350,14 @@ export function ItemCard({
       return;
     }
 
-    if (!isDeleteConfirming) {
-      setIsShareIslandOpen(false);
-      setDeleteError(null);
-      setIsDeleteConfirming(true);
-      return;
-    }
-
     setIsDeleting(true);
-    setDeleteError(null);
+    setMenuError(null);
 
     try {
       await onDelete(id);
       actionMenu.close();
     } catch {
-      setDeleteError("Delete failed");
+      setMenuError("Delete failed");
     } finally {
       setIsDeleting(false);
     }
@@ -358,6 +384,22 @@ export function ItemCard({
 
     window.open(url, "_blank", "noopener,noreferrer");
   };
+  const reportMediaAspectRatio = useCallback(
+    (event: SyntheticEvent<HTMLImageElement>) => {
+      if (variant !== "masonry" || !onMediaAspectRatio) {
+        return;
+      }
+
+      const image = event.currentTarget;
+      const ratio = ratioFromDimensions(image.naturalWidth, image.naturalHeight);
+      if (!ratio) {
+        return;
+      }
+
+      onMediaAspectRatio(id, Math.round(ratio * 1000) / 1000, image.currentSrc || image.src || null);
+    },
+    [id, onMediaAspectRatio, variant],
+  );
   const shareUrl = getAbsoluteItemUrl(itemHref);
   const markdownReference = `[${primaryLabel}](${shareUrl})`;
   const resolvedCardClassName = [
@@ -390,7 +432,7 @@ export function ItemCard({
             resolvedImageUrl,
             captionText,
             noteParagraph,
-            url,
+            directRemoteImageUrl,
             linkContentType,
             resolvedAssetFileUrl,
             resolvedOgImageUrl,
@@ -398,13 +440,16 @@ export function ItemCard({
             mediaPreview?.width ?? imageWidth,
             mediaPreview?.height ?? imageHeight,
             mediaLoading,
+            markMediaUrlFailed,
+            reportMediaAspectRatio,
           )}
           <span className="item-card__frame-tags" aria-hidden="true">
-            {frameTags.map((item) => (
+            {frameTags.map((item, index) => (
               <span
                 className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
                 data-source={item.source}
                 key={item.key}
+                style={{ "--card-label-delay": `${Math.min(index, 8) * 16}ms` } as CSSProperties}
               >
                 {item.label}
               </span>
@@ -505,7 +550,7 @@ export function ItemCard({
               {copiedShareAction ? <span>{copiedShareAction === "copy failed" ? "Copy failed" : `${copiedShareAction} copied`}</span> : null}
             </div>
           ) : null}
-          {deleteError ? <span className="item-card__menu-status">{deleteError}</span> : null}
+          {menuError ? <span className="item-card__menu-status">{menuError}</span> : null}
         </CardActionMenu>
         <button
           className="item-card__action-cell item-card__action-cell--add"
@@ -553,18 +598,21 @@ function getMediaAspectRatio({
   aspectRatio,
   height,
   mediaPreview,
+  measuredAspectRatio,
   width,
 }: {
   aspectRatio: number | null;
   height: number | null;
   mediaPreview: ItemMediaPreview | null;
+  measuredAspectRatio: number | null;
   width: number | null;
 }) {
   const ratio =
     mediaPreview?.aspectRatio ??
     aspectRatio ??
     ratioFromDimensions(mediaPreview?.width, mediaPreview?.height) ??
-    ratioFromDimensions(width, height);
+    ratioFromDimensions(width, height) ??
+    measuredAspectRatio;
 
   return Number.isFinite(ratio) && ratio && ratio > 0 ? Math.round(ratio * 1000) / 1000 : null;
 }
@@ -650,7 +698,7 @@ function renderContent(
   imageUrl: string | null,
   captionText: string | null,
   noteParagraph: string | null,
-  url: string | null,
+  directImageUrl: string | null,
   linkContentType: string | null,
   assetFileUrl: string | null,
   ogImageUrl: string | null,
@@ -658,12 +706,14 @@ function renderContent(
   width: number | null | undefined,
   height: number | null | undefined,
   mediaLoading: CardMediaLoading,
+  onMediaError: (url: string) => void,
+  onMediaLoad?: (event: SyntheticEvent<HTMLImageElement>) => void,
 ) {
   const fetchPriority = mediaLoading === "eager" ? "high" : "auto";
 
   if (type === "image") {
     return imageUrl ? (
-      <img
+      <CardMediaImage
         className="item-card__image"
         src={imageUrl}
         alt={title ?? ""}
@@ -672,6 +722,8 @@ function renderContent(
         fetchPriority={fetchPriority}
         width={width ?? undefined}
         height={height ?? undefined}
+        onMediaError={onMediaError}
+        onLoad={onMediaLoad}
       />
     ) : (
       <Placeholder label="image pending" />
@@ -711,12 +763,12 @@ function renderContent(
     );
   }
 
-  const previewImageUrl = ogImageUrl || (isDirectImageUrl(url) ? url : null);
+  const previewImageUrl = ogImageUrl || directImageUrl;
 
   return (
     <div className="item-card__link-preview">
       {previewImageUrl ? (
-        <img
+        <CardMediaImage
           className="item-card__image"
           src={previewImageUrl}
           alt={ogTitle ?? title ?? ""}
@@ -725,6 +777,8 @@ function renderContent(
           fetchPriority={fetchPriority}
           width={width ?? undefined}
           height={height ?? undefined}
+          onMediaError={onMediaError}
+          onLoad={onMediaLoad}
         />
       ) : (
         <Placeholder label="link preview" />
@@ -735,6 +789,17 @@ function renderContent(
 
 function Placeholder({ label }: { label: string }) {
   return <div className="item-card__placeholder">{label}</div>;
+}
+
+function getFirstAvailableMediaUrl(
+  candidates: Array<string | null | undefined>,
+  failedUrls: string[],
+) {
+  return (
+    candidates.find(
+      (candidate): candidate is string => candidate != null && candidate !== "" && !failedUrls.includes(candidate),
+    ) ?? null
+  );
 }
 
 function buildPdfPreviewUrl(src: string, name: string) {

@@ -33,7 +33,8 @@ type GridObjectContentProps = {
 };
 
 const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => `loading-${index}`);
-const gridInitialEntryDurationMs = 920;
+const gridInitialEntryDurationMs = 900;
+const minGridEntryCards = 12;
 
 export function MasonryGrid({
   objects,
@@ -51,6 +52,7 @@ export function MasonryGrid({
   const gridStyle: GalleryGridStyle = { "--gallery-columns": columns };
   const gridRef = useRef<HTMLElement | null>(null);
   const hasLeadingTile = Boolean(leadingTile);
+  const entryCardLimit = Math.max(minGridEntryCards, columns * 3);
   const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
   const layoutSignature = useMemo(
     () => [columns, density, hasLeadingTile ? "leading" : "none", objects.map(getArchiveObjectKey).join("|")].join("::"),
@@ -95,25 +97,33 @@ export function MasonryGrid({
         <div
           className="masonry-grid__item masonry-grid__item--leading"
           data-archive-key="collection:leading"
+          data-entry-card="intro"
           style={{ "--archive-card-index": 0 } as CardEnterStyle}
         >
           {leadingTile}
         </div>
       ) : null}
-      {objects.map((object, index) => (
-        <div
-          className="masonry-grid__item"
-          data-archive-key={getArchiveObjectKey(object)}
-          key={getArchiveObjectKey(object)}
-          style={{ "--archive-card-index": leadingTile ? index + 1 : index } as CardEnterStyle}
-        >
-          <GridObjectContent
-            mediaLoading={index < Math.max(1, columns) ? "eager" : "lazy"}
-            object={object}
-            renderSignature={getArchiveObjectRenderSignature(object)}
-          />
-        </div>
-      ))}
+      {objects.map((object, index) => {
+        const objectKey = getArchiveObjectKey(object);
+        const entryIndex = leadingTile ? index + 1 : index;
+        const isIntroEntry = entryIndex < entryCardLimit;
+
+        return (
+          <div
+            className="masonry-grid__item"
+            data-archive-key={objectKey}
+            data-entry-card={isIntroEntry ? "intro" : undefined}
+            key={objectKey}
+            style={{ "--archive-card-index": entryIndex } as CardEnterStyle}
+          >
+            <GridObjectContent
+              mediaLoading={index < Math.max(8, columns) ? "eager" : "lazy"}
+              object={object}
+              renderSignature={getArchiveObjectRenderSignature(object)}
+            />
+          </div>
+        );
+      })}
       {objects.length === 0 && emptyState ? <div className="masonry-grid__empty masonry-grid__empty--inline">{emptyState}</div> : null}
     </section>
   );

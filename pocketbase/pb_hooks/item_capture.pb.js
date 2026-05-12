@@ -820,6 +820,14 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       };
     }
 
+    if (isYouTubeHost(host)) {
+      return {
+        kind: "url",
+        identifier: "youtube",
+        label: "YouTube",
+      };
+    }
+
     return {
       kind: "url",
       identifier: host,
@@ -864,6 +872,11 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         title: fileTitleForUrl(value),
         image: value,
       };
+    }
+
+    const providerMetadata = providerLinkMetadataFor(value);
+    if (providerMetadata && providerMetadata.image) {
+      return providerMetadata;
     }
 
     try {
@@ -929,10 +942,152 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         metadata.siteName = siteName;
       }
 
+      if (!metadata.image && providerMetadata && providerMetadata.image) {
+        metadata.image = providerMetadata.image;
+      }
+
+      if (!metadata.title && providerMetadata && providerMetadata.title) {
+        metadata.title = providerMetadata.title;
+      }
+
+      if (!metadata.description && providerMetadata && providerMetadata.description) {
+        metadata.description = providerMetadata.description;
+      }
+
+      if (!metadata.siteName && providerMetadata && providerMetadata.siteName) {
+        metadata.siteName = providerMetadata.siteName;
+      }
+
+      if (providerMetadata && providerMetadata.providerName) {
+        metadata.providerName = providerMetadata.providerName;
+      }
+
       return metadata;
     } catch {
-      return fallback;
+      return providerMetadata || fallback;
     }
+  }
+
+  function providerLinkMetadataFor(value) {
+    const host = urlIdentifierFor(value);
+
+    if (isPinterestHost(host) && host !== "pinimg.com" && !host.endsWith(".pinimg.com")) {
+      return pinterestOembedMetadataFor(value);
+    }
+
+    if (isYouTubeHost(host)) {
+      return youtubeOembedMetadataFor(value);
+    }
+
+    return null;
+  }
+
+  function isYouTubeHost(host) {
+    return host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com");
+  }
+
+  function pinterestOembedMetadataFor(value) {
+    const data = fetchJsonFor(`https://www.pinterest.com/oembed.json?url=${encodeURIComponent(value)}`);
+
+    if (!data) {
+      return null;
+    }
+
+    return compactMetadata({
+      url: value,
+      title: stringValue(data.title),
+      image: stringValue(data.thumbnail_url),
+      description: stringValue(data.description),
+      siteName: "Pinterest",
+      providerName: stringValue(data.provider_name) || "Pinterest",
+    });
+  }
+
+  function youtubeOembedMetadataFor(value) {
+    const data = fetchJsonFor(`https://www.youtube.com/oembed?url=${encodeURIComponent(value)}&format=json`);
+    const videoId = youtubeVideoIdFor(value);
+
+    if (!data && !videoId) {
+      return null;
+    }
+
+    return compactMetadata({
+      url: value,
+      title: data ? stringValue(data.title) : null,
+      image: data ? stringValue(data.thumbnail_url) : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      description: data ? stringValue(data.author_name) : null,
+      siteName: "YouTube",
+      providerName: data ? stringValue(data.provider_name) || "YouTube" : "YouTube",
+    });
+  }
+
+  function youtubeVideoIdFor(value) {
+    const trimmed = String(value || "").trim();
+    const shortMatch = trimmed.match(/^https?:\/\/(?:www\.)?youtu\.be\/([^/?#]+)/i);
+    if (shortMatch && shortMatch[1]) {
+      return shortMatch[1];
+    }
+
+    const watchMatch = trimmed.match(/[?&]v=([^&#]+)/i);
+    if (watchMatch && watchMatch[1]) {
+      return watchMatch[1];
+    }
+
+    const embedMatch = trimmed.match(/\/(?:embed|shorts)\/([^/?#]+)/i);
+    return embedMatch && embedMatch[1] ? embedMatch[1] : null;
+  }
+
+  function fetchJsonFor(url) {
+    try {
+      const response = $http.send({
+        method: "GET",
+        url,
+        timeout: 8,
+        headers: {
+          Accept: "application/json,text/plain,*/*;q=0.8",
+          "User-Agent": "VitaArchiveBot/0.1 (+https://localhost)",
+        },
+      });
+
+      if (response.statusCode < 200 || response.statusCode >= 400) {
+        return null;
+      }
+
+      return JSON.parse(String(toString(response.body || [])));
+    } catch {
+      return null;
+    }
+  }
+
+  function compactMetadata(value) {
+    const metadata = { url: value.url };
+
+    if (value.title) {
+      metadata.title = value.title;
+    }
+
+    if (value.image) {
+      metadata.image = value.image;
+    }
+
+    if (value.description) {
+      metadata.description = value.description;
+    }
+
+    if (value.siteName) {
+      metadata.siteName = value.siteName;
+    }
+
+    if (value.providerName) {
+      metadata.providerName = value.providerName;
+    }
+
+    return metadata;
+  }
+
+  function stringValue(value) {
+    const trimmed = String(value || "").trim();
+    return trimmed || null;
   }
 
   function headerValue(headers, name) {
@@ -1005,7 +1160,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     const trimmed = String(value || "").trim();
 
     if (/^https?:\/\//i.test(trimmed)) {
-      return trimmed;
+      return secureRemoteMediaUrl(trimmed);
     }
 
     const origin = baseUrl.match(/^(https?:)\/\/([^/]+)/i);
@@ -1022,6 +1177,20 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     }
 
     return `${baseUrl.replace(/\/[^/]*$/, "/")}${trimmed}`;
+  }
+
+  function secureRemoteMediaUrl(value) {
+    const match = String(value || "").match(/^http:\/\/([^/?#]+)(.*)$/i);
+    if (!match) {
+      return value;
+    }
+
+    const host = match[1].toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local")) {
+      return value;
+    }
+
+    return `https://${match[1]}${match[2] || ""}`;
   }
 
   function isDirectImageUrl(value) {

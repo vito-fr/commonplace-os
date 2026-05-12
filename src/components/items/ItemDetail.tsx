@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { type ItemStatus } from "../atoms";
 import { ArchiveChevronIcon, ArchiveReturnButton } from "../ui/ArchiveControls";
+import { ArchiveIcon } from "../ui/ArchiveIcons";
+import { downloadArchiveFile } from "../../data/archiveDownload";
 import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
 import type { CollectionIndexItem, CollectionPreviewItem } from "../../data/pocketBaseItemCollection";
+import { normalizeRemoteMediaUrl } from "../../data/pocketBaseFiles";
 
 type RelationshipTargetOption = {
   id: string;
@@ -133,6 +136,15 @@ export function ItemDetailView({
         return;
       }
 
+      if (event.key.toLowerCase() === "d" && item) {
+        const download = getItemDownloadTarget(item);
+        if (download) {
+          event.preventDefault();
+          void triggerItemDownload(download);
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         event.preventDefault();
         (onExitToArchive ?? onBack)();
@@ -141,7 +153,7 @@ export function ItemDetailView({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onBack, onExitToArchive]);
+  }, [item, onBack, onExitToArchive]);
 
   if (loading) {
     return (
@@ -274,11 +286,7 @@ function PanelChevronIcon({ open, side }: { open: boolean; side: "left" | "right
 }
 
 function DrawerChevronIcon() {
-  return (
-    <svg className="item-detail__drawer-chevron" aria-hidden="true" viewBox="0 0 18 18" focusable="false">
-      <path d="m9 12-5-6h10Z" />
-    </svg>
-  );
+  return <ArchiveIcon className="item-detail__drawer-chevron" name="forward" />;
 }
 
 function DetailDrawer({
@@ -376,7 +384,7 @@ function ArchiveLabel({
         pending={pending}
       />
       <ArchiveContextSection item={item} />
-      <ArchiveActionsSection item={item} sourceUrl={sourceUrl} />
+      <ArchiveActionsSection item={item} />
     </div>
   );
 }
@@ -384,10 +392,19 @@ function ArchiveLabel({
 function ArchiveLabelIdentity({ item }: { item: ItemDetail }) {
   const kindLabel = formatItemType(item);
   const title = getItemDisplayTitle(item, kindLabel);
+  const fileLabel = getItemFileLabel(item);
   const metadata = [
     { value: kindLabel, role: "type" },
-    { value: getSourceKindDisplayLabel(item.source?.kind ?? "manual"), role: "source" },
-    { value: formatStatusLabel(item.status), role: "status" },
+    { value: getSourceDisplayLabel(item), role: "source" },
+    {
+      value: (
+        <>
+          <span className="item-detail__status-dot" data-status={item.status} aria-hidden="true" />
+          {formatStatusLabel(item.status)}
+        </>
+      ),
+      role: "status",
+    },
     {
       value: `${item.collections.length} ${pluralize(item.collections.length, "collection")}`,
       role: "in",
@@ -397,6 +414,12 @@ function ArchiveLabelIdentity({ item }: { item: ItemDetail }) {
   return (
     <header className="item-detail__label-header">
       <h1 id="item-detail-title">{title}</h1>
+      {fileLabel && normalizeTitleComparison(fileLabel) !== normalizeTitleComparison(title) ? (
+        <p className="item-detail__file-name">
+          <span>file</span>
+          {fileLabel}
+        </p>
+      ) : null}
       <p className="item-detail__label-grammar" aria-label="item metadata">
         {metadata.map((token) => (
           <span data-role={token.role} key={token.role}>{token.value}</span>
@@ -453,7 +476,7 @@ function ArchiveSourceSection({
   sourceUrl: string | null;
 }) {
   const sourceKind = item.source?.kind ?? "manual";
-  const sourceTypeLabel = getSourceKindDisplayLabel(sourceKind);
+  const sourceTypeLabel = getSourceDisplayLabel(item);
   const sourceDetail = sourceUrl ? getDomain(sourceUrl) : item.source?.label ?? item.source?.identifier ?? sourceKind;
   const sourceLines = [
     sourceDetail,
@@ -468,14 +491,17 @@ function ArchiveSourceSection({
           <span key={line}>{line}</span>
         ))}
       </div>
-      {sourceUrl ? (
-        <div className="item-detail__label-action-row">
-          <a href={sourceUrl} target="_blank" rel="noreferrer">
-            Open source
-          </a>
-        </div>
-      ) : null}
+      {sourceUrl ? <SourceUrlLink sourceUrl={sourceUrl} /> : null}
     </ArchiveLabelSection>
+  );
+}
+
+function SourceUrlLink({ sourceUrl }: { sourceUrl: string }) {
+  return (
+    <a className="item-detail__source-link" href={sourceUrl} target="_blank" rel="noreferrer">
+      <span>{formatSourceUrl(sourceUrl)}</span>
+      <ArchiveIcon name="external" />
+    </a>
   );
 }
 
@@ -513,16 +539,26 @@ function ArchiveCollectionsSection({
           pending={pending}
         />
       ) : (
-        <p className="detail-muted">Not collected yet.</p>
+        <div className="collection-empty-state">
+          <p className="detail-muted">Not collected yet.</p>
+          <CollectionAttachForm
+            error={collectionActionError}
+            onAttachCollection={onAttachCollection}
+            options={collectionOptions}
+            pending={pending}
+          />
+        </div>
       )}
-      <CollapsibleAction summary="Add to collection">
-        <CollectionAttachForm
-          error={collectionActionError}
-          onAttachCollection={onAttachCollection}
-          options={collectionOptions}
-          pending={pending}
-        />
-      </CollapsibleAction>
+      {collections.length > 0 ? (
+        <CollapsibleAction summary="Add to another collection">
+          <CollectionAttachForm
+            error={collectionActionError}
+            onAttachCollection={onAttachCollection}
+            options={collectionOptions}
+            pending={pending}
+          />
+        </CollapsibleAction>
+      ) : null}
     </ArchiveLabelSection>
   );
 }
@@ -551,17 +587,13 @@ function ArchiveContextSection({ item }: { item: ItemDetail }) {
 
 function ArchiveActionsSection({
   item,
-  sourceUrl,
 }: {
   item: ItemDetail;
-  sourceUrl: string | null;
 }) {
   return (
     <section className="item-detail__action-strip" aria-label="item actions">
       <div className="item-detail__primary-actions">
-        <OpenSourceAction sourceUrl={sourceUrl} />
         <DownloadItemAction item={item} />
-        <CopyReferenceAction item={item} />
       </div>
     </section>
   );
@@ -597,7 +629,7 @@ function SourcePanel({
   sourceUrl: string | null;
 }) {
   const sourceKind = item.source?.kind ?? "manual";
-  const sourceTypeLabel = getSourceKindDisplayLabel(sourceKind);
+  const sourceTypeLabel = getSourceDisplayLabel(item);
   const sourceDetail = sourceUrl ? getDomain(sourceUrl) : item.source?.label ?? item.source?.identifier ?? sourceKind;
   const sourceRows = [
     { label: getSourceLocationLabel(item, sourceKind, sourceUrl), value: sourceDetail },
@@ -1081,7 +1113,8 @@ function OpenSourceAction({ sourceUrl }: { sourceUrl: string | null }) {
 
   return (
     <a className="status-action status-action--link" href={sourceUrl} target="_blank" rel="noreferrer">
-      Open source
+      <ArchiveIcon className="status-action__icon" name="external" />
+      <span>Open source</span>
     </a>
   );
 }
@@ -1094,29 +1127,20 @@ function DownloadItemAction({ item }: { item: ItemDetail }) {
     return null;
   }
 
-  const handleClick = () => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    try {
-      const anchor = document.createElement("a");
-      anchor.href = download.url;
-      anchor.download = download.filename;
-      anchor.rel = "noopener";
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
+  const handleClick = async () => {
+    if (await triggerItemDownload(download)) {
       setError(null);
-    } catch {
+    } else {
       setError("Could not download.");
     }
   };
 
   return (
     <div className="detail-download">
-      <button className="status-action" type="button" onClick={handleClick}>
-        Download
+      <button className="status-action status-action--download" type="button" onClick={handleClick}>
+        <ArchiveIcon className="status-action__icon" name="download" />
+        <span>Download</span>
+        <kbd>D</kbd>
       </button>
       {error ? <p className="detail-error">{error}</p> : null}
     </div>
@@ -1146,11 +1170,16 @@ function CopyReferenceAction({ item }: { item: ItemDetail }) {
         type="button"
         onClick={handleClick}
       >
-        {copied ? "Copied" : "Copy reference"}
+        <ArchiveIcon className="status-action__icon" name="copy" />
+        <span>{copied ? "Copied" : "Copy reference"}</span>
       </button>
       {error ? <p className="detail-error">{error}</p> : null}
     </div>
   );
+}
+
+function triggerItemDownload(download: { filename: string; url: string }) {
+  return downloadArchiveFile(download);
 }
 
 function getItemDownloadTarget(item: ItemDetail): { filename: string; url: string } | null {
@@ -1627,9 +1656,13 @@ function ItemHero({
             className="item-detail__media-action item-detail__media-expand"
             type="button"
             aria-label="Enlarge image"
+            data-action-label="Enlarge"
             onClick={() => setExpandedImage(item.content.image?.fileRef ?? null)}
           >
-            <ExpandImageIcon />
+            <span className="item-detail__media-action-label" aria-hidden="true">Enlarge</span>
+            <span className="item-detail__media-action-icon" aria-hidden="true">
+              <ExpandImageIcon />
+            </span>
           </button>
           {expandedImage ? (
             <div className="item-detail__lightbox" role="dialog" aria-modal="true" aria-label="enlarged image">
@@ -1697,8 +1730,12 @@ function ItemHero({
             target="_blank"
             rel="noreferrer"
             aria-label="Open PDF"
+            data-action-label="Open PDF"
           >
-            <OpenMediaIcon />
+            <span className="item-detail__media-action-label" aria-hidden="true">Open PDF</span>
+            <span className="item-detail__media-action-icon" aria-hidden="true">
+              <OpenMediaIcon />
+            </span>
           </a>
         </div>
       );
@@ -1711,23 +1748,11 @@ function ItemHero({
 }
 
 function ExpandImageIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 18 18" focusable="false">
-      <path d="M6.75 4.75H4.75V6.75" />
-      <path d="M11.25 4.75H13.25V6.75" />
-      <path d="M13.25 11.25V13.25H11.25" />
-      <path d="M4.75 11.25V13.25H6.75" />
-    </svg>
-  );
+  return <ArchiveIcon name="external" />;
 }
 
 function OpenMediaIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 18 18" focusable="false">
-      <path d="M6.75 5.25h6v6" />
-      <path d="M12.5 5.5 5.25 12.75" />
-    </svg>
-  );
+  return <ArchiveIcon name="external" />;
 }
 
 function ImageMissingHero({ item }: { item: ItemDetail }) {
@@ -2052,13 +2077,31 @@ function LinkHero({ item }: { item: ItemDetail }) {
   if (previewImage) {
     return (
       <figure className="item-detail__media-figure item-detail__media-figure--link">
-        <img
-          className="item-detail__link-preview-image"
-          src={previewImage}
-          alt={title}
-          loading="lazy"
-          decoding="async"
-        />
+        {url ? (
+          <a
+            className="item-detail__media-source-link"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open ${title}`}
+          >
+            <img
+              className="item-detail__link-preview-image"
+              src={previewImage}
+              alt={title}
+              loading="lazy"
+              decoding="async"
+            />
+          </a>
+        ) : (
+          <img
+            className="item-detail__link-preview-image"
+            src={previewImage}
+            alt={title}
+            loading="lazy"
+            decoding="async"
+          />
+        )}
         {url ? (
           <a
             className="item-detail__media-action item-detail__media-open-link"
@@ -2066,8 +2109,12 @@ function LinkHero({ item }: { item: ItemDetail }) {
             target="_blank"
             rel="noreferrer"
             aria-label="Open source"
+            data-action-label="Open source"
           >
-            <OpenMediaIcon />
+            <span className="item-detail__media-action-label" aria-hidden="true">Open source</span>
+            <span className="item-detail__media-action-icon" aria-hidden="true">
+              <OpenMediaIcon />
+            </span>
           </a>
         ) : null}
       </figure>
@@ -2399,7 +2446,7 @@ function getOpenGraph(metadata: Record<string, unknown> | null) {
   return {
     title,
     description,
-    image: isHttpUrl(image) ? image : null,
+    image: isHttpUrl(image) ? normalizeRemoteMediaUrl(image) : null,
   };
 }
 
@@ -2425,6 +2472,7 @@ function isHttpUrl(value: string | null | undefined) {
 
 function getSourceDisplayLabel(item: ItemDetail) {
   const sourceKind = item.source?.kind ?? "manual";
+  const providerLabel = getProviderDisplayLabel(item);
 
   if (item.type === "image" && sourceKind === "local") {
     return "Local upload";
@@ -2435,10 +2483,37 @@ function getSourceDisplayLabel(item: ItemDetail) {
   }
 
   if (sourceKind === "url" && item.type === "link") {
-    return getDomain(item.content.link?.url) ?? "URL";
+    return providerLabel ?? getDomain(item.content.link?.url) ?? "URL";
   }
 
-  return item.source?.label ?? getSourceKindDisplayLabel(sourceKind);
+  return providerLabel ?? item.source?.label ?? getSourceKindDisplayLabel(sourceKind);
+}
+
+function getProviderDisplayLabel(item: ItemDetail) {
+  if (item.type !== "link") {
+    return null;
+  }
+
+  const metadata = item.content.link?.ogMetadata;
+  if (!metadata) {
+    return null;
+  }
+
+  const provider = firstString(metadata, ["providerName", "provider_name", "siteName", "site_name", "og:site_name"]);
+  if (!provider) {
+    return null;
+  }
+
+  const normalized = provider.trim().toLowerCase();
+  if (normalized.includes("youtube")) {
+    return "YouTube";
+  }
+
+  if (normalized.includes("pinterest")) {
+    return "Pinterest";
+  }
+
+  return provider;
 }
 
 function getSourceKindDisplayLabel(value: string) {
@@ -2531,6 +2606,23 @@ function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item))
   return `Untitled ${kindLabel.toLowerCase()}`;
 }
 
+function getItemFileLabel(item: ItemDetail) {
+  const candidates = [
+    item.title && looksLikeFileName(item.title) ? item.title : null,
+    item.content.link?.asset?.originalName,
+    getFileNameFromUrl(item.content.link?.asset?.fileUrl),
+    getFileNameFromUrl(item.content.link?.url),
+    getFileNameFromPath(item.content.image?.fileRef),
+    getFileNameFromUrl(item.sourceExternalId),
+  ];
+
+  return candidates.find((value): value is string => Boolean(value?.trim()))?.trim() ?? null;
+}
+
+function normalizeTitleComparison(value: string) {
+  return formatDisplayTitle(value).toLowerCase();
+}
+
 function formatDisplayTitle(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim();
 
@@ -2588,6 +2680,15 @@ function getFileNameFromUrl(value: string | null | undefined) {
   }
 }
 
+function getFileNameFromPath(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const filename = value.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+  return filename || null;
+}
+
 function getDomain(value: string | null | undefined) {
   if (!value) {
     return null;
@@ -2597,6 +2698,18 @@ function getDomain(value: string | null | undefined) {
     return new URL(value).hostname.replace(/^www\./, "");
   } catch {
     return value;
+  }
+}
+
+function formatSourceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    const path = decodeURIComponent(url.pathname).replace(/\/$/, "");
+    const label = `${host}${path && path !== "/" ? path : ""}`;
+    return label.length > 42 ? `${label.slice(0, 39)}…` : label;
+  } catch {
+    return value.length > 42 ? `${value.slice(0, 39)}…` : value;
   }
 }
 

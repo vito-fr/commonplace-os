@@ -1,6 +1,6 @@
 import type { ItemCardProps, ItemMediaPreview } from "../components/items";
 import type { ItemCardQuery, ItemCardReader } from "./itemCardReader";
-import { resolvePocketBaseFileUrl } from "./pocketBaseFiles";
+import { normalizeRemoteMediaUrl, resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type RemoteItemCard = Omit<ItemCardProps, "onNavigate">;
@@ -77,21 +77,22 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: st
   return rows.map((row) => {
     const imageUrl = resolvePocketBaseFileUrl(baseUrl, row.imageUrl);
     const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, row.assetFileUrl);
-    const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, row.thumbnailUrl) ?? imageUrl ?? row.ogImageUrl ?? null;
-    const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, row.videoPosterUrl) ?? row.ogImageUrl ?? null;
+    const ogImageUrl = normalizeRemoteMediaUrl(row.ogImageUrl);
+    const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, row.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
+    const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, row.videoPosterUrl) ?? ogImageUrl ?? null;
     const previewUrl =
       resolvePocketBaseFileUrl(baseUrl, row.previewUrl) ??
       imageUrl ??
       thumbnailUrl ??
       videoPosterUrl ??
-      row.ogImageUrl ??
+      ogImageUrl ??
       assetFileUrl ??
       null;
     const mediaPreview = resolveMediaPreview(baseUrl, row.mediaPreview, {
       assetFileUrl,
       assetMimeType: row.assetMimeType ?? null,
       imageUrl,
-      ogImageUrl: row.ogImageUrl ?? null,
+      ogImageUrl,
       previewUrl,
       thumbnailUrl,
       videoPosterUrl,
@@ -100,6 +101,7 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: st
     return {
       ...row,
       imageUrl,
+      ogImageUrl,
       assetFileUrl,
       previewUrl,
       thumbnailUrl,
@@ -117,16 +119,17 @@ function resolveMediaPreview(
 ): ItemMediaPreview {
   const imageUrl = resolvePocketBaseFileUrl(baseUrl, preview?.imageUrl) ?? fallback.imageUrl;
   const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, preview?.assetFileUrl) ?? fallback.assetFileUrl;
-  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, preview?.thumbnailUrl) ?? fallback.thumbnailUrl ?? imageUrl ?? fallback.ogImageUrl;
+  const ogImageUrl = normalizeRemoteMediaUrl(preview?.ogImageUrl) ?? fallback.ogImageUrl;
+  const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, preview?.thumbnailUrl) ?? fallback.thumbnailUrl ?? imageUrl ?? ogImageUrl;
   const videoPosterUrl =
-    resolvePocketBaseFileUrl(baseUrl, preview?.videoPosterUrl) ?? fallback.videoPosterUrl ?? fallback.ogImageUrl;
+    resolvePocketBaseFileUrl(baseUrl, preview?.videoPosterUrl) ?? fallback.videoPosterUrl ?? ogImageUrl;
   const previewUrl =
     resolvePocketBaseFileUrl(baseUrl, preview?.previewUrl) ??
     fallback.previewUrl ??
     imageUrl ??
     thumbnailUrl ??
     videoPosterUrl ??
-    fallback.ogImageUrl ??
+    ogImageUrl ??
     assetFileUrl;
 
   return {
@@ -134,7 +137,7 @@ function resolveMediaPreview(
     assetFileUrl,
     assetMimeType: preview?.assetMimeType ?? fallback.assetMimeType,
     imageUrl,
-    ogImageUrl: preview?.ogImageUrl ?? fallback.ogImageUrl,
+    ogImageUrl,
     previewUrl,
     thumbnailUrl,
     videoPosterUrl,

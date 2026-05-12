@@ -22,6 +22,7 @@ export type ItemCardFilters = {
 
 export type ItemCardQuery = {
   workspaceId: string;
+  cacheScope?: string;
   itemIds?: string[];
   filters?: ItemCardFilters;
 };
