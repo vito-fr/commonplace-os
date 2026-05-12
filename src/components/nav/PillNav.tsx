@@ -41,7 +41,7 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "views", label: "Views" },
   { key: "shortcuts", label: "Shortcuts" },
   { key: "import", label: "Import" },
-  { key: "system", label: "System" },
+  { key: "system", label: "Library" },
 ];
 
 export type PillNavProps = {
@@ -1567,7 +1567,7 @@ function SettingsIsland({
                   />
                   <ShortcutStaticField label="Close or dismiss" value="Esc" />
                 </ShortcutGroup>
-                <ShortcutGroup title="Appearance">
+                <ShortcutGroup title="Views">
                   <ShortcutCaptureField
                     action="theme"
                     binding={shortcutBindings.theme}
@@ -1576,8 +1576,6 @@ function SettingsIsland({
                     onFocus={() => setRecordingAction("theme")}
                     onKeyDown={captureShortcut}
                   />
-                </ShortcutGroup>
-                <ShortcutGroup title="Views">
                   <ShortcutCaptureField
                     action="galleryIncrease"
                     binding={shortcutBindings.galleryIncrease}
@@ -1595,12 +1593,15 @@ function SettingsIsland({
                     onKeyDown={captureShortcut}
                   />
                 </ShortcutGroup>
-                <ShortcutGroup title="Item detail">
-                  <ShortcutStaticField label="Toggle detail panel" value="R" />
+                <ShortcutGroup title="Item actions">
                   <ShortcutStaticField label="Download current item" value="D" />
-                </ShortcutGroup>
-                <ShortcutGroup title="Editing">
                   <ShortcutStaticField label="Undo delete" value="⌘/Ctrl Z" />
+                </ShortcutGroup>
+                <ShortcutGroup title="Panels">
+                  <ShortcutStaticField label="Toggle detail panel" value="R" />
+                </ShortcutGroup>
+                <ShortcutGroup title="Import/Writing">
+                  <ShortcutStaticField label="Save note edit" value="⌘/Ctrl Enter" />
                 </ShortcutGroup>
               </div>
               {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
@@ -1618,9 +1619,9 @@ function SettingsIsland({
 
           {activeSection === "system" ? (
             <div className="settings-island__section">
-              <span className="settings-island__label">System</span>
+              <span className="settings-island__label">Library</span>
               <span className="settings-island__note">
-                {readError ? "Archive needs attention" : "Archive is connected"} · {isPocketBaseMode ? "Live data" : "Demo data"}
+                {readError ? "Archive needs attention" : "Archive is connected"} · {isPocketBaseMode ? "Live library" : "Demo library"}
               </span>
             </div>
           ) : null}

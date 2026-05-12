@@ -75,10 +75,10 @@ export function useGridFlipAnimation(
       const animation = element.animate(
         [
           {
-            transform: `translate3d(${deltaX}px, ${deltaY}px, 0)`,
+            transform: `translate(${deltaX}px, ${deltaY}px)`,
           },
           {
-            transform: "translate3d(0, 0, 0)",
+            transform: "translate(0px, 0px)",
           },
         ],
         {

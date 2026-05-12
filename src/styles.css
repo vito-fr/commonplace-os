@@ -52,7 +52,7 @@
   --motion-blur-amount: 12px;
   --nav-text-blur: 4px;
   --nav-text-mask-bleed: 0px;
-  --nav-text-mask-bleed-y: 3px;
+  --nav-text-mask-bleed-y: 5px;
   --archive-card-radius: 3px;
   --archive-page-gutter: 20px;
   --archive-shell-max-width: 1760px;
@@ -362,14 +362,10 @@ select:focus-visible {
   backdrop-filter: var(--nav-glass-filter);
   -webkit-backdrop-filter: var(--nav-glass-filter);
   transition:
-    top 360ms var(--motion-pill-ease),
-    left 360ms var(--motion-pill-ease),
-    width 360ms var(--motion-pill-ease),
-    height 360ms var(--motion-pill-ease);
-}
-
-.pill-group-shell[data-syncing="true"] .pill-group-membrane {
-  transition: none;
+    top var(--nav-motion),
+    left var(--nav-motion),
+    width var(--nav-motion),
+    height var(--nav-motion);
 }
 
 .pill-group-track {
@@ -407,9 +403,6 @@ select:focus-visible {
   box-shadow: none;
   backdrop-filter: var(--nav-glass-filter);
   -webkit-backdrop-filter: var(--nav-glass-filter);
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  will-change: opacity;
 }
 
 .ui-surface-content {
@@ -883,7 +876,7 @@ select:focus-visible {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.22;
+  line-height: 1.3;
   white-space: nowrap;
 }
 
@@ -901,8 +894,8 @@ select:focus-visible {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: -0.012em;
-  line-height: 1.18;
-  padding: 5px 8px 6px;
+  line-height: 1.28;
+  padding: 6px 8px 7px;
   text-align: center;
   text-decoration: none;
   white-space: nowrap;
@@ -1418,6 +1411,12 @@ select:focus-visible {
   opacity: var(--nav-text-hover-opacity);
 }
 
+.subnav-cell:hover .view-density-control__label,
+.subnav-cell:hover .gallery-control__label,
+.subnav-cell:hover .index-nav-control__label {
+  opacity: var(--nav-text-hover-opacity);
+}
+
 .nav-cell[data-active="true"],
 .subnav-cell[data-active="true"] {
   z-index: 2;
@@ -1442,6 +1441,12 @@ select:focus-visible {
 
 .nav-cell[data-active="true"]:hover .nav-cell__text,
 .subnav-cell[data-active="true"]:hover .nav-cell__text {
+  opacity: var(--nav-text-active-hover-opacity);
+}
+
+.subnav-cell[data-active="true"]:hover .view-density-control__label,
+.subnav-cell[data-active="true"]:hover .gallery-control__label,
+.subnav-cell[data-active="true"]:hover .index-nav-control__label {
   opacity: var(--nav-text-active-hover-opacity);
 }
 
@@ -1488,7 +1493,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  line-height: 1.16;
+  line-height: 1.2;
   white-space: nowrap;
   opacity: 1;
   filter: blur(0);
@@ -3399,13 +3404,13 @@ select:focus-visible {
   0% {
     opacity: 0;
     filter: blur(8px);
-    transform: translateY(10px) translateZ(0);
+    transform: translateY(10px);
   }
 
   100% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(0) translateZ(0);
+    transform: translateY(0);
   }
 }
 
@@ -7251,6 +7256,49 @@ select:focus-visible {
   line-height: 1.22;
 }
 
+.item-detail__source-identity {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--capsule-radius);
+  background: color-mix(in srgb, var(--nav-cell-bg) 86%, transparent);
+  color: color-mix(in srgb, var(--color-ink) 78%, transparent);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.24;
+  margin-bottom: 8px;
+  padding: 5px 9px 6px 6px;
+}
+
+.item-detail__source-identity span {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: var(--capsule-radius);
+  background: color-mix(in srgb, var(--color-ink) 9%, transparent);
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  font-size: 10px;
+  font-weight: 820;
+  line-height: 1;
+}
+
+.item-detail__source-identity[data-provider="pinterest"] span {
+  background: color-mix(in srgb, #e60023 18%, var(--nav-cell-bg));
+  color: color-mix(in srgb, #e60023 72%, var(--color-ink));
+}
+
+.item-detail__source-identity[data-provider="youtube"] span {
+  background: color-mix(in srgb, #ff0033 18%, var(--nav-cell-bg));
+  color: color-mix(in srgb, #ff0033 72%, var(--color-ink));
+}
+
+.item-detail__source-identity[data-provider="arena"] span {
+  background: color-mix(in srgb, var(--color-ink) 14%, var(--nav-cell-bg));
+}
+
 .item-detail__source-lines span + span {
   border-top: 0;
   padding-top: 2px;
@@ -7288,9 +7336,9 @@ select:focus-visible {
 }
 
 .item-detail__source-link .archive-icon {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   opacity: 0;
   transform: none;
   transition: opacity 180ms cubic-bezier(0.5, 0, 0, 1);
@@ -7369,8 +7417,8 @@ select:focus-visible {
 }
 
 .status-action__icon {
-  width: 12px;
-  height: 12px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
 }
 
@@ -7409,6 +7457,22 @@ select:focus-visible {
   margin-left: 0;
   opacity: 1;
   transform: none;
+}
+
+.item-detail__danger-zone {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--semantic-error) 12%, transparent);
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.item-detail__danger-zone > span {
+  color: color-mix(in srgb, var(--semantic-error) 58%, var(--color-ink));
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
 }
 
 .item-detail__label-action-row a:hover,
@@ -7470,6 +7534,15 @@ select:focus-visible {
   transition: background-color 180ms cubic-bezier(0.5, 0, 0, 1);
 }
 
+.collection-membership-row__open {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
 .collection-membership-row:hover,
 .collection-membership-row:focus-within {
   background: color-mix(in srgb, var(--color-ink) 4.2%, transparent);
@@ -7477,7 +7550,7 @@ select:focus-visible {
 
 .collection-membership-row__main {
   min-width: 0;
-  padding-right: 84px;
+  padding-right: 0;
 }
 
 .collection-membership-row__thumb {
@@ -7549,43 +7622,24 @@ select:focus-visible {
   display: none;
 }
 
-.collection-membership-row__actions {
-  display: flex;
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  z-index: 2;
-  gap: 5px;
-  opacity: 0;
-  pointer-events: auto;
-  transform: translate(5px, -50%);
-  transition:
-    opacity 160ms cubic-bezier(0.5, 0, 0, 1),
-    transform 220ms cubic-bezier(0.5, 0, 0, 1);
-}
-
-.collection-membership-row:hover .collection-membership-row__actions,
-.collection-membership-row:focus-within .collection-membership-row__actions {
-  opacity: 1;
-  transform: translate(0, -50%);
-}
-
-.collection-membership-row__action {
-  display: inline-flex;
-  min-height: 25px;
-  align-items: center;
-  background: color-mix(in srgb, var(--nav-cell-bg) 72%, transparent);
-  padding: 5px 8px;
-  font-size: 10px;
-}
-
-.collection-membership-row__action--remove {
-  color: color-mix(in srgb, var(--semantic-error) 64%, var(--nav-cell-ink));
-}
-
 .collection-attach {
   display: grid;
   gap: 8px;
+}
+
+.collection-add-panel {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3%, transparent);
+  padding-top: 10px;
+}
+
+.collection-add-panel__label {
+  color: color-mix(in srgb, var(--color-ink) 48%, transparent);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
 }
 
 .collection-empty-state {
@@ -7846,12 +7900,30 @@ select:focus-visible {
   align-items: center;
   gap: 4px;
   border-radius: var(--capsule-radius);
-  background: var(--nav-wrapper-bg);
   padding: 2px;
   transform: translateX(-50%);
+  isolation: isolate;
+}
+
+.item-detail__archive-flow-membrane {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--nav-wrapper-bg);
+  pointer-events: none;
+  filter: none;
+  box-shadow: none;
   backdrop-filter: var(--nav-glass-filter);
   -webkit-backdrop-filter: var(--nav-glass-filter);
-  isolation: isolate;
+}
+
+.item-detail__archive-flow-track {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .item-detail__archive-flow-header {

@@ -106,16 +106,15 @@ export function useCardActionMenu({
     event.preventDefault();
     event.stopPropagation();
 
-    setIsOpen((currentOpen) => {
-      const nextOpen = !currentOpen;
-      if (nextOpen) {
-        emitCardActionSurfaceOpen(id, surface);
-      } else {
-        onCloseRef.current?.();
-      }
-      return nextOpen;
-    });
-  }, [id, surface]);
+    const nextOpen = !isOpen;
+    setIsOpen(nextOpen);
+
+    if (nextOpen) {
+      emitCardActionSurfaceOpen(id, surface);
+    } else {
+      onCloseRef.current?.();
+    }
+  }, [id, isOpen, surface]);
 
   return {
     buttonRef,

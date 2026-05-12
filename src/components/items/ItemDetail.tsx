@@ -220,7 +220,6 @@ export function ItemDetailView({
               item={item}
               onAttachCollection={onAttachCollection}
               onOpenCollection={onOpenCollection}
-              onRemoveCollection={onRemoveCollection}
               pending={collectionActionPending}
               sourceUrl={sourceUrl}
             />
@@ -241,7 +240,6 @@ export function ItemDetailView({
               relationshipActionPending={relationshipActionPending}
               relationshipTargetOptions={relationshipTargetOptions}
               relationships={item.relationships}
-              sourceUrl={sourceUrl}
               statusActionError={statusActionError}
               statusActionPending={statusActionPending}
             />
@@ -347,7 +345,6 @@ function ArchiveLabel({
   item,
   onAttachCollection,
   onOpenCollection,
-  onRemoveCollection,
   pending,
   sourceUrl,
 }: {
@@ -360,7 +357,6 @@ function ArchiveLabel({
   item: ItemDetail;
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   onOpenCollection?: (collectionId: string) => void;
-  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
   pending: boolean;
   sourceUrl: string | null;
 }) {
@@ -380,7 +376,6 @@ function ArchiveLabel({
         collectionOptions={collectionOptions}
         onAttachCollection={onAttachCollection}
         onOpenCollection={onOpenCollection}
-        onRemoveCollection={onRemoveCollection}
         pending={pending}
       />
       <ArchiveContextSection item={item} />
@@ -477,6 +472,7 @@ function ArchiveSourceSection({
 }) {
   const sourceKind = item.source?.kind ?? "manual";
   const sourceTypeLabel = getSourceDisplayLabel(item);
+  const sourceIdentity = getSourceIdentity(item, sourceUrl);
   const sourceDetail = sourceUrl ? getDomain(sourceUrl) : item.source?.label ?? item.source?.identifier ?? sourceKind;
   const sourceLines = [
     sourceDetail,
@@ -486,6 +482,10 @@ function ArchiveSourceSection({
 
   return (
     <ArchiveLabelSection className="item-detail__source-panel" meta={sourceTypeLabel} title="Source">
+      <div className="item-detail__source-identity" data-provider={sourceIdentity.key}>
+        <span aria-hidden="true">{sourceIdentity.initial}</span>
+        <strong>{sourceIdentity.label}</strong>
+      </div>
       <div className="item-detail__source-lines">
         {sourceLines.map((line) => (
           <span key={line}>{line}</span>
@@ -512,7 +512,6 @@ function ArchiveCollectionsSection({
   collectionOptions,
   onAttachCollection,
   onOpenCollection,
-  onRemoveCollection,
   pending,
 }: {
   collections: ItemDetail["collections"];
@@ -521,7 +520,6 @@ function ArchiveCollectionsSection({
   collectionOptions: CollectionOption[];
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   onOpenCollection?: (collectionId: string) => void;
-  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
   pending: boolean;
 }) {
   return (
@@ -535,30 +533,21 @@ function ArchiveCollectionsSection({
           collections={collections}
           collectionIndex={collectionIndex}
           onOpenCollection={onOpenCollection}
-          onRemoveCollection={onRemoveCollection}
-          pending={pending}
         />
       ) : (
         <div className="collection-empty-state">
           <p className="detail-muted">Not collected yet.</p>
-          <CollectionAttachForm
-            error={collectionActionError}
-            onAttachCollection={onAttachCollection}
-            options={collectionOptions}
-            pending={pending}
-          />
         </div>
       )}
-      {collections.length > 0 ? (
-        <CollapsibleAction summary="Add to another collection">
-          <CollectionAttachForm
-            error={collectionActionError}
-            onAttachCollection={onAttachCollection}
-            options={collectionOptions}
-            pending={pending}
-          />
-        </CollapsibleAction>
-      ) : null}
+      <div className="collection-add-panel">
+        <span className="collection-add-panel__label">Add to collection</span>
+        <CollectionAttachForm
+          error={collectionActionError}
+          onAttachCollection={onAttachCollection}
+          options={collectionOptions}
+          pending={pending}
+        />
+      </div>
     </ArchiveLabelSection>
   );
 }
@@ -710,8 +699,6 @@ function CollectionContextPanel({
         <CollectionMembershipList
           collections={collections}
           onOpenCollection={onOpenCollection}
-          onRemoveCollection={onRemoveCollection}
-          pending={pending}
         />
       ) : (
         <p className="detail-muted">Not collected yet.</p>
@@ -732,14 +719,10 @@ function CollectionMembershipList({
   collections,
   collectionIndex = [],
   onOpenCollection,
-  onRemoveCollection,
-  pending,
 }: {
   collections: ItemDetail["collections"];
   collectionIndex?: CollectionIndexItem[];
   onOpenCollection?: (collectionId: string) => void;
-  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
-  pending: boolean;
 }) {
   return (
     <div
@@ -762,44 +745,14 @@ function CollectionMembershipList({
                 added {formatDate(collection.addedAt)}
               </span>
             </div>
-            <div className="collection-membership-row__actions">
-              <a
-                className="collection-membership-row__action"
-                href={`/collections/${encodeURIComponent(collection.id)}`}
-                onClick={(event) => {
-                  if (
-                    !onOpenCollection ||
-                    event.defaultPrevented ||
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.altKey ||
-                    event.ctrlKey ||
-                    event.shiftKey
-                  ) {
-                    return;
-                  }
-
-                  event.preventDefault();
-                  onOpenCollection(collection.id);
-                }}
-              >
-                Open
-              </a>
+            {onOpenCollection ? (
               <button
-                className="collection-membership-row__action collection-membership-row__action--remove"
-                disabled={pending || !onRemoveCollection}
+                className="collection-membership-row__open"
                 type="button"
-                onClick={async () => {
-                  try {
-                    await onRemoveCollection?.({ collectionId: collection.id });
-                  } catch {
-                    // Parent owns the persisted write error message.
-                  }
-                }}
-              >
-                {pending ? "Saving" : "Remove"}
-              </button>
-            </div>
+                aria-label={`Open ${collection.name}`}
+                onClick={() => onOpenCollection(collection.id)}
+              />
+            ) : null}
           </div>
         );
       })}
@@ -918,7 +871,6 @@ function AdvancedPanel({
   relationshipActionPending,
   relationshipTargetOptions,
   relationships,
-  sourceUrl,
   statusActionError,
   statusActionPending,
 }: {
@@ -938,7 +890,6 @@ function AdvancedPanel({
   relationshipActionPending: boolean;
   relationshipTargetOptions: RelationshipTargetOption[];
   relationships: ItemDetail["relationships"];
-  sourceUrl: string | null;
   statusActionError: string | null;
   statusActionPending: boolean;
 }) {
@@ -956,7 +907,6 @@ function AdvancedPanel({
           itemFormat={itemFormat}
         />
         <div className="item-detail__advanced-actions">
-          {sourceUrl ? <CopyTextAction label="Copy source URL" copiedLabel="Copied" text={sourceUrl} /> : null}
           <CopyTextAction label="Copy internal link" copiedLabel="Copied" text={getItemInternalHref(item)} />
           <CopyPayloadAction item={item} />
           <CopyItemIdAction item={item} />
@@ -976,6 +926,9 @@ function AdvancedPanel({
               targetOptions={relationshipTargetOptions}
             />
           </CollapsibleAction>
+        </div>
+        <div className="item-detail__danger-zone">
+          <span>Danger zone</span>
           <DeleteAction
             pending={deleteActionPending}
             error={deleteActionError}
@@ -1460,23 +1413,26 @@ function DetailArchiveFlowPanel({
 
   return (
     <nav className="item-detail__archive-flow" aria-label="archive set navigation">
-      <div className="item-detail__archive-flow-header">
-        <span>archive set</span>
-        <span>
-          {archiveFlow.index} / {archiveFlow.total}
-        </span>
-      </div>
-      <div className="item-detail__archive-flow-actions">
-        <ArchiveFlowStep
-          direction="previous"
-          neighbor={archiveFlow.previous}
-          onOpenArchiveItem={onOpenArchiveItem}
-        />
-        <ArchiveFlowStep
-          direction="next"
-          neighbor={archiveFlow.next}
-          onOpenArchiveItem={onOpenArchiveItem}
-        />
+      <span className="item-detail__archive-flow-membrane" aria-hidden="true" />
+      <div className="item-detail__archive-flow-track">
+        <div className="item-detail__archive-flow-header">
+          <span>archive set</span>
+          <span>
+            {archiveFlow.index} / {archiveFlow.total}
+          </span>
+        </div>
+        <div className="item-detail__archive-flow-actions">
+          <ArchiveFlowStep
+            direction="previous"
+            neighbor={archiveFlow.previous}
+            onOpenArchiveItem={onOpenArchiveItem}
+          />
+          <ArchiveFlowStep
+            direction="next"
+            neighbor={archiveFlow.next}
+            onOpenArchiveItem={onOpenArchiveItem}
+          />
+        </div>
       </div>
     </nav>
   );
@@ -2051,13 +2007,8 @@ function LinkHero({ item }: { item: ItemDetail }) {
   const url = link?.url ?? null;
   const og = getOpenGraph(link?.ogMetadata ?? null);
   const isImageReference = isDirectImageUrl(url);
-  const previewImage = isImageReference ? url : og.image;
-  const title =
-    item.title ??
-    og.title ??
-    (isImageReference ? getFileNameFromUrl(url) : null) ??
-    getDomain(url) ??
-    (isImageReference ? "Image reference" : "Website");
+  const previewImage = getDetailPreviewImageUrl(isImageReference ? url : og.image);
+  const title = getItemDisplayTitle(item, isImageReference ? "Image reference" : "Website");
   const description = isImageReference
     ? getDomain(url) ?? url ?? "Remote image URL"
     : og.description ?? url ?? "Source URL unavailable.";
@@ -2441,13 +2392,105 @@ function getOpenGraph(metadata: Record<string, unknown> | null) {
 
   const title = firstString(metadata, ["title", "og:title", "ogTitle"]);
   const description = firstString(metadata, ["description", "og:description", "ogDescription"]);
-  const image = firstString(metadata, ["image", "og:image", "ogImage", "imageUrl"]);
+  const image = getLargestMetadataImage(metadata);
 
   return {
     title,
     description,
     image: isHttpUrl(image) ? normalizeRemoteMediaUrl(image) : null,
   };
+}
+
+function getLargestMetadataImage(metadata: Record<string, unknown>) {
+  const direct = firstString(metadata, [
+    "image",
+    "og:image",
+    "ogImage",
+    "og:image:secure_url",
+    "twitter:image",
+    "thumbnail",
+    "thumbnailUrl",
+    "thumbnail_url",
+    "imageUrl",
+  ]);
+  const candidates: Array<{ height: number; url: string; width: number }> = [];
+
+  if (direct) {
+    candidates.push({ url: direct, width: getUrlImageWidthHint(direct), height: 0 });
+  }
+
+  collectImageCandidates(metadata.images, candidates);
+  collectImageCandidates(metadata.image, candidates);
+  collectImageCandidates(metadata["og:image"], candidates);
+
+  const best = candidates
+    .filter((candidate) => isHttpUrl(candidate.url))
+    .sort((a, b) => (b.width * b.height || b.width) - (a.width * a.height || a.width))[0];
+
+  return best?.url ?? direct;
+}
+
+function collectImageCandidates(value: unknown, candidates: Array<{ height: number; url: string; width: number }>) {
+  if (!value) {
+    return;
+  }
+
+  if (typeof value === "string") {
+    candidates.push({ url: value, width: getUrlImageWidthHint(value), height: 0 });
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectImageCandidates(entry, candidates));
+    return;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const url = firstString(record, ["url", "src", "href", "secureUrl", "secure_url"]);
+    if (url) {
+      candidates.push({
+        url,
+        width: getNumericMetadataValue(record.width) ?? getUrlImageWidthHint(url),
+        height: getNumericMetadataValue(record.height) ?? 0,
+      });
+    }
+  }
+}
+
+function getNumericMetadataValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function getUrlImageWidthHint(value: string) {
+  const pinSize = value.match(/\/(\d{3,4})x\//);
+  if (pinSize) {
+    return Number.parseInt(pinSize[1], 10);
+  }
+
+  const widthParam = value.match(/[?&](?:w|width)=([0-9]{2,5})/i);
+  if (widthParam) {
+    return Number.parseInt(widthParam[1], 10);
+  }
+
+  if (value.includes("maxresdefault")) {
+    return 1280;
+  }
+
+  if (value.includes("hqdefault")) {
+    return 480;
+  }
+
+  return 0;
 }
 
 function firstString(metadata: Record<string, unknown>, keys: string[]) {
@@ -2487,6 +2530,27 @@ function getSourceDisplayLabel(item: ItemDetail) {
   }
 
   return providerLabel ?? item.source?.label ?? getSourceKindDisplayLabel(sourceKind);
+}
+
+function getSourceIdentity(item: ItemDetail, sourceUrl: string | null) {
+  const label = getSourceDisplayLabel(item);
+  const domain = getDomain(sourceUrl)?.toLowerCase() ?? "";
+  const normalizedLabel = label.toLowerCase();
+  const key = domain.includes("youtube") || normalizedLabel.includes("youtube")
+    ? "youtube"
+    : domain.includes("pinterest") || normalizedLabel.includes("pinterest")
+      ? "pinterest"
+      : domain.includes("are.na") || normalizedLabel.includes("are.na")
+        ? "arena"
+        : item.source?.kind === "local"
+          ? "local"
+          : "website";
+
+  return {
+    key,
+    label,
+    initial: key === "youtube" ? "Y" : key === "pinterest" ? "P" : key === "arena" ? "A" : label.slice(0, 1).toUpperCase(),
+  };
 }
 
 function getProviderDisplayLabel(item: ItemDetail) {
@@ -2571,6 +2635,18 @@ function getSourceLocationLabel(
 function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item)) {
   const explicitTitle = item.title?.trim();
 
+  if (item.type === "link") {
+    const og = getOpenGraph(item.content.link?.ogMetadata ?? null);
+    return formatDisplayTitle(
+      og.title ??
+        og.description ??
+        explicitTitle ??
+        getFileNameFromUrl(item.content.link?.url) ??
+        getDomain(item.content.link?.url) ??
+        `Untitled ${kindLabel.toLowerCase()}`,
+    );
+  }
+
   if (explicitTitle) {
     return formatDisplayTitle(explicitTitle);
   }
@@ -2581,16 +2657,6 @@ function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item))
 
   if (item.type === "caption") {
     return getTextPreviewTitle(item.content.caption?.body, "Untitled caption");
-  }
-
-  if (item.type === "link") {
-    const og = getOpenGraph(item.content.link?.ogMetadata ?? null);
-    return (
-      og.title ??
-      getFileNameFromUrl(item.content.link?.url) ??
-      getDomain(item.content.link?.url) ??
-      `Untitled ${kindLabel.toLowerCase()}`
-    );
   }
 
   if (item.type === "image") {
@@ -2604,6 +2670,40 @@ function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item))
   }
 
   return `Untitled ${kindLabel.toLowerCase()}`;
+}
+
+function getDetailPreviewImageUrl(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = normalizeRemoteMediaUrl(value) ?? value;
+  return getHighResolutionMediaUrl(normalized);
+}
+
+function getHighResolutionMediaUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    if (url.hostname.includes("pinimg.com")) {
+      url.pathname = url.pathname.replace(/\/(?:236x|474x|564x|736x|1200x)\//, "/originals/");
+      return url.toString();
+    }
+
+    if (url.hostname.includes("ytimg.com")) {
+      url.pathname = url.pathname.replace(/\/(?:default|mqdefault|hqdefault|sddefault)\.jpg$/i, "/maxresdefault.jpg");
+      return url.toString();
+    }
+
+    if (url.searchParams.has("w")) {
+      url.searchParams.set("w", "1400");
+      return url.toString();
+    }
+  } catch {
+    return value;
+  }
+
+  return value;
 }
 
 function getItemFileLabel(item: ItemDetail) {
