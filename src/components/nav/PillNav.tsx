@@ -13,6 +13,7 @@ import type { ItemStatus, ItemType } from "../atoms";
 import type { ItemCardFilters, ItemFormatFilter, ItemSourceFilter } from "../../data/itemCardReader";
 import type { CollectionIndexItem } from "../../data/pocketBaseItemCollection";
 import { gsap } from "../../motion/MotionShell";
+import { SettingSlider } from "../ui/SettingSlider";
 
 export type PillNavPanel = "index" | "views" | "filters" | "settings";
 
@@ -1509,21 +1510,15 @@ function SettingsIsland({
                   Dark
                 </button>
               </div>
-              <label className="settings-island__range-row">
-                <span>
-                  <strong>Card radius</strong>
-                  <small>{cardRadius}px</small>
-                </span>
-                <input
-                  aria-label="card corner radius"
-                  max={18}
-                  min={0}
-                  step={1}
-                  type="range"
-                  value={cardRadius}
-                  onChange={(event) => onCardRadiusChange(Number(event.currentTarget.value))}
-                />
-              </label>
+              <SettingSlider
+                description="Home cards, collection covers, and detail media"
+                label="Card radius"
+                max={18}
+                min={0}
+                value={cardRadius}
+                formatValue={(value) => `${value}px`}
+                onChange={onCardRadiusChange}
+              />
             </div>
           ) : null}
 
@@ -1567,17 +1562,19 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="search"
                     binding={shortcutBindings.search}
+                    context="Focus archive search"
                     label="Search archive"
                     recording={recordingAction === "search"}
                     onFocus={() => setRecordingAction("search")}
                     onKeyDown={captureShortcut}
                   />
-                  <ShortcutStaticField label="Close or dismiss" value="Esc" />
+                  <ShortcutStaticField context="Close menu, panel, or overlay" label="Close or dismiss" value="Esc" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Views">
                   <ShortcutCaptureField
                     action="theme"
                     binding={shortcutBindings.theme}
+                    context="Switch light and dark"
                     label="Toggle theme"
                     recording={recordingAction === "theme"}
                     onFocus={() => setRecordingAction("theme")}
@@ -1586,6 +1583,7 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="galleryIncrease"
                     binding={shortcutBindings.galleryIncrease}
+                    context="Gallery or masonry density"
                     label="More columns"
                     recording={recordingAction === "galleryIncrease"}
                     onFocus={() => setRecordingAction("galleryIncrease")}
@@ -1594,6 +1592,7 @@ function SettingsIsland({
                   <ShortcutCaptureField
                     action="galleryDecrease"
                     binding={shortcutBindings.galleryDecrease}
+                    context="Gallery or masonry density"
                     label="Fewer columns"
                     recording={recordingAction === "galleryDecrease"}
                     onFocus={() => setRecordingAction("galleryDecrease")}
@@ -1601,14 +1600,14 @@ function SettingsIsland({
                   />
                 </ShortcutGroup>
                 <ShortcutGroup title="Item actions">
-                  <ShortcutStaticField label="Download current item" value="D" />
-                  <ShortcutStaticField label="Undo delete" value="⌘/Ctrl Z" />
+                  <ShortcutStaticField context="When supported on detail" label="Download current item" value="D" />
+                  <ShortcutStaticField context="Pending delete window" label="Undo delete" value="⌘/Ctrl Z" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Panels">
-                  <ShortcutStaticField label="Toggle detail panel" value="R" />
+                  <ShortcutStaticField context="Item detail right rail" label="Toggle detail panel" value="R" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Import/Writing">
-                  <ShortcutStaticField label="Save note edit" value="⌘/Ctrl Enter" />
+                  <ShortcutStaticField context="While editing notes" label="Save note edit" value="⌘/Ctrl Enter" />
                 </ShortcutGroup>
               </div>
               {shortcutError ? <span className="settings-island__error">{shortcutError}</span> : null}
@@ -1640,7 +1639,7 @@ function SettingsIsland({
 
 function ShortcutGroup({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <div className="settings-island__shortcut-group">
+    <div className="settings-island__shortcut-group" role="group" aria-label={`${title} shortcuts`}>
       <span className="settings-island__shortcut-group-title">{title}</span>
       {children}
     </div>
@@ -1650,6 +1649,7 @@ function ShortcutGroup({ children, title }: { children: ReactNode; title: string
 function ShortcutCaptureField({
   action,
   binding,
+  context,
   label,
   onFocus,
   onKeyDown,
@@ -1657,17 +1657,22 @@ function ShortcutCaptureField({
 }: {
   action: ShortcutAction;
   binding: ShortcutBinding;
+  context?: string;
   label: string;
   onFocus: () => void;
   onKeyDown: (action: ShortcutAction, event: ReactKeyboardEvent<HTMLInputElement>) => void;
   recording: boolean;
 }) {
   return (
-    <label className="settings-island__shortcut">
-      <span>{label}</span>
+    <label className="settings-island__shortcut-row">
+      <span className="settings-island__shortcut-copy">
+        <strong>{label}</strong>
+        {context ? <small>{context}</small> : null}
+      </span>
       <input
         readOnly
         aria-label={`${label} shortcut`}
+        className="settings-island__shortcut-key"
         data-recording={recording ? "true" : "false"}
         value={recording ? "Press" : formatShortcutBinding(binding)}
         onFocus={onFocus}
@@ -1678,11 +1683,14 @@ function ShortcutCaptureField({
   );
 }
 
-function ShortcutStaticField({ label, value }: { label: string; value: string }) {
+function ShortcutStaticField({ context, label, value }: { context?: string; label: string; value: string }) {
   return (
-    <div className="settings-island__shortcut settings-island__shortcut--static">
-      <span>{label}</span>
-      <kbd>{value}</kbd>
+    <div className="settings-island__shortcut-row settings-island__shortcut-row--static">
+      <span className="settings-island__shortcut-copy">
+        <strong>{label}</strong>
+        {context ? <small>{context}</small> : null}
+      </span>
+      <kbd className="settings-island__shortcut-key">{value}</kbd>
     </div>
   );
 }
