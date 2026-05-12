@@ -93,7 +93,7 @@ export function MasonryView({
         .join("|"),
     [layout.items],
   );
-  useGridFlipAnimation(viewRef, flipSignature);
+  useGridFlipAnimation(viewRef, flipSignature, { disabled: isResizing });
 
   const handleMediaAspectRatio = useCallback((id: string, aspectRatio: number, sourceUrl: string | null) => {
     if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {

@@ -99,6 +99,7 @@ export function ItemCard({
   ogImageUrl = null,
   ogTitle = null,
   assetFileUrl = null,
+  assetMimeType = null,
   previewUrl = null,
   thumbnailUrl = null,
   videoPosterUrl = null,
@@ -435,6 +436,7 @@ export function ItemCard({
             directRemoteImageUrl,
             linkContentType,
             resolvedAssetFileUrl,
+            assetMimeType ?? mediaPreview?.assetMimeType ?? null,
             resolvedOgImageUrl,
             ogTitle,
             mediaPreview?.width ?? imageWidth,
@@ -701,6 +703,7 @@ function renderContent(
   directImageUrl: string | null,
   linkContentType: string | null,
   assetFileUrl: string | null,
+  assetMimeType: string | null,
   ogImageUrl: string | null,
   ogTitle: string | null,
   width: number | null | undefined,
@@ -764,9 +767,14 @@ function renderContent(
   }
 
   const previewImageUrl = ogImageUrl || directImageUrl;
+  const isVideoPreview = linkContentType === "video" || Boolean(assetMimeType?.startsWith("video/"));
 
   return (
-    <div className="item-card__link-preview">
+    <div
+      className={`item-card__link-preview${isVideoPreview ? " item-card__video-preview" : ""}`}
+      aria-label={isVideoPreview ? "Video preview" : undefined}
+      data-preview-kind={isVideoPreview ? "video" : undefined}
+    >
       {previewImageUrl ? (
         <CardMediaImage
           className="item-card__image"
@@ -781,7 +789,7 @@ function renderContent(
           onLoad={onMediaLoad}
         />
       ) : (
-        <Placeholder label="link preview" />
+        <Placeholder label={isVideoPreview ? "video preview" : "link preview"} />
       )}
     </div>
   );

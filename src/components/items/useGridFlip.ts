@@ -7,9 +7,11 @@ const gridFlipActiveAttribute = "data-grid-flip";
 export function useGridFlipAnimation(
   containerRef: RefObject<HTMLElement | null>,
   signature: string,
+  options: { disabled?: boolean } = {},
 ) {
   const previousRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const hasMeasuredRef = useRef(false);
+  const disabled = options.disabled ?? false;
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -38,7 +40,7 @@ export function useGridFlipAnimation(
       nextRects.set(key, nextRect);
 
       const previousRect = previousRectsRef.current.get(key);
-      if (!previousRect || !hasMeasuredRef.current || prefersReducedMotion) {
+      if (!previousRect || !hasMeasuredRef.current || prefersReducedMotion || disabled) {
         continue;
       }
 
@@ -131,7 +133,7 @@ export function useGridFlipAnimation(
 
     previousRectsRef.current = nextRects;
     hasMeasuredRef.current = true;
-  }, [containerRef, signature]);
+  }, [containerRef, disabled, signature]);
 }
 
 function snapToDevicePixel(value: number) {
