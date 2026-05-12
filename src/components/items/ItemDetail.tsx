@@ -220,6 +220,7 @@ export function ItemDetailView({
               item={item}
               onAttachCollection={onAttachCollection}
               onOpenCollection={onOpenCollection}
+              onRemoveCollection={onRemoveCollection}
               pending={collectionActionPending}
               sourceUrl={sourceUrl}
             />
@@ -287,41 +288,6 @@ function DrawerChevronIcon() {
   return <ArchiveIcon className="item-detail__drawer-chevron" name="forward" />;
 }
 
-function DetailDrawer({
-  children,
-  className = "",
-  defaultOpen = true,
-  meta,
-  title,
-}: {
-  children: ReactNode;
-  className?: string;
-  defaultOpen?: boolean;
-  meta?: ReactNode;
-  title: string;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <details
-      className={`item-detail__drawer ${className}`}
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="item-detail__drawer-summary">
-        <span className="item-detail__drawer-title">
-          {title}
-          {meta ? <small> · {meta}</small> : null}
-        </span>
-        <DrawerChevronIcon />
-      </summary>
-      <div className="item-detail__drawer-body">
-        {children}
-      </div>
-    </details>
-  );
-}
-
 function isEditableKeyboardTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -345,6 +311,7 @@ function ArchiveLabel({
   item,
   onAttachCollection,
   onOpenCollection,
+  onRemoveCollection,
   pending,
   sourceUrl,
 }: {
@@ -357,6 +324,7 @@ function ArchiveLabel({
   item: ItemDetail;
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   onOpenCollection?: (collectionId: string) => void;
+  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
   pending: boolean;
   sourceUrl: string | null;
 }) {
@@ -376,6 +344,7 @@ function ArchiveLabel({
         collectionOptions={collectionOptions}
         onAttachCollection={onAttachCollection}
         onOpenCollection={onOpenCollection}
+        onRemoveCollection={onRemoveCollection}
         pending={pending}
       />
       <ArchiveContextSection item={item} />
@@ -512,6 +481,7 @@ function ArchiveCollectionsSection({
   collectionOptions,
   onAttachCollection,
   onOpenCollection,
+  onRemoveCollection,
   pending,
 }: {
   collections: ItemDetail["collections"];
@@ -520,6 +490,7 @@ function ArchiveCollectionsSection({
   collectionOptions: CollectionOption[];
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   onOpenCollection?: (collectionId: string) => void;
+  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
   pending: boolean;
 }) {
   return (
@@ -533,6 +504,8 @@ function ArchiveCollectionsSection({
           collections={collections}
           collectionIndex={collectionIndex}
           onOpenCollection={onOpenCollection}
+          onRemoveCollection={onRemoveCollection}
+          pending={pending}
         />
       ) : (
         <div className="collection-empty-state">
@@ -606,45 +579,6 @@ function getContextBlocks(item: ItemDetail) {
   return blocks;
 }
 
-function SourcePanel({
-  aspectLabel,
-  dimensionsLabel,
-  item,
-  sourceUrl,
-}: {
-  aspectLabel: string | null;
-  dimensionsLabel: string | null;
-  item: ItemDetail;
-  sourceUrl: string | null;
-}) {
-  const sourceKind = item.source?.kind ?? "manual";
-  const sourceTypeLabel = getSourceDisplayLabel(item);
-  const sourceDetail = sourceUrl ? getDomain(sourceUrl) : item.source?.label ?? item.source?.identifier ?? sourceKind;
-  const sourceRows = [
-    { label: getSourceLocationLabel(item, sourceKind, sourceUrl), value: sourceDetail },
-    { label: sourceKind === "local" ? "imported" : "captured", value: formatDate(item.createdAt) },
-    item.type === "image" ? { label: "dimensions", value: dimensionsLabel } : null,
-    item.type === "image" ? { label: "ratio", value: aspectLabel } : null,
-  ].filter((row): row is { label: string; value: string } => Boolean(row?.value));
-
-  return (
-    <DetailDrawer className="item-detail__source-panel" meta={sourceTypeLabel} title="Source">
-      <dl className="item-detail__source-meta">
-        {sourceRows.map((row) => (
-          <Metadata key={row.label} label={row.label} value={row.value} />
-        ))}
-      </dl>
-      {sourceUrl ? (
-        <div className="item-detail__drawer-action">
-          <a href={sourceUrl} target="_blank" rel="noreferrer">
-            Open source
-          </a>
-        </div>
-      ) : null}
-    </DetailDrawer>
-  );
-}
-
 function ItemIdentity({
   item,
 }: {
@@ -672,57 +606,18 @@ function ItemIdentity({
   );
 }
 
-function CollectionContextPanel({
+function CollectionMembershipList({
   collections,
-  collectionActionError,
-  collectionOptions,
-  onAttachCollection,
+  collectionIndex = [],
   onOpenCollection,
   onRemoveCollection,
   pending,
 }: {
   collections: ItemDetail["collections"];
-  collectionActionError: string | null;
-  collectionOptions: CollectionOption[];
-  onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
-  onOpenCollection?: (collectionId: string) => void;
-  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
-  pending: boolean;
-}) {
-  return (
-    <DetailDrawer
-      className="item-detail__collections-panel"
-      meta={collections.length}
-      title="Collections"
-    >
-      {collections.length > 0 ? (
-        <CollectionMembershipList
-          collections={collections}
-          onOpenCollection={onOpenCollection}
-        />
-      ) : (
-        <p className="detail-muted">Not collected yet.</p>
-      )}
-      <CollapsibleAction summary="Add to collection">
-        <CollectionAttachForm
-          error={collectionActionError}
-          onAttachCollection={onAttachCollection}
-          options={collectionOptions}
-          pending={pending}
-        />
-      </CollapsibleAction>
-    </DetailDrawer>
-  );
-}
-
-function CollectionMembershipList({
-  collections,
-  collectionIndex = [],
-  onOpenCollection,
-}: {
-  collections: ItemDetail["collections"];
   collectionIndex?: CollectionIndexItem[];
   onOpenCollection?: (collectionId: string) => void;
+  onRemoveCollection?: (input: CollectionRemoveInput) => Promise<void> | void;
+  pending?: boolean;
 }) {
   return (
     <div
@@ -735,24 +630,39 @@ function CollectionMembershipList({
 
         return (
           <div className="collection-membership-row" key={collection.id}>
-            <CollectionMembershipThumb
-              label={collection.name}
-              previewItems={indexEntry?.previewItems ?? []}
-            />
-            <div className="collection-membership-row__main">
-              <span className="collection-membership-row__name">{collection.name}</span>
-              <span className="detail-muted">
-                added {formatDate(collection.addedAt)}
-              </span>
-            </div>
-            {onOpenCollection ? (
-              <button
-                className="collection-membership-row__open"
-                type="button"
-                aria-label={`Open ${collection.name}`}
-                onClick={() => onOpenCollection(collection.id)}
+            <button
+              className="collection-membership-row__open"
+              type="button"
+              aria-label={`Open ${collection.name}`}
+              disabled={!onOpenCollection}
+              onClick={() => onOpenCollection?.(collection.id)}
+            >
+              <CollectionMembershipThumb
+                label={collection.name}
+                previewItems={indexEntry?.previewItems ?? []}
               />
-            ) : null}
+              <span className="collection-membership-row__main">
+                <span className="collection-membership-row__name">{collection.name}</span>
+                <span className="detail-muted">
+                  added {formatDate(collection.addedAt)}
+                </span>
+              </span>
+            </button>
+            <button
+              className="collection-membership-row__remove"
+              type="button"
+              aria-label={`Remove ${collection.name} from this item`}
+              disabled={pending || !onRemoveCollection}
+              onClick={async () => {
+                try {
+                  await onRemoveCollection?.({ collectionId: collection.id });
+                } catch {
+                  // Parent owns the persisted collection error message.
+                }
+              }}
+            >
+              <ArchiveIcon name="close" />
+            </button>
           </div>
         );
       })}
@@ -801,57 +711,6 @@ function getCollectionThumbLabel(name: string) {
     .toUpperCase();
 
   return letters || "+";
-}
-
-function ItemContextNote({ item }: { item: ItemDetail }) {
-  const blocks: Array<{ label: string; value: string }> = [];
-
-  if (item.description) {
-    blocks.push({ label: "Description", value: item.description });
-  }
-
-  if (item.summary) {
-    blocks.push({ label: "Summary", value: item.summary });
-  }
-
-  if (item.content.image?.ocrText) {
-    blocks.push({ label: "OCR", value: item.content.image.ocrText });
-  }
-
-  if (blocks.length === 0) {
-    return null;
-  }
-
-  return (
-    <DetailDrawer
-      className="item-detail__note-panel"
-      title={item.type === "caption" ? "Caption" : item.type === "note" ? "Note" : "Context"}
-    >
-      {blocks.map((block) => (
-        <div className="item-detail__note-block" key={block.label}>
-          <span>{block.label}</span>
-          <p>{block.value}</p>
-        </div>
-      ))}
-    </DetailDrawer>
-  );
-}
-
-function PrimaryActionCluster({
-  item,
-  sourceUrl,
-}: {
-  item: ItemDetail;
-  sourceUrl: string | null;
-}) {
-  return (
-    <DetailDrawer className="item-detail__actions-panel" title="Actions">
-      <div className="item-detail__primary-actions">
-        <OpenSourceAction sourceUrl={sourceUrl} />
-        <CopyReferenceAction item={item} />
-      </div>
-    </DetailDrawer>
-  );
 }
 
 function AdvancedPanel({
@@ -1059,19 +918,6 @@ function CollapsibleAction({
   );
 }
 
-function OpenSourceAction({ sourceUrl }: { sourceUrl: string | null }) {
-  if (!sourceUrl) {
-    return null;
-  }
-
-  return (
-    <a className="status-action status-action--link" href={sourceUrl} target="_blank" rel="noreferrer">
-      <ArchiveIcon className="status-action__icon" name="external" />
-      <span>Open source</span>
-    </a>
-  );
-}
-
 function DownloadItemAction({ item }: { item: ItemDetail }) {
   const download = getItemDownloadTarget(item);
   const [error, setError] = useState<string | null>(null);
@@ -1094,37 +940,6 @@ function DownloadItemAction({ item }: { item: ItemDetail }) {
         <ArchiveIcon className="status-action__icon" name="download" />
         <span>Download</span>
         <kbd>D</kbd>
-      </button>
-      {error ? <p className="detail-error">{error}</p> : null}
-    </div>
-  );
-}
-
-function CopyReferenceAction({ item }: { item: ItemDetail }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const reference = getItemReferencePayload(item);
-
-  const handleClick = async () => {
-    try {
-      await navigator.clipboard.writeText(reference);
-      setError(null);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setError("Could not copy.");
-    }
-  };
-
-  return (
-    <div className="detail-download">
-      <button
-        className={`status-action${copied ? " status-action--copied" : ""}`}
-        type="button"
-        onClick={handleClick}
-      >
-        <ArchiveIcon className="status-action__icon" name="copy" />
-        <span>{copied ? "Copied" : "Copy reference"}</span>
       </button>
       {error ? <p className="detail-error">{error}</p> : null}
     </div>
@@ -2606,32 +2421,6 @@ function getSourceKindDisplayLabel(value: string) {
   return value;
 }
 
-function getSourceLocationLabel(
-  item: ItemDetail,
-  sourceKind: string,
-  sourceUrl: string | null,
-) {
-  const normalized = sourceKind.trim().toLowerCase();
-
-  if (normalized === "pinterest") {
-    return "board";
-  }
-
-  if (normalized === "arena" || normalized === "are.na") {
-    return "channel";
-  }
-
-  if (normalized === "local" || normalized === "upload") {
-    return "file source";
-  }
-
-  if (sourceUrl || item.type === "link") {
-    return "domain";
-  }
-
-  return "where";
-}
-
 function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item)) {
   const explicitTitle = item.title?.trim();
 
@@ -2811,12 +2600,6 @@ function formatSourceUrl(value: string) {
   } catch {
     return value.length > 42 ? `${value.slice(0, 39)}…` : value;
   }
-}
-
-function getItemReferencePayload(item: ItemDetail) {
-  const title = getItemDisplayTitle(item);
-  const href = getItemInternalHref(item);
-  return `[${title}](${href})`;
 }
 
 function getItemInternalHref(item: ItemDetail) {

@@ -764,7 +764,13 @@ function useMeasuredPillGroupMembrane(
       }
     };
 
+    shell.removeAttribute("data-membrane-ready");
     measure();
+    const readyFrame = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        shell.setAttribute("data-membrane-ready", "true");
+      }
+    });
     startFrameLoop(900);
 
     const resizeObserver = new ResizeObserver(() => {
@@ -800,6 +806,7 @@ function useMeasuredPillGroupMembrane(
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(readyFrame);
       stopFrameLoop();
       resizeObserver.disconnect();
       mutationObserver.disconnect();
