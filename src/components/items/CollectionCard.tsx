@@ -122,6 +122,7 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
   return (
     <article
       className={cardClassName}
+      data-menu-open={actionMenu.isOpen ? "true" : "false"}
       onPointerLeave={(event) => {
         actionMenu.close();
         if (event.pointerType === "mouse") {
@@ -141,7 +142,7 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
                 <span
                   className="collection-card__frame-tag"
                   key={tag.key}
-                  style={{ "--card-label-delay": `${Math.min(index, 8) * 16}ms` } as CSSProperties}
+                  style={{ "--card-label-delay": `${Math.min(index, 8) * 25}ms` } as CSSProperties}
                 >
                   {tag.label}
                 </span>
@@ -159,6 +160,7 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
       </a>
       <div
         className="collection-card__actions"
+        data-menu-open={actionMenu.isOpen ? "true" : "false"}
         aria-label={`${collection.name} collection actions`}
         onBlur={(event) => {
           const nextTarget = event.relatedTarget;

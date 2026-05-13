@@ -62,6 +62,10 @@
   --item-detail-shell-max-width: 1540px;
   --archive-control-height: 31px;
   --archive-hit-target: 44px;
+  --archive-pill-height: 28px;
+  --archive-pill-padding-y: 6px;
+  --archive-pill-padding-x: 12px;
+  --archive-pill-icon-size: 16px;
   --dock-wrapper-bg-idle: rgb(255 255 255 / 0.3);
   --dock-wrapper-bg-open: rgb(255 255 255 / 0.34);
   --dock-outline-idle: rgb(0 0 0 / 0.22);
@@ -315,8 +319,8 @@ select:focus-visible {
 }
 
 .pill-group-shell {
-  --pill-membrane-halo-x: 1px;
-  --pill-membrane-halo-y: 0px;
+  --pill-membrane-halo-x: 2px;
+  --pill-membrane-halo-y: 2px;
   --pill-membrane-x: 0px;
   --pill-membrane-y: 0px;
   --pill-membrane-w: 100%;
@@ -341,6 +345,14 @@ select:focus-visible {
   box-shadow: none;
   backdrop-filter: var(--nav-glass-filter);
   -webkit-backdrop-filter: var(--nav-glass-filter);
+  transition:
+    top 160ms cubic-bezier(0.25, 0, 0.5, 1),
+    left 160ms cubic-bezier(0.25, 0, 0.5, 1),
+    width 160ms cubic-bezier(0.25, 0, 0.5, 1),
+    height 160ms cubic-bezier(0.25, 0, 0.5, 1);
+}
+
+.pill-group-shell[data-syncing="true"] .pill-group-membrane {
   transition: none;
 }
 
@@ -434,13 +446,13 @@ select:focus-visible {
 
 .pill-nav__group {
   --nav-cell-gap: -2px;
-  min-height: 48px;
+  min-height: calc(var(--archive-pill-height) + 4px);
   justify-content: center;
 }
 
 .pill-nav__subnav {
   position: absolute;
-  top: 52px;
+  top: 38px;
   right: 0;
   left: 0;
   display: flex;
@@ -1450,7 +1462,7 @@ select:focus-visible {
   z-index: 1;
   display: inline-flex;
   max-width: 180px;
-  min-height: var(--archive-hit-target);
+  min-height: var(--archive-pill-height);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -1466,7 +1478,7 @@ select:focus-visible {
   letter-spacing: -0.015em;
   line-height: 1;
   margin-right: var(--nav-cell-gap);
-  padding: 6px 12px;
+  padding: var(--archive-pill-padding-y) var(--archive-pill-padding-x);
   text-decoration: none;
   white-space: nowrap;
   opacity: 1;
@@ -1625,8 +1637,8 @@ select:focus-visible {
 }
 
 .nav-cell--dot {
-  min-width: var(--archive-hit-target);
-  width: var(--archive-hit-target);
+  min-width: var(--archive-pill-height);
+  width: var(--archive-pill-height);
   padding-right: 0;
   padding-left: 0;
   opacity: 1;
@@ -4613,10 +4625,10 @@ select:focus-visible {
   --card-pill-bg: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
   --card-pill-glass: color-mix(in srgb, var(--color-paper) 78%, transparent);
   --card-pill-dark: color-mix(in srgb, var(--color-ink) 92%, transparent);
-  --card-control-size: 34px;
-  --card-control-shell-size: 40px;
-  --card-control-membrane-padding: 3px;
-  --card-control-icon-size: 28px;
+  --card-control-size: 28px;
+  --card-control-shell-size: 28px;
+  --card-control-membrane-padding: 0px;
+  --card-control-icon-size: 16px;
   --card-control-padding: 10px;
   --card-motion-ease: cubic-bezier(0.5, 0, 0, 1);
   --card-label-ease: cubic-bezier(0.25, 0, 0, 0.75);
@@ -4700,6 +4712,7 @@ select:focus-visible {
 
 .item-card:hover .item-card__actions,
 .item-card:focus-within .item-card__actions,
+.item-card__actions[data-menu-open="true"],
 .item-card__actions:has(.item-card__more-control[data-open="true"]) {
   opacity: 1;
   pointer-events: auto;
@@ -4720,7 +4733,7 @@ select:focus-visible {
   justify-content: center;
   border: 0;
   border-radius: 999px;
-  background: var(--nav-wrapper-material);
+  background: transparent;
   padding: var(--card-control-membrane-padding);
   color: var(--color-ink);
   cursor: pointer;
@@ -4734,6 +4747,7 @@ select:focus-visible {
 
 .item-card:hover .item-card__select,
 .item-card:focus-within .item-card__select,
+.item-card[data-menu-open="true"] .item-card__select,
 .item-card:has(.item-card__more-control[data-open="true"]) .item-card__select,
 .item-card--selected .item-card__select {
   opacity: 1;
@@ -4755,7 +4769,7 @@ select:focus-visible {
   flex: 0 0 var(--card-control-size);
   border-radius: inherit;
   background: var(--nav-cell-material);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 9%, transparent);
+  box-shadow: none;
 }
 
 .item-card__select span::before {
@@ -4818,6 +4832,7 @@ select:focus-visible {
 
 .item-card:hover .item-card__action-cell,
 .item-card:focus-within .item-card__action-cell,
+.item-card__actions[data-menu-open="true"] .item-card__action-cell,
 .item-card__actions:has(.item-card__more-control[data-open="true"]) .item-card__action-cell {
   opacity: 1;
   pointer-events: auto;
@@ -4840,7 +4855,7 @@ select:focus-visible {
   display: inline-flex;
   order: 1;
   border-radius: 999px;
-  background: var(--nav-wrapper-material);
+  background: transparent;
   padding: var(--card-control-membrane-padding);
   opacity: 0;
   pointer-events: none;
@@ -4891,9 +4906,9 @@ select:focus-visible {
 
   .item-card__action-cell,
   .item-card__select {
-    --card-control-size: 30px;
-    --card-control-shell-size: 36px;
-    --card-control-icon-size: 24px;
+    --card-control-size: 28px;
+    --card-control-shell-size: 28px;
+    --card-control-icon-size: 16px;
   }
 
   .item-card__action-cell--add {
@@ -5059,24 +5074,23 @@ select:focus-visible {
   z-index: 3;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(4px);
+  transform: none;
   transition:
-    opacity 500ms var(--card-label-ease),
-    transform 500ms var(--card-label-ease);
+    opacity 500ms var(--card-label-ease);
 }
 
 .item-card:hover .item-card__frame-tags,
 .item-card:focus-within .item-card__frame-tags {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 .item-card__frame-tag {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
@@ -5084,16 +5098,18 @@ select:focus-visible {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   color: var(--color-ink);
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.16;
   opacity: 0;
   white-space: nowrap;
-  transform: translateX(-8px);
+  filter: blur(2px);
+  transform: translateX(-12px);
   transition:
+    filter 500ms var(--card-label-ease),
     opacity 500ms var(--card-label-ease),
     transform 500ms var(--card-label-ease);
   transition-delay: 0ms;
@@ -5101,6 +5117,7 @@ select:focus-visible {
 
 .item-card:hover .item-card__frame-tag,
 .item-card:focus-within .item-card__frame-tag {
+  filter: blur(0px);
   opacity: 1;
   transform: translateX(0);
   transition-delay: var(--card-label-delay, 0ms);
@@ -5200,27 +5217,22 @@ select:focus-visible {
 
 .item-card__action-cell--add {
   order: 2;
-  width: var(--card-control-shell-size);
-  height: var(--card-control-shell-size);
+  width: var(--card-control-size);
+  height: var(--card-control-size);
   overflow: hidden;
-  background: var(--nav-wrapper-material);
+  background: var(--nav-cell-material);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   color: var(--color-ink);
   isolation: isolate;
   opacity: 0;
-  padding: var(--card-control-membrane-padding);
+  padding: 0;
   transform: none;
 }
 
 .item-card__action-cell--add::before {
-  position: absolute;
-  inset: var(--card-control-membrane-padding);
-  z-index: 0;
-  border-radius: inherit;
-  background: var(--nav-cell-material);
-  content: "";
-  pointer-events: none;
+  display: none;
+  content: none;
 }
 
 .item-card__action-cell--add::after {
@@ -5235,6 +5247,7 @@ select:focus-visible {
 
 .item-card:hover .item-card__action-cell--add,
 .item-card:focus-within .item-card__action-cell--add,
+.item-card__actions[data-menu-open="true"] .item-card__action-cell--add,
 .item-card__actions:has(.item-card__more-control[data-open="true"]) .item-card__action-cell--add,
 .collection-card:hover .item-card__action-cell--add,
 .collection-card:focus-within .item-card__action-cell--add,
@@ -5258,7 +5271,7 @@ select:focus-visible {
 
 .item-card__more-menu {
   position: absolute;
-  top: 42px;
+  top: 34px;
   right: 0;
   z-index: 5;
   display: grid;
@@ -5284,10 +5297,10 @@ select:focus-visible {
 .item-card__menu-action {
   position: relative;
   display: inline-flex;
-  width: 32px;
-  min-width: 32px;
+  width: 28px;
+  min-width: 28px;
   max-width: 116px;
-  min-height: 32px;
+  min-height: 28px;
   align-items: center;
   justify-content: flex-start;
   border: 0;
@@ -5324,7 +5337,7 @@ select:focus-visible {
 }
 
 .item-card__menu-action:disabled:hover {
-  width: 32px;
+  width: 28px;
   color: var(--color-ink);
 }
 
@@ -5451,10 +5464,10 @@ select:focus-visible {
 
 .collection-card {
   --card-pill-glass: color-mix(in srgb, var(--color-paper) 78%, transparent);
-  --card-control-size: 34px;
-  --card-control-shell-size: 40px;
-  --card-control-membrane-padding: 3px;
-  --card-control-icon-size: 28px;
+  --card-control-size: 28px;
+  --card-control-shell-size: 28px;
+  --card-control-membrane-padding: 0px;
+  --card-control-icon-size: 16px;
   --card-motion-ease: cubic-bezier(0.5, 0, 0, 1);
   --card-label-ease: cubic-bezier(0.25, 0, 0, 0.75);
   position: relative;
@@ -5725,38 +5738,39 @@ select:focus-visible {
   z-index: 3;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(4px);
+  transform: none;
   transition:
-    opacity 500ms var(--card-label-ease),
-    transform 500ms var(--card-label-ease);
+    opacity 500ms var(--card-label-ease);
 }
 
 .collection-card:hover .collection-card__frame-tags,
 .collection-card:focus-within .collection-card__frame-tags {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 .collection-card__frame-tag {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: var(--card-pill-glass);
   color: var(--color-ink);
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.16;
   opacity: 0;
-  transform: translateX(-8px);
+  filter: blur(2px);
+  transform: translateX(-12px);
   transition:
+    filter 500ms var(--card-label-ease),
     opacity 500ms var(--card-label-ease),
     transform 500ms var(--card-label-ease);
   transition-delay: 0ms;
@@ -5765,6 +5779,7 @@ select:focus-visible {
 
 .collection-card:hover .collection-card__frame-tag,
 .collection-card:focus-within .collection-card__frame-tag {
+  filter: blur(0px);
   opacity: 1;
   transform: translateX(0);
   transition-delay: var(--card-label-delay, 0ms);
@@ -5792,6 +5807,7 @@ select:focus-visible {
 
 .collection-card:hover .collection-card__actions,
 .collection-card:focus-within .collection-card__actions,
+.collection-card__actions[data-menu-open="true"],
 .collection-card__actions:has(.collection-card__more-control[data-open="true"]) {
   opacity: 1;
   pointer-events: auto;
@@ -5805,6 +5821,7 @@ select:focus-visible {
 
 .collection-card:hover .collection-card__action-cell,
 .collection-card:focus-within .collection-card__action-cell,
+.collection-card__actions[data-menu-open="true"] .collection-card__action-cell,
 .collection-card__actions:has(.collection-card__more-control[data-open="true"]) .collection-card__action-cell,
 .collection-card__action-cell[aria-expanded="true"] {
   opacity: 1;
@@ -5816,7 +5833,7 @@ select:focus-visible {
   position: relative;
   display: inline-flex;
   border-radius: 999px;
-  background: var(--nav-wrapper-material);
+  background: transparent;
   padding: var(--card-control-membrane-padding);
   opacity: 0;
   pointer-events: none;
@@ -5826,6 +5843,7 @@ select:focus-visible {
 
 .collection-card:hover .collection-card__more-control,
 .collection-card:focus-within .collection-card__more-control,
+.collection-card__actions[data-menu-open="true"] .collection-card__more-control,
 .collection-card__actions:has(.collection-card__more-control[data-open="true"]) .collection-card__more-control,
 .collection-card__more-control[data-open="true"] {
   opacity: 1;
@@ -5851,8 +5869,8 @@ select:focus-visible {
   }
 
   .collection-card__action-cell--add {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
   }
 
 }
@@ -5933,13 +5951,25 @@ select:focus-visible {
   }
 
   .collection-card__action-cell--add {
-    width: 50px;
-    height: 50px;
+    width: 44px;
+    height: 44px;
   }
 
   .subnav-cell {
     min-height: 44px;
     padding: 9px 15px;
+  }
+
+  .nav-cell {
+    min-height: 44px;
+    padding: 9px 15px;
+  }
+
+  .nav-cell--dot {
+    min-width: 44px;
+    width: 44px;
+    padding-right: 0;
+    padding-left: 0;
   }
 
   .subnav-cell--view-density[data-active="true"] .view-density-control__extras,
@@ -6392,35 +6422,12 @@ select:focus-visible {
   transform: none !important;
 }
 
-:root[data-debug-no-translate3d] .item-card__frame-tags,
-:root[data-browser-safari] .item-card__frame-tags,
-:root[data-browser-safari] .collection-card__frame-tags {
+:root[data-debug-no-translate3d] .item-card__frame-tags {
   transform: none;
 }
 
 :root[data-debug-no-translate3d] .item-card:hover .item-card__frame-tags,
-:root[data-debug-no-translate3d] .item-card:focus-within .item-card__frame-tags,
-:root[data-browser-safari] .item-card:hover .item-card__frame-tags,
-:root[data-browser-safari] .item-card:focus-within .item-card__frame-tags,
-:root[data-browser-safari] .collection-card:hover .collection-card__frame-tags,
-:root[data-browser-safari] .collection-card:focus-within .collection-card__frame-tags {
-  transform: none;
-}
-
-:root[data-browser-safari] .item-card__frame-tags,
-:root[data-browser-safari] .collection-card__frame-tags {
-  transition-property: opacity;
-}
-
-:root[data-browser-safari] .item-card__frame-tag,
-:root[data-browser-safari] .collection-card__frame-tag {
-  transform: none;
-}
-
-:root[data-browser-safari] .item-card:hover .item-card__frame-tag,
-:root[data-browser-safari] .item-card:focus-within .item-card__frame-tag,
-:root[data-browser-safari] .collection-card:hover .collection-card__frame-tag,
-:root[data-browser-safari] .collection-card:focus-within .collection-card__frame-tag {
+:root[data-debug-no-translate3d] .item-card:focus-within .item-card__frame-tags {
   transform: none;
 }
 

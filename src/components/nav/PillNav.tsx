@@ -725,10 +725,22 @@ function useMeasuredPillGroupMembrane(
       const trackRect = track.getBoundingClientRect();
       const trackStyle = window.getComputedStyle(track);
       const clipX = parseFloat(trackStyle.getPropertyValue("--nav-row-clip-x")) || 0;
-      const visibleX = snapToDevicePixel(trackRect.left - shellRect.left + clipX);
-      const visibleY = snapToDevicePixel(trackRect.top - shellRect.top);
-      const visibleWidth = snapToDevicePixel(Math.max(0, trackRect.width - clipX * 2));
-      const visibleHeight = snapToDevicePixel(trackRect.height);
+      const cells = Array.from(track.querySelectorAll<HTMLElement>(".nav-cell, .subnav-cell"))
+        .filter((cell) => cell.getClientRects().length > 0);
+      const cellRects = cells.map((cell) => cell.getBoundingClientRect());
+      const targetRects = cellRects.length > 0 ? cellRects : [trackRect];
+      const rawLeft = Math.min(...targetRects.map((rect) => rect.left));
+      const rawRight = Math.max(...targetRects.map((rect) => rect.right));
+      const rawTop = Math.min(...targetRects.map((rect) => rect.top));
+      const rawBottom = Math.max(...targetRects.map((rect) => rect.bottom));
+      const clipLeft = trackRect.left + clipX;
+      const clipRight = trackRect.right - clipX;
+      const clippedLeft = Math.max(rawLeft, clipLeft);
+      const clippedRight = Math.min(rawRight, clipRight);
+      const visibleX = snapToDevicePixel(clippedLeft - shellRect.left);
+      const visibleY = snapToDevicePixel(rawTop - shellRect.top);
+      const visibleWidth = snapToDevicePixel(Math.max(0, clippedRight - clippedLeft));
+      const visibleHeight = snapToDevicePixel(Math.max(0, rawBottom - rawTop));
 
       shell.style.setProperty("--pill-membrane-x", `${visibleX}px`);
       shell.style.setProperty("--pill-membrane-y", `${visibleY}px`);
