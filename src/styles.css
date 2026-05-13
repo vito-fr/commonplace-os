@@ -6534,11 +6534,20 @@ select:focus-visible {
   --item-detail-frame-top: clamp(34px, 5vh, 52px);
   --item-detail-rail-width: clamp(304px, 19vw, 340px);
   --item-detail-closed-rail-width: var(--archive-control-height);
+  --item-detail-rail-radius: min(14px, max(8px, calc(var(--archive-card-radius) + 8px)));
+  --item-detail-rail-line: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
+  --item-detail-rail-soft: color-mix(in srgb, var(--color-ink) 2.6%, transparent);
+  --item-detail-rail-hover: color-mix(in srgb, var(--color-ink) 4.4%, transparent);
+  --item-detail-rail-focus: color-mix(in srgb, var(--color-ink) 20%, transparent);
   width: min(var(--item-detail-shell-max-width), calc(100vw - (var(--archive-page-gutter) * 2)));
   max-width: none;
   margin: 0 auto;
   padding: 0;
   background: color-mix(in srgb, var(--color-paper) 96%, white);
+}
+
+:root[data-browser-safari] .item-detail--object {
+  --item-detail-frame-top: 44px;
 }
 
 .item-detail__loading,
@@ -7111,11 +7120,11 @@ select:focus-visible {
   position: sticky;
   top: var(--item-detail-frame-top);
   display: block;
-  height: calc(100vh - var(--item-detail-frame-top) - 16px);
+  height: calc(100vh - var(--item-detail-frame-top) - 18px);
   min-width: 0;
   overflow: visible;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--item-detail-rail-radius);
   background: transparent;
   padding-left: 0;
   scrollbar-width: none;
@@ -7133,12 +7142,12 @@ select:focus-visible {
   gap: 0;
   min-width: 0;
   height: 100%;
-  max-height: calc(100vh - var(--item-detail-frame-top) - 16px);
+  max-height: calc(100vh - var(--item-detail-frame-top) - 18px);
   overflow: auto;
-  padding: 58px 16px 22px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-ink) 1.8%, var(--color-paper));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 2.8%, transparent);
+  padding: 56px 15px 22px;
+  border-radius: var(--item-detail-rail-radius);
+  background: color-mix(in srgb, var(--color-ink) 1.35%, var(--color-paper));
+  box-shadow: inset 0 0 0 1px var(--item-detail-rail-line);
   opacity: 1;
   scrollbar-width: none;
   transform: translateX(0);
@@ -7156,7 +7165,7 @@ select:focus-visible {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  transform: translateX(10px);
+  transform: translateX(8px);
   transition-delay: 0ms, 0ms;
 }
 
@@ -7169,8 +7178,8 @@ select:focus-visible {
   top: 8px;
   right: 8px;
   z-index: 5;
-  width: 86px;
-  max-width: 86px;
+  width: 84px;
+  max-width: 84px;
   justify-content: flex-end;
   gap: 6px;
   padding: 0 8px;
@@ -7178,15 +7187,15 @@ select:focus-visible {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition:
-    width 300ms cubic-bezier(0.5, 0, 0, 1),
-    max-width 300ms cubic-bezier(0.5, 0, 0, 1),
+    width 280ms cubic-bezier(0.5, 0, 0, 1),
+    max-width 280ms cubic-bezier(0.5, 0, 0, 1),
     color 180ms cubic-bezier(0.5, 0, 0, 1);
 }
 
 .item-detail__panel-toggle svg,
 .item-detail__drawer-chevron {
-  width: 12px;
-  height: 12px;
+  width: 15px;
+  height: 15px;
   flex: 0 0 auto;
   fill: currentColor;
   stroke: none;
@@ -7206,7 +7215,7 @@ select:focus-visible {
   display: inline-flex;
   max-width: 0;
   min-width: 0;
-  height: 16px;
+  height: 15px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -7235,8 +7244,8 @@ select:focus-visible {
 
 .item-detail__panel-toggle:hover kbd,
 .item-detail__panel-toggle:focus-visible kbd {
-  max-width: 17px;
-  min-width: 17px;
+  max-width: 15px;
+  min-width: 15px;
   margin-inline: 0;
   opacity: 1;
   transform: none;
@@ -7261,8 +7270,8 @@ select:focus-visible {
 
 .item-detail__side-panel[data-open="false"] .item-detail__panel-toggle:hover,
 .item-detail__side-panel[data-open="false"] .item-detail__panel-toggle:focus-visible {
-  width: 86px;
-  max-width: 86px;
+  width: 84px;
+  max-width: 84px;
   gap: 6px;
   padding-inline: 8px;
 }
@@ -7280,8 +7289,8 @@ select:focus-visible {
 
 .item-detail__label-header {
   display: grid;
-  gap: 9px;
-  padding: 0 0 22px;
+  gap: 8px;
+  padding: 0 1px 20px;
 }
 
 .item-detail__label-header h1 {
@@ -7376,7 +7385,7 @@ select:focus-visible {
 .item-detail__advanced {
   display: grid;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3.2%, transparent);
+  border-top: 1px solid var(--item-detail-rail-line);
   background: transparent;
   padding: 0;
 }
@@ -7386,15 +7395,16 @@ select:focus-visible {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 40px;
+  min-height: 39px;
   align-items: center;
   gap: 8px;
+  border-radius: 9px;
   border: 0;
   background: transparent;
   color: color-mix(in srgb, var(--color-ink) 60%, transparent);
   cursor: pointer;
   list-style: none;
-  padding: 0;
+  padding: 0 2px;
   font-family: var(--font-sans);
   font-size: 11px;
   font-weight: 760;
@@ -7431,14 +7441,22 @@ select:focus-visible {
 .item-detail__label-summary:focus-visible,
 .item-detail__drawer-summary:hover,
 .item-detail__drawer-summary:focus-visible {
+  background: var(--item-detail-rail-soft);
   color: color-mix(in srgb, var(--color-ink) 82%, transparent);
   outline: none;
+}
+
+.item-detail__label-summary:focus-visible,
+.item-detail__drawer-summary:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--item-detail-rail-focus);
 }
 
 .item-detail__drawer-chevron {
   color: color-mix(in srgb, var(--color-ink) 42%, transparent);
   transform: rotate(0deg);
-  transition: transform 260ms cubic-bezier(0.5, 0, 0, 1);
+  transition:
+    color 180ms cubic-bezier(0.5, 0, 0, 1),
+    transform 240ms cubic-bezier(0.5, 0, 0, 1);
 }
 
 .item-detail__label-section[open] > .item-detail__label-summary .item-detail__drawer-chevron,
@@ -7473,8 +7491,8 @@ select:focus-visible {
 .item-detail__drawer-body,
 .item-detail__advanced-body {
   display: grid;
-  gap: 10px;
-  padding: 0 0 15px;
+  gap: 11px;
+  padding: 0 1px 16px;
 }
 
 .item-detail__label-section[open] > .item-detail__label-body,
@@ -7487,7 +7505,7 @@ select:focus-visible {
 @keyframes item-detail-drawer-body-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-3px);
   }
 
   to {
@@ -7498,7 +7516,7 @@ select:focus-visible {
 
 .item-detail__source-lines {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   color: color-mix(in srgb, var(--color-ink) 74%, transparent);
   font-size: 12px;
   font-weight: 700;
@@ -7518,15 +7536,15 @@ select:focus-visible {
   width: fit-content;
   max-width: 100%;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border-radius: var(--capsule-radius);
   background: color-mix(in srgb, var(--nav-cell-bg) 86%, transparent);
   color: color-mix(in srgb, var(--color-ink) 78%, transparent);
   font-size: 12px;
   font-weight: 760;
   line-height: 1.24;
-  margin-bottom: 8px;
-  padding: 5px 9px 6px 6px;
+  margin-bottom: 7px;
+  padding: 5px 9px 5px 5px;
 }
 
 .item-detail__source-badge {
@@ -7602,9 +7620,9 @@ select:focus-visible {
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
-  min-height: var(--item-detail-pill-height);
+  min-height: 30px;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border-radius: var(--capsule-radius);
   background: transparent;
   color: color-mix(in srgb, var(--color-ink) 74%, transparent);
@@ -7614,7 +7632,7 @@ select:focus-visible {
   line-height: 1.2;
   margin-top: 1px;
   overflow: hidden;
-  padding: 6px 0;
+  padding: 5px 0 6px;
   text-decoration: none;
   transition:
     background-color 220ms cubic-bezier(0.5, 0, 0, 1),
@@ -7630,9 +7648,9 @@ select:focus-visible {
 }
 
 .item-detail__source-link .archive-icon {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   opacity: 0;
   transform: none;
   transition: opacity 180ms cubic-bezier(0.5, 0, 0, 1);
@@ -7643,7 +7661,11 @@ select:focus-visible {
   background: var(--nav-cell-bg);
   color: color-mix(in srgb, var(--nav-cell-ink) 58%, transparent);
   outline: none;
-  padding: 6px 10px;
+  padding: 5px 9px 6px;
+}
+
+.item-detail__source-link:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--item-detail-rail-focus);
 }
 
 .item-detail__source-link:hover .archive-icon,
@@ -7666,8 +7688,8 @@ select:focus-visible {
   grid-template-columns: 72px minmax(0, 1fr);
   align-items: baseline;
   gap: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 4%, transparent);
-  padding: 8px 0;
+  border-top: 1px solid var(--item-detail-rail-line);
+  padding: 8px 0 9px;
 }
 
 .item-detail__label-list dt,
@@ -7711,8 +7733,8 @@ select:focus-visible {
 }
 
 .status-action__icon {
-  width: 24px;
-  height: 24px;
+  width: 23px;
+  height: 23px;
   flex: 0 0 auto;
 }
 
@@ -7754,7 +7776,7 @@ select:focus-visible {
 }
 
 .item-detail__danger-zone {
-  border-top: 1px solid color-mix(in srgb, var(--semantic-error) 12%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--semantic-error) 14%, transparent);
   margin-top: 8px;
 }
 
@@ -7804,7 +7826,7 @@ select:focus-visible {
   gap: 0;
   max-height: 194px;
   overflow: auto;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3%, transparent);
+  border-top: 1px solid var(--item-detail-rail-line);
   scrollbar-width: none;
 }
 
@@ -7821,13 +7843,13 @@ select:focus-visible {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 52px;
+  min-height: 50px;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 2.5%, transparent);
-  border-radius: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 2.8%, transparent);
+  border-radius: 10px;
   background: transparent;
-  padding: 8px 6px;
+  padding: 7px 6px;
   transition: background-color 180ms cubic-bezier(0.5, 0, 0, 1);
 }
 
@@ -7862,7 +7884,7 @@ select:focus-visible {
 
 .collection-membership-row:hover,
 .collection-membership-row:focus-within {
-  background: color-mix(in srgb, var(--color-ink) 4.2%, transparent);
+  background: var(--item-detail-rail-hover);
 }
 
 .collection-membership-row__main {
@@ -7937,8 +7959,8 @@ select:focus-visible {
 
 .collection-membership-row__remove {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: var(--item-detail-pill-height);
+  height: var(--item-detail-pill-height);
   align-items: center;
   justify-content: center;
   border: 0;
@@ -7966,14 +7988,14 @@ select:focus-visible {
 }
 
 .collection-membership-row__remove .archive-icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
 }
 
 .collection-membership-row__open-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   color: color-mix(in srgb, var(--color-ink) 38%, transparent);
   opacity: 0.74;
 }
@@ -7981,20 +8003,20 @@ select:focus-visible {
 .collection-add-panel {
   display: grid;
   gap: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3%, transparent);
+  border-top: 1px solid var(--item-detail-rail-line);
   padding-top: 10px;
 }
 
 .collection-add-panel__toggle {
   display: grid;
   min-width: 0;
-  min-height: 42px;
+  min-height: 41px;
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   border: 0;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--nav-cell-bg) 72%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--nav-cell-bg) 64%, transparent);
   color: var(--color-ink);
   cursor: pointer;
   font: inherit;
@@ -8009,7 +8031,7 @@ select:focus-visible {
 .collection-add-panel__toggle:hover,
 .collection-add-panel__toggle:focus-visible,
 .collection-add-panel__toggle[aria-expanded="true"] {
-  background: color-mix(in srgb, var(--nav-cell-bg) 94%, transparent);
+  background: color-mix(in srgb, var(--nav-cell-bg) 90%, transparent);
   outline: none;
 }
 
@@ -8065,8 +8087,8 @@ select:focus-visible {
 .collection-empty-state {
   display: grid;
   gap: 5px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
+  border-radius: 14px;
+  background: var(--item-detail-rail-soft);
   padding: 10px 11px;
 }
 
@@ -8085,8 +8107,8 @@ select:focus-visible {
 .collection-attach {
   display: grid;
   gap: 6px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--nav-cell-bg) 44%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--nav-cell-bg) 38%, transparent);
   padding: 6px;
 }
 
@@ -8126,13 +8148,13 @@ select:focus-visible {
 .collection-attach__option {
   display: grid;
   min-width: 0;
-  min-height: 48px;
+  min-height: 47px;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border: 0;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--nav-cell-bg) 72%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--nav-cell-bg) 66%, transparent);
   color: var(--color-ink);
   cursor: pointer;
   font: inherit;
@@ -8223,7 +8245,7 @@ select:focus-visible {
 .detail-collapsible {
   display: grid;
   gap: 9px;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3%, transparent);
+  border-top: 1px solid var(--item-detail-rail-line);
   padding-top: 5px;
 }
 
@@ -8269,9 +8291,9 @@ select:focus-visible {
 
 .item-detail__technical-group {
   display: grid;
-  gap: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 4%, transparent);
-  padding-top: 10px;
+  gap: 9px;
+  border-top: 1px solid var(--item-detail-rail-line);
+  padding-top: 11px;
 }
 
 .item-detail__technical-group:first-child {
@@ -8281,7 +8303,7 @@ select:focus-visible {
 
 .item-detail__technical-group h3 {
   margin: 0;
-  color: color-mix(in srgb, var(--color-ink) 48%, transparent);
+  color: color-mix(in srgb, var(--color-ink) 44%, transparent);
   font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 760;
@@ -8298,12 +8320,12 @@ select:focus-visible {
 }
 
 .item-detail__action-strip {
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 3.2%, transparent);
+  border-top: 1px solid var(--item-detail-rail-line);
   padding: 14px 0 16px;
 }
 
 .item-detail__advanced {
-  opacity: 0.82;
+  opacity: 0.88;
 }
 
 .detail-collapsible:not([open]) > .detail-collapsible__body {

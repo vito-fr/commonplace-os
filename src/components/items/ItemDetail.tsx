@@ -829,9 +829,11 @@ function TechnicalDrawerGroup({
   children: ReactNode;
   title: string;
 }) {
+  const headingId = useId();
+
   return (
-    <section className="item-detail__technical-group" aria-label={title}>
-      <h3>{title}</h3>
+    <section className="item-detail__technical-group" aria-labelledby={headingId}>
+      <h3 id={headingId}>{title}</h3>
       {children}
     </section>
   );
