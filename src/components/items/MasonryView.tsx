@@ -262,6 +262,7 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
 
     let frame = 0;
     let settleTimeout = 0;
+    let lastObservedWidth = Math.max(1, Math.round(element.getBoundingClientRect().width));
     const setResizeSettled = () => {
       settleTimeout = 0;
       setContainerState((currentState) =>
@@ -270,6 +271,7 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
     };
     const updateWidth = (width: number, isResizing: boolean) => {
       const roundedWidth = Math.max(1, Math.round(width));
+      lastObservedWidth = roundedWidth;
       const nextIntroViewportBottom = getMasonryIntroViewportBottom(element);
       setContainerState((currentState) =>
         currentState.containerWidth === roundedWidth &&
@@ -291,6 +293,14 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
       }
     };
     const scheduleWidthUpdate = (width: number) => {
+      const roundedWidth = Math.max(1, Math.round(width));
+      const isWidthResize = Math.abs(roundedWidth - lastObservedWidth) > 1;
+
+      if (!isWidthResize) {
+        updateWidth(width, false);
+        return;
+      }
+
       if (frame) {
         window.cancelAnimationFrame(frame);
       }

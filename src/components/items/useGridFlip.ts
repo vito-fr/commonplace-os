@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 const gridFlipDuration = 420;
 const gridFlipEase = "cubic-bezier(0.2, 0.88, 0.2, 1)";
 const gridFlipActiveAttribute = "data-grid-flip";
+const viewportResizeFlipSuppressMs = 360;
 
 export function useGridFlipAnimation(
   containerRef: RefObject<HTMLElement | null>,
@@ -11,7 +12,28 @@ export function useGridFlipAnimation(
 ) {
   const previousRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const hasMeasuredRef = useRef(false);
+  const previousViewportWidthRef = useRef<number | null>(null);
+  const suppressFlipUntilRef = useRef(0);
   const disabled = options.disabled ?? false;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const suppressViewportFlip = () => {
+      suppressFlipUntilRef.current = performance.now() + viewportResizeFlipSuppressMs;
+      cancelGridFlipAnimations(containerRef.current);
+    };
+
+    window.addEventListener("resize", suppressViewportFlip);
+    window.visualViewport?.addEventListener("resize", suppressViewportFlip);
+
+    return () => {
+      window.removeEventListener("resize", suppressViewportFlip);
+      window.visualViewport?.removeEventListener("resize", suppressViewportFlip);
+    };
+  }, [containerRef]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -22,6 +44,10 @@ export function useGridFlipAnimation(
     const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-archive-key]"));
     const nextRects = new Map<string, DOMRect>();
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const viewportWidth = getViewportWidth();
+    const viewportResized =
+      previousViewportWidthRef.current != null && Math.abs(viewportWidth - previousViewportWidthRef.current) > 1;
+    const suppressViewportFlip = performance.now() < suppressFlipUntilRef.current;
     const debugPerformance = isGridPerformanceDebugEnabled();
     const readStart = debugPerformance ? performance.now() : 0;
     const moves: Array<{
@@ -40,7 +66,14 @@ export function useGridFlipAnimation(
       nextRects.set(key, nextRect);
 
       const previousRect = previousRectsRef.current.get(key);
-      if (!previousRect || !hasMeasuredRef.current || prefersReducedMotion || disabled) {
+      if (
+        !previousRect ||
+        !hasMeasuredRef.current ||
+        prefersReducedMotion ||
+        disabled ||
+        viewportResized ||
+        suppressViewportFlip
+      ) {
         continue;
       }
 
@@ -132,8 +165,46 @@ export function useGridFlipAnimation(
     }
 
     previousRectsRef.current = nextRects;
+    previousViewportWidthRef.current = viewportWidth;
+    if (viewportResized) {
+      suppressFlipUntilRef.current = performance.now() + viewportResizeFlipSuppressMs;
+      cancelGridFlipAnimations(container);
+    }
     hasMeasuredRef.current = true;
   }, [containerRef, disabled, signature]);
+}
+
+function getViewportWidth() {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+
+  return Math.round(window.visualViewport?.width ?? document.documentElement.clientWidth ?? window.innerWidth);
+}
+
+function cancelGridFlipAnimations(container: HTMLElement | null) {
+  if (!container) {
+    return;
+  }
+
+  container.removeAttribute(gridFlipActiveAttribute);
+  container.querySelectorAll<HTMLElement>("[data-archive-key]").forEach((element) => {
+    element.getAnimations().forEach((animation) => {
+      if (isCssAnimation(animation)) {
+        return;
+      }
+
+      const effect = animation.effect;
+      if (typeof KeyframeEffect !== "undefined" && effect instanceof KeyframeEffect && effect.target === element) {
+        animation.cancel();
+      }
+    });
+    element.style.willChange = "";
+  });
+}
+
+function isCssAnimation(animation: Animation) {
+  return typeof (animation as Animation & { animationName?: unknown }).animationName === "string";
 }
 
 function snapToDevicePixel(value: number) {

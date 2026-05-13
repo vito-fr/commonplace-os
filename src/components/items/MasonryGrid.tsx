@@ -33,7 +33,7 @@ type GridObjectContentProps = {
 };
 
 const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => `loading-${index}`);
-const gridInitialEntryDurationMs = 900;
+const gridInitialEntryDurationMs = 980;
 const minGridEntryCards = 12;
 
 export function MasonryGrid({
