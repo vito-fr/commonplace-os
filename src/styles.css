@@ -61,6 +61,7 @@
   --collection-hero-max-width: 1320px;
   --item-detail-shell-max-width: 1540px;
   --archive-control-height: 31px;
+  --archive-hit-target: 44px;
   --dock-wrapper-bg-idle: rgb(255 255 255 / 0.3);
   --dock-wrapper-bg-open: rgb(255 255 255 / 0.34);
   --dock-outline-idle: rgb(0 0 0 / 0.22);
@@ -441,13 +442,13 @@ select:focus-visible {
 
 .pill-nav__group {
   --nav-cell-gap: -2px;
-  min-height: 31px;
+  min-height: 48px;
   justify-content: center;
 }
 
 .pill-nav__subnav {
   position: absolute;
-  top: 38px;
+  top: 52px;
   right: 0;
   left: 0;
   display: flex;
@@ -1379,7 +1380,7 @@ select:focus-visible {
 .collection-index-island__edit,
 .collection-index-island__edit-actions button {
   display: inline-flex;
-  min-height: 28px;
+  min-height: var(--archive-hit-target);
   align-items: center;
   justify-content: center;
   border: 0;
@@ -1457,7 +1458,7 @@ select:focus-visible {
   z-index: 1;
   display: inline-flex;
   max-width: 180px;
-  min-height: 27px;
+  min-height: var(--archive-hit-target);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -1632,10 +1633,10 @@ select:focus-visible {
 }
 
 .nav-cell--dot {
-  min-width: 27px;
-  width: 27px;
-  padding-right: 11px;
-  padding-left: 11px;
+  min-width: var(--archive-hit-target);
+  width: var(--archive-hit-target);
+  padding-right: 0;
+  padding-left: 0;
   opacity: 1;
 }
 
@@ -2420,7 +2421,7 @@ select:focus-visible {
 .spotlight-dock--search,
 .spotlight-dock--import {
   width: var(--dock-open-width);
-  height: 46px;
+  height: 52px;
 }
 
 .spotlight-dock__content {
@@ -2488,9 +2489,11 @@ select:focus-visible {
   padding: 0;
   pointer-events: none;
   opacity: 0;
+  visibility: hidden;
   transition:
     max-width var(--nav-motion),
-    opacity var(--nav-motion);
+    opacity var(--nav-motion),
+    visibility 0s linear var(--motion-pill-duration);
 }
 
 .spotlight-dock--search .spotlight-dock__input-wrap {
@@ -2498,6 +2501,8 @@ select:focus-visible {
   margin: 0;
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 .spotlight-dock--import .spotlight-dock__input-wrap {
@@ -2505,11 +2510,13 @@ select:focus-visible {
   margin: 0;
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
+  transition-delay: 0s;
 }
 
 .spotlight-dock__input {
   width: 100%;
-  min-height: 38px;
+  min-height: var(--archive-hit-target);
   min-width: 0;
   flex: 1 1 auto;
   border: 0;
@@ -2532,7 +2539,7 @@ select:focus-visible {
 
 .spotlight-dock__import-button {
   display: inline-flex;
-  min-height: 38px;
+  min-height: var(--archive-hit-target);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -3676,9 +3683,9 @@ select:focus-visible {
 
 .collection-return-button {
   display: inline-flex;
-  width: var(--archive-control-height);
-  height: var(--archive-control-height);
-  min-height: var(--archive-control-height);
+  width: var(--archive-hit-target);
+  height: var(--archive-hit-target);
+  min-height: var(--archive-hit-target);
   align-items: center;
   justify-content: flex-start;
   overflow: hidden;
@@ -3688,7 +3695,7 @@ select:focus-visible {
   color: var(--nav-cell-ink);
   cursor: pointer;
   gap: 7px;
-  padding: 0 1px;
+  padding: 0 7px;
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 700;
@@ -3706,7 +3713,7 @@ select:focus-visible {
 
 .collection-return-button:hover,
 .collection-return-button:focus-visible {
-  width: 82px;
+  width: 104px;
   background: var(--nav-cell-bg);
   color: color-mix(in srgb, var(--nav-cell-ink) 58%, transparent);
 }
@@ -3998,7 +4005,8 @@ select:focus-visible {
 }
 
 .collection-title-editor__controls button {
-  min-height: 25px;
+  min-width: var(--archive-hit-target);
+  min-height: var(--archive-hit-target);
   border: 0;
   border-radius: var(--capsule-radius);
   background: color-mix(in srgb, var(--nav-cell-bg) 90%, transparent);
@@ -4051,7 +4059,7 @@ select:focus-visible {
 }
 
 .collection-workspace__toolbar {
-  --collection-tool-height: 36px;
+  --collection-tool-height: var(--archive-hit-target);
   position: sticky;
   top: 76px;
   z-index: 80;
@@ -4127,7 +4135,7 @@ select:focus-visible {
   gap: 7px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--nav-cell-bg) 92%, transparent);
-  padding: 4px 20px 4px 12px;
+  padding: 0 20px 0 12px;
   box-sizing: border-box;
 }
 
@@ -4155,8 +4163,8 @@ select:focus-visible {
 
 .collection-workspace__select select {
   flex: 1;
-  min-width: 0;
-  min-height: calc(var(--collection-tool-height) - 8px);
+  min-width: var(--archive-hit-target);
+  min-height: var(--collection-tool-height);
   border: 0;
   appearance: none;
   -webkit-appearance: none;
@@ -4414,7 +4422,7 @@ select:focus-visible {
 }
 
 .collection-upload-tile__actions button {
-  min-height: 28px;
+  min-height: var(--archive-hit-target);
   border: 0;
   border-radius: var(--capsule-radius);
   background: color-mix(in srgb, var(--nav-cell-bg) 92%, transparent);
@@ -6663,7 +6671,7 @@ select:focus-visible {
    This is the only reachable ItemDetail styling layer. */
 .item-detail {
   --item-detail-page-edge: max(var(--archive-page-gutter), calc((100vw - var(--item-detail-shell-max-width)) / 2));
-  --item-detail-pill-height: var(--archive-control-height);
+  --item-detail-pill-height: var(--archive-hit-target);
   width: 100%;
   min-height: 100vh;
   margin: 0;
@@ -6681,7 +6689,7 @@ select:focus-visible {
   --item-detail-frame-gap: clamp(14px, 1.4vw, 24px);
   --item-detail-frame-top: clamp(34px, 5vh, 52px);
   --item-detail-rail-width: clamp(304px, 19vw, 340px);
-  --item-detail-closed-rail-width: var(--archive-control-height);
+  --item-detail-closed-rail-width: var(--item-detail-pill-height);
   --item-detail-rail-radius: min(14px, max(8px, calc(var(--archive-card-radius) + 8px)));
   --item-detail-rail-line: color-mix(in srgb, var(--color-ink) 4.5%, transparent);
   --item-detail-rail-soft: color-mix(in srgb, var(--color-ink) 2.6%, transparent);
@@ -6756,10 +6764,10 @@ select:focus-visible {
 }
 
 .item-detail--object .item-detail__return-button {
-  width: var(--archive-control-height);
+  width: var(--item-detail-pill-height);
   justify-content: flex-start;
   gap: 7px;
-  padding: 0 1px;
+  padding: 0 7px;
   transition:
     width 260ms cubic-bezier(0.5, 0, 0, 1),
     color 180ms cubic-bezier(0.5, 0, 0, 1);
@@ -6767,7 +6775,7 @@ select:focus-visible {
 
 .item-detail--object .item-detail__return-button:hover,
 .item-detail--object .item-detail__return-button:focus-visible {
-  width: 82px;
+  width: 104px;
   color: color-mix(in srgb, var(--nav-cell-ink) 58%, transparent);
   outline: none;
 }
@@ -7401,8 +7409,8 @@ select:focus-visible {
 
 .item-detail__side-panel[data-open="false"] .item-detail__panel-toggle {
   right: 0;
-  width: var(--archive-control-height);
-  max-width: var(--archive-control-height);
+  width: var(--item-detail-pill-height);
+  max-width: var(--item-detail-pill-height);
   gap: 0;
   padding-inline: 8px;
 }
@@ -7543,7 +7551,7 @@ select:focus-visible {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 39px;
+  min-height: var(--item-detail-pill-height);
   align-items: center;
   gap: 8px;
   border-radius: 9px;
@@ -8004,6 +8012,7 @@ select:focus-visible {
 .collection-membership-row__open {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
+  min-height: var(--item-detail-pill-height);
   min-width: 0;
   align-items: center;
   gap: 9px;
@@ -8158,7 +8167,7 @@ select:focus-visible {
 .collection-add-panel__toggle {
   display: grid;
   min-width: 0;
-  min-height: 41px;
+  min-height: var(--item-detail-pill-height);
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
