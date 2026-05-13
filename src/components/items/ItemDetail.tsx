@@ -1441,7 +1441,7 @@ function CollectionAttachPicker({
             aria-label="Search collections"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <div className="collection-attach__picker" role="listbox" aria-label="available collections">
+          <div className="collection-attach__picker" aria-label="available collections">
             {filteredOptions.map((option) => {
               const indexEntry = collectionIndex.find((entry) => entry.id === option.id);
               const context = indexEntry
@@ -1450,12 +1450,11 @@ function CollectionAttachPicker({
 
               return (
                 <button
-                  aria-selected={false}
+                  aria-label={`Add to ${option.label}`}
                   className="collection-attach__option"
                   disabled={pending}
                   key={option.id}
                   onClick={() => void attach(option.id)}
-                  role="option"
                   type="button"
                 >
                   <CollectionMembershipThumb
