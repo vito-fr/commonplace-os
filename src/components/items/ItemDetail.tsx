@@ -211,12 +211,10 @@ export function ItemDetailView({
           />
           <div className="item-detail__side-panel-inner">
             <ArchiveLabel
-              aspectLabel={aspectLabel}
               collections={item.collections}
               collectionActionError={collectionActionError}
               collectionIndex={collectionIndex}
               collectionOptions={collectionOptions}
-              dimensionsLabel={dimensionsLabel}
               item={item}
               onAttachCollection={onAttachCollection}
               onOpenCollection={onOpenCollection}
@@ -304,12 +302,10 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
 }
 
 function ArchiveLabel({
-  aspectLabel,
   collections,
   collectionActionError,
   collectionIndex,
   collectionOptions,
-  dimensionsLabel,
   item,
   onAttachCollection,
   onOpenCollection,
@@ -317,12 +313,10 @@ function ArchiveLabel({
   pending,
   sourceUrl,
 }: {
-  aspectLabel: string | null;
   collections: ItemDetail["collections"];
   collectionActionError: string | null;
   collectionIndex: CollectionIndexItem[];
   collectionOptions: CollectionOption[];
-  dimensionsLabel: string | null;
   item: ItemDetail;
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   onOpenCollection?: (collectionId: string) => void;
@@ -334,8 +328,6 @@ function ArchiveLabel({
     <div className="item-detail__archive-label">
       <ArchiveLabelIdentity item={item} />
       <ArchiveSourceSection
-        aspectLabel={aspectLabel}
-        dimensionsLabel={dimensionsLabel}
         item={item}
         sourceUrl={sourceUrl}
       />
@@ -430,47 +422,41 @@ function ArchiveLabelSection({
   );
 }
 
-function ArchiveSourceSection({
-  aspectLabel,
-  dimensionsLabel,
-  item,
-  sourceUrl,
-}: {
-  aspectLabel: string | null;
-  dimensionsLabel: string | null;
-  item: ItemDetail;
-  sourceUrl: string | null;
-}) {
-  const sourceKind = item.source?.kind ?? "manual";
+function ArchiveSourceSection({ item, sourceUrl }: { item: ItemDetail; sourceUrl: string | null }) {
   const sourceTypeLabel = getSourceDisplayLabel(item);
   const sourceIdentity = getSourceIdentity(item, sourceUrl);
-  const sourceDetail = sourceUrl ? getDomain(sourceUrl) : item.source?.label ?? item.source?.identifier ?? sourceKind;
-  const sourceLines = [
-    sourceDetail,
-    `${sourceKind === "local" ? "Imported" : "Captured"} ${formatDate(item.createdAt)}`,
-    dimensionsLabel && aspectLabel ? `${dimensionsLabel} · ${aspectLabel} ratio` : dimensionsLabel,
-  ].filter((value): value is string => Boolean(value));
+  const sourceSummary = getSourceSummary(item, sourceUrl);
 
   return (
     <ArchiveLabelSection className="item-detail__source-panel" meta={sourceTypeLabel} title="Source">
       <div className="item-detail__source-identity" data-provider={sourceIdentity.key}>
-        <span aria-hidden="true">{sourceIdentity.initial}</span>
-        <strong>{sourceIdentity.label}</strong>
+        <span className="item-detail__source-badge" aria-hidden="true">{sourceIdentity.initial}</span>
+        <span className="item-detail__source-provider">
+          <strong>{sourceIdentity.label}</strong>
+          <small>{sourceIdentity.context}</small>
+        </span>
       </div>
       <div className="item-detail__source-lines">
-        {sourceLines.map((line) => (
+        <strong>{sourceSummary.title}</strong>
+        {sourceSummary.lines.map((line) => (
           <span key={line}>{line}</span>
         ))}
       </div>
-      {sourceUrl ? <SourceUrlLink sourceUrl={sourceUrl} /> : null}
+      {sourceUrl ? <SourceUrlLink label={sourceSummary.linkLabel} sourceUrl={sourceUrl} /> : null}
     </ArchiveLabelSection>
   );
 }
 
-function SourceUrlLink({ sourceUrl }: { sourceUrl: string }) {
+function SourceUrlLink({ label, sourceUrl }: { label: string; sourceUrl: string }) {
   return (
-    <a className="item-detail__source-link" href={sourceUrl} target="_blank" rel="noreferrer">
-      <span>{formatSourceUrl(sourceUrl)}</span>
+    <a
+      className="item-detail__source-link"
+      href={sourceUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`Open source: ${label}`}
+    >
+      <span>{label}</span>
       <ArchiveIcon name="external" />
     </a>
   );
@@ -2381,12 +2367,75 @@ function isHttpUrl(value: string | null | undefined) {
   return Boolean(value && /^https?:\/\//i.test(value));
 }
 
-function getSourceDisplayLabel(item: ItemDetail) {
-  const sourceKind = item.source?.kind ?? "manual";
-  const providerLabel = getProviderDisplayLabel(item);
+type SourceProviderKey = "pinterest" | "youtube" | "arena" | "local" | "manual" | "pdf" | "website";
 
-  if (item.type === "image" && sourceKind === "local") {
+type SourceIdentity = {
+  context: string;
+  initial: string;
+  key: SourceProviderKey;
+  label: string;
+};
+
+const SOURCE_PROVIDER_MAP: Record<SourceProviderKey, SourceIdentity> = {
+  pinterest: {
+    context: "Visual source",
+    initial: "P",
+    key: "pinterest",
+    label: "Pinterest",
+  },
+  youtube: {
+    context: "Video source",
+    initial: "Y",
+    key: "youtube",
+    label: "YouTube",
+  },
+  arena: {
+    context: "Reference source",
+    initial: "A",
+    key: "arena",
+    label: "Are.na",
+  },
+  local: {
+    context: "Local import",
+    initial: "L",
+    key: "local",
+    label: "Local file",
+  },
+  manual: {
+    context: "Archive original",
+    initial: "N",
+    key: "manual",
+    label: "Manual note",
+  },
+  pdf: {
+    context: "Document source",
+    initial: "PDF",
+    key: "pdf",
+    label: "PDF",
+  },
+  website: {
+    context: "External website",
+    initial: "W",
+    key: "website",
+    label: "Website",
+  },
+};
+
+function getSourceDisplayLabel(item: ItemDetail) {
+  const sourceUrl = getItemSourceUrl(item);
+  const sourceKind = item.source?.kind ?? "manual";
+  const sourceProvider = getSourceIdentity(item, sourceUrl);
+
+  if (item.type === "image" && sourceProvider.key === "local") {
     return "Local upload";
+  }
+
+  if (sourceProvider.key === "manual") {
+    return item.type === "caption" ? "Manual caption" : "Manual";
+  }
+
+  if (sourceProvider.key === "pdf") {
+    return "PDF";
   }
 
   if (item.type === "link" && isDirectImageUrl(item.content.link?.url)) {
@@ -2394,31 +2443,161 @@ function getSourceDisplayLabel(item: ItemDetail) {
   }
 
   if (sourceKind === "url" && item.type === "link") {
-    return providerLabel ?? getDomain(item.content.link?.url) ?? "URL";
+    return sourceProvider.label;
   }
 
-  return providerLabel ?? item.source?.label ?? getSourceKindDisplayLabel(sourceKind);
+  return sourceProvider.label || item.source?.label || getSourceKindDisplayLabel(sourceKind);
 }
 
 function getSourceIdentity(item: ItemDetail, sourceUrl: string | null) {
-  const label = getSourceDisplayLabel(item);
-  const domain = getDomain(sourceUrl)?.toLowerCase() ?? "";
-  const normalizedLabel = label.toLowerCase();
-  const key = domain.includes("youtube") || normalizedLabel.includes("youtube")
-    ? "youtube"
-    : domain.includes("pinterest") || normalizedLabel.includes("pinterest")
-      ? "pinterest"
-      : domain.includes("are.na") || normalizedLabel.includes("are.na")
-        ? "arena"
-        : item.source?.kind === "local"
-          ? "local"
-          : "website";
+  const key = detectSourceProviderKey(item, sourceUrl);
+  const baseIdentity = SOURCE_PROVIDER_MAP[key];
+  const providerLabel = getProviderDisplayLabel(item);
+  const domain = getDomain(sourceUrl);
+  const label = key === "website"
+    ? providerLabel ?? domain ?? baseIdentity.label
+    : key === "manual" && item.type === "caption"
+      ? "Manual caption"
+      : baseIdentity.label;
+  const initial = key === "website"
+    ? getProviderInitial(label)
+    : baseIdentity.initial;
 
   return {
-    key,
+    ...baseIdentity,
+    context: key === "website" && label !== baseIdentity.label ? baseIdentity.label : baseIdentity.context,
+    initial,
     label,
-    initial: key === "youtube" ? "Y" : key === "pinterest" ? "P" : key === "arena" ? "A" : label.slice(0, 1).toUpperCase(),
   };
+}
+
+function getSourceSummary(item: ItemDetail, sourceUrl: string | null) {
+  if (sourceUrl) {
+    return {
+      linkLabel: formatSourceUrl(sourceUrl),
+      lines: [`${getSourceDateVerb(item, true)} ${formatDate(item.createdAt)}`],
+      title: getExternalSourceTitle(item, sourceUrl),
+    };
+  }
+
+  const fileLabel = getItemFileLabel(item);
+  const sourceKind = item.source?.kind?.trim().toLowerCase() ?? "";
+
+  if (sourceKind === "local" || sourceKind === "upload" || (item.type === "image" && item.content.image?.fileRef)) {
+    return {
+      linkLabel: "",
+      lines: [
+        fileLabel,
+        `${getSourceDateVerb(item, false)} ${formatDate(item.createdAt)}`,
+        "No external source.",
+      ].filter((line): line is string => Boolean(line)),
+      title: "Imported file",
+    };
+  }
+
+  if (item.type === "note" || item.type === "caption" || sourceKind === "manual") {
+    return {
+      linkLabel: "",
+      lines: [
+        `${getSourceDateVerb(item, false)} ${formatDate(item.createdAt)}`,
+        "No external source.",
+      ],
+      title: "Created in archive",
+    };
+  }
+
+  return {
+    linkLabel: "",
+    lines: [
+      item.source?.label ?? item.source?.identifier ?? null,
+      `${getSourceDateVerb(item, false)} ${formatDate(item.createdAt)}`,
+    ].filter((line): line is string => Boolean(line)),
+    title: "No external source.",
+  };
+}
+
+function getExternalSourceTitle(item: ItemDetail, sourceUrl: string) {
+  const key = detectSourceProviderKey(item, sourceUrl);
+
+  if (key === "pinterest") {
+    return "Pinterest source";
+  }
+
+  if (key === "youtube") {
+    return "YouTube source";
+  }
+
+  if (key === "arena") {
+    return "Are.na source";
+  }
+
+  if (key === "pdf" || item.content.link?.contentType === "pdf") {
+    return "PDF source";
+  }
+
+  if (item.type === "link" && item.content.link?.contentType === "video") {
+    return "Video source";
+  }
+
+  if (item.type === "link" && isDirectImageUrl(item.content.link?.url)) {
+    return "Remote image source";
+  }
+
+  return "External website";
+}
+
+function getSourceDateVerb(item: ItemDetail, hasExternalSource: boolean) {
+  const sourceKind = item.source?.kind?.trim().toLowerCase() ?? "";
+
+  if (sourceKind === "local" || sourceKind === "upload" || (item.type === "image" && !hasExternalSource)) {
+    return "Imported";
+  }
+
+  if (!hasExternalSource && (item.type === "note" || item.type === "caption" || sourceKind === "manual")) {
+    return "Created";
+  }
+
+  return "Captured";
+}
+
+function detectSourceProviderKey(item: ItemDetail, sourceUrl: string | null): SourceProviderKey {
+  const domain = getDomain(sourceUrl)?.toLowerCase() ?? "";
+  const sourceKind = item.source?.kind?.trim().toLowerCase() ?? "";
+  const providerLabel = getProviderDisplayLabel(item)?.toLowerCase() ?? "";
+  const sourceLabel = item.source?.label?.toLowerCase() ?? "";
+  const sourceIdentifier = item.source?.identifier?.toLowerCase() ?? "";
+  const haystack = `${domain} ${providerLabel} ${sourceKind} ${sourceLabel} ${sourceIdentifier}`;
+
+  if (haystack.includes("youtube") || haystack.includes("youtu.be")) {
+    return "youtube";
+  }
+
+  if (haystack.includes("pinterest") || haystack.includes("pin.it")) {
+    return "pinterest";
+  }
+
+  if (haystack.includes("are.na") || haystack.includes("arena")) {
+    return "arena";
+  }
+
+  if (item.type === "link" && item.content.link?.contentType === "pdf") {
+    return "pdf";
+  }
+
+  if (!sourceUrl && (sourceKind === "local" || sourceKind === "upload" || (item.type === "image" && item.content.image?.fileRef))) {
+    return "local";
+  }
+
+  if (!sourceUrl && (sourceKind === "manual" || item.type === "note" || item.type === "caption")) {
+    return "manual";
+  }
+
+  return "website";
+}
+
+function getProviderInitial(label: string) {
+  const first = label.trim().charAt(0).toUpperCase();
+  return first || "W";
 }
 
 function getProviderDisplayLabel(item: ItemDetail) {

@@ -7498,11 +7498,18 @@ select:focus-visible {
 
 .item-detail__source-lines {
   display: grid;
-  gap: 7px;
+  gap: 5px;
   color: color-mix(in srgb, var(--color-ink) 74%, transparent);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: -0.018em;
+  line-height: 1.22;
+}
+
+.item-detail__source-lines strong {
+  color: color-mix(in srgb, var(--color-ink) 84%, transparent);
+  font-size: 12.5px;
+  font-weight: 790;
   line-height: 1.22;
 }
 
@@ -7522,31 +7529,68 @@ select:focus-visible {
   padding: 5px 9px 6px 6px;
 }
 
-.item-detail__source-identity span {
+.item-detail__source-badge {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border-radius: var(--capsule-radius);
   background: color-mix(in srgb, var(--color-ink) 9%, transparent);
   color: color-mix(in srgb, var(--color-ink) 70%, transparent);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 820;
   line-height: 1;
 }
 
-.item-detail__source-identity[data-provider="pinterest"] span {
+.item-detail__source-provider {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.item-detail__source-provider strong,
+.item-detail__source-provider small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-detail__source-provider small {
+  color: color-mix(in srgb, var(--color-ink) 50%, transparent);
+  font-size: 10px;
+  font-weight: 720;
+  line-height: 1.12;
+}
+
+.item-detail__source-identity[data-provider="pinterest"] .item-detail__source-badge {
   background: color-mix(in srgb, #e60023 18%, var(--nav-cell-bg));
   color: color-mix(in srgb, #e60023 72%, var(--color-ink));
 }
 
-.item-detail__source-identity[data-provider="youtube"] span {
+.item-detail__source-identity[data-provider="youtube"] .item-detail__source-badge {
   background: color-mix(in srgb, #ff0033 18%, var(--nav-cell-bg));
   color: color-mix(in srgb, #ff0033 72%, var(--color-ink));
 }
 
-.item-detail__source-identity[data-provider="arena"] span {
+.item-detail__source-identity[data-provider="arena"] .item-detail__source-badge {
   background: color-mix(in srgb, var(--color-ink) 14%, var(--nav-cell-bg));
+}
+
+.item-detail__source-identity[data-provider="local"] .item-detail__source-badge,
+.item-detail__source-identity[data-provider="manual"] .item-detail__source-badge {
+  background: color-mix(in srgb, var(--color-ink) 10%, var(--nav-cell-bg));
+  color: color-mix(in srgb, var(--color-ink) 66%, transparent);
+}
+
+.item-detail__source-identity[data-provider="pdf"] .item-detail__source-badge {
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--nav-cell-bg));
+  color: color-mix(in srgb, var(--color-accent) 72%, var(--color-ink));
+  font-size: 8px;
+}
+
+.item-detail__source-identity[data-provider="website"] .item-detail__source-badge {
+  background: color-mix(in srgb, var(--color-ink) 8%, var(--nav-cell-bg));
 }
 
 .item-detail__source-lines span + span {
