@@ -497,18 +497,17 @@ function ArchiveCollectionsSection({
         />
       ) : (
         <div className="collection-empty-state">
-          <p className="detail-muted">Not collected yet.</p>
+          <strong>Not in a collection yet.</strong>
+          <p className="detail-muted">Collections group related material for retrieval and reuse.</p>
         </div>
       )}
-      <div className="collection-add-panel">
-        <span className="collection-add-panel__label">Add to collection</span>
-        <CollectionAttachForm
-          error={collectionActionError}
-          onAttachCollection={onAttachCollection}
-          options={collectionOptions}
-          pending={pending}
-        />
-      </div>
+      <CollectionAttachPicker
+        collectionIndex={collectionIndex}
+        error={collectionActionError}
+        onAttachCollection={onAttachCollection}
+        options={collectionOptions}
+        pending={pending}
+      />
     </ArchiveLabelSection>
   );
 }
@@ -635,6 +634,7 @@ function CollectionMembershipList({
                   added {formatDate(collection.addedAt)}
                 </span>
               </span>
+              <ArchiveIcon className="collection-membership-row__open-icon" name="forward" />
             </button>
             <button
               className="collection-membership-row__remove"
@@ -1366,30 +1366,33 @@ function RelationshipRow({
   );
 }
 
-function CollectionAttachForm({
+function CollectionAttachPicker({
+  collectionIndex,
   error,
   onAttachCollection,
   options,
   pending,
 }: {
+  collectionIndex: CollectionIndexItem[];
   error: string | null;
   onAttachCollection?: (input: CollectionAttachInput) => Promise<void> | void;
   options: CollectionOption[];
   pending: boolean;
 }) {
-  const [collectionId, setCollectionId] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const pickerId = useId();
   const availableOptions = options.filter((option) => !option.alreadyAttached);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? availableOptions.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
+    : availableOptions;
+  const statusLabel = availableOptions.length > 0
+    ? `${availableOptions.length} ${pluralize(availableOptions.length, "collection")} available`
+    : "No available collections";
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedCollectionId = collectionId.trim();
-
-    if (!normalizedCollectionId) {
-      setLocalError("Collection is required.");
-      return;
-    }
-
+  const attach = async (collectionId: string) => {
     if (!onAttachCollection) {
       setLocalError("Adding to a collection requires live archive mode.");
       return;
@@ -1398,41 +1401,86 @@ function CollectionAttachForm({
     setLocalError(null);
 
     try {
-      await onAttachCollection({ collectionId: normalizedCollectionId });
-      setCollectionId("");
+      await onAttachCollection({ collectionId });
+      setQuery("");
+      setIsOpen(false);
     } catch {
       // Parent owns the persisted write error message.
     }
   };
 
   return (
-    <form className="collection-attach" aria-label="add to collection" onSubmit={submit}>
-      <div className="collection-attach__picker" role="listbox" aria-label="available collections">
-        {availableOptions.map((option) => (
-          <button
-            aria-selected={collectionId === option.id}
-            className="collection-attach__option"
-            disabled={pending}
-            key={option.id}
-            onClick={() => setCollectionId(option.id)}
-            type="button"
-          >
-            <span>{option.label}</span>
-          </button>
-        ))}
-      </div>
+    <div className="collection-add-panel">
       <button
-        className="status-action"
-        disabled={pending || availableOptions.length === 0}
-        type="submit"
+        className="collection-add-panel__toggle"
+        type="button"
+        aria-controls={pickerId}
+        aria-expanded={isOpen}
+        disabled={pending}
+        onClick={() => {
+          setLocalError(null);
+          setIsOpen((open) => !open);
+        }}
       >
-        {pending ? "Adding" : "Add to collection"}
+        <span className="collection-add-panel__plus" aria-hidden="true">
+          <ArchiveIcon name="add" />
+        </span>
+        <span>
+          <strong>{pending ? "Updating collections" : "Add to collection"}</strong>
+          <small>{statusLabel}</small>
+        </span>
       </button>
-      {availableOptions.length === 0 ? (
-        <p className="detail-muted">No collections available.</p>
+      {isOpen ? (
+        <div className="collection-attach" id={pickerId} aria-label="add to collection">
+          <input
+            className="collection-attach__search"
+            type="search"
+            value={query}
+            disabled={pending || availableOptions.length === 0}
+            placeholder="Search collections"
+            aria-label="Search collections"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="collection-attach__picker" role="listbox" aria-label="available collections">
+            {filteredOptions.map((option) => {
+              const indexEntry = collectionIndex.find((entry) => entry.id === option.id);
+              const context = indexEntry
+                ? `${formatCount(indexEntry.pieceCount, "item", "items")}${indexEntry.kindSummary ? ` · ${indexEntry.kindSummary}` : ""}`
+                : "Collection";
+
+              return (
+                <button
+                  aria-selected={false}
+                  className="collection-attach__option"
+                  disabled={pending}
+                  key={option.id}
+                  onClick={() => void attach(option.id)}
+                  role="option"
+                  type="button"
+                >
+                  <CollectionMembershipThumb
+                    label={option.label}
+                    previewItems={indexEntry?.previewItems ?? []}
+                  />
+                  <span className="collection-attach__copy">
+                    <strong>{option.label}</strong>
+                    <small>{context}</small>
+                  </span>
+                  <span className="collection-attach__mark">add</span>
+                </button>
+              );
+            })}
+            {availableOptions.length === 0 ? (
+              <p className="detail-muted">Everything available is already connected.</p>
+            ) : null}
+            {availableOptions.length > 0 && filteredOptions.length === 0 ? (
+              <p className="detail-muted">No matching collections.</p>
+            ) : null}
+          </div>
+        </div>
       ) : null}
       {localError || error ? <p className="detail-error">{localError ?? error}</p> : null}
-    </form>
+    </div>
   );
 }
 
