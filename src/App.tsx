@@ -2465,6 +2465,22 @@ function getSortableTime(value: string | null | undefined) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function getCollectionInitials(name: string) {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "C";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 function filterCollectionCards(collections: CollectionIndexItem[], filters: ItemCardFilters) {
   return collections.filter((collection) => collectionMatchesFilters(collection, filters));
 }
@@ -2769,7 +2785,9 @@ function CardCollectionIsland({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [query, setQuery] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const islandRef = useRef<HTMLElement | null>(null);
+  const createNameRef = useRef<HTMLInputElement | null>(null);
   const itemLabel = item.title ?? item.ogTitle ?? item.url ?? item.type;
   const canCreate = name.trim().length > 0 && !pending;
   const normalizedQuery = query.trim().toLowerCase();
@@ -2796,6 +2814,21 @@ function CardCollectionIsland({
         "--card-collection-top": `${anchor.top}px`,
       } as CSSProperties)
     : undefined;
+
+  useEffect(() => {
+    setName("");
+    setDescription("");
+    setQuery("");
+    setIsCreateOpen(false);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (!isCreateOpen) {
+      return;
+    }
+
+    createNameRef.current?.focus();
+  }, [isCreateOpen]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -2863,7 +2896,7 @@ function CardCollectionIsland({
           <small>collect</small>
           <strong>{itemLabel}</strong>
         </span>
-        <button className="card-collection-island__cell" type="button" onClick={onClose}>
+        <button className="card-collection-island__close" type="button" onClick={onClose}>
           Close
         </button>
       </div>
@@ -2889,6 +2922,8 @@ function CardCollectionIsland({
         {enrichedOptions.map((collection) => (
           <button
             className="card-collection-island__cell"
+            aria-label={`${collection.alreadyAttached ? "Remove from" : "Add to"} ${collection.name}`}
+            aria-pressed={collection.alreadyAttached}
             data-attached={collection.alreadyAttached ? "true" : "false"}
             disabled={pending}
             key={collection.id}
@@ -2896,42 +2931,70 @@ function CardCollectionIsland({
             onClick={() => onToggle(collection.id, collection.alreadyAttached)}
           >
             <span className="card-collection-island__preview" aria-hidden="true">
-              {collection.index?.previewItems.slice(0, 3).map((preview) => {
-                const imageUrl = preview.thumbnailUrl || preview.imageUrl || preview.ogImageUrl || preview.videoPosterUrl;
-                return imageUrl ? <img src={imageUrl} alt="" key={preview.id} /> : <span key={preview.id}>{preview.kind.slice(0, 1).toUpperCase()}</span>;
-              })}
+              {collection.index?.previewItems.length
+                ? collection.index.previewItems.slice(0, 3).map((preview) => {
+                    const imageUrl = preview.thumbnailUrl || preview.imageUrl || preview.ogImageUrl || preview.videoPosterUrl;
+                    return imageUrl ? <img src={imageUrl} alt="" key={preview.id} /> : <span key={preview.id}>{preview.kind.slice(0, 1).toUpperCase()}</span>;
+                  })
+                : <span>{getCollectionInitials(collection.name)}</span>}
             </span>
             <span className="card-collection-island__copy">
               <strong>{collection.name}</strong>
               <small>
-                {collection.alreadyAttached ? "Attached" : "Add"} · {collection.index ? `${collection.index.pieceCount} items · ${collection.index.kindSummary}` : "collection"}
+                {collection.index ? `${collection.index.pieceCount} items · ${collection.index.kindSummary}` : "collection"}
               </small>
+            </span>
+            <span className="card-collection-island__mark" aria-hidden="true">
+              {collection.alreadyAttached ? "Added" : "Add"}
             </span>
           </button>
         ))}
       </div>
 
-      <form className="card-collection-island__form" onSubmit={submitCreate}>
-        <input
-          aria-label="new collection name"
+      <div className="card-collection-island__create">
+        <button
+          className="card-collection-island__create-toggle"
+          type="button"
           disabled={pending}
-          maxLength={maxCollectionTitleLength}
-          onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
-          placeholder="New collection"
-          value={name}
-        />
-        <textarea
-          aria-label="new collection description"
-          disabled={pending}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Description optional"
-          rows={2}
-          value={description}
-        />
-        <button className="card-collection-island__cell" disabled={!canCreate} type="submit">
-          {pending ? "Adding" : "Create and add"}
+          aria-expanded={isCreateOpen}
+          onClick={() => setIsCreateOpen((open) => !open)}
+        >
+          <span className="card-collection-island__create-plus" aria-hidden="true">+</span>
+          <span className="card-collection-island__copy">
+            <strong>New collection</strong>
+            <small>Create and attach this item</small>
+          </span>
         </button>
-      </form>
+        {isCreateOpen ? (
+          <form className="card-collection-island__form" onSubmit={submitCreate}>
+            <input
+              aria-label="new collection name"
+              disabled={pending}
+              maxLength={maxCollectionTitleLength}
+              onChange={(event) => setName(event.target.value.slice(0, maxCollectionTitleLength))}
+              placeholder="Collection name"
+              ref={createNameRef}
+              value={name}
+            />
+            <textarea
+              aria-label="new collection description"
+              disabled={pending}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Description optional"
+              rows={2}
+              value={description}
+            />
+            <div className="card-collection-island__form-actions">
+              <button className="card-collection-island__secondary" type="button" disabled={pending} onClick={() => setIsCreateOpen(false)}>
+                Cancel
+              </button>
+              <button className="card-collection-island__primary" disabled={!canCreate} type="submit">
+                {pending ? "Adding" : "Create"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </div>
       {error ? <span className="card-collection-island__error">{error}</span> : null}
     </section>
   );
