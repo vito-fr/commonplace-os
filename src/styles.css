@@ -345,11 +345,7 @@ select:focus-visible {
   box-shadow: none;
   backdrop-filter: var(--nav-glass-filter);
   -webkit-backdrop-filter: var(--nav-glass-filter);
-  transition:
-    top 160ms cubic-bezier(0.25, 0, 0.5, 1),
-    left 160ms cubic-bezier(0.25, 0, 0.5, 1),
-    width 160ms cubic-bezier(0.25, 0, 0.5, 1),
-    height 160ms cubic-bezier(0.25, 0, 0.5, 1);
+  transition: opacity 160ms cubic-bezier(0.25, 0, 0.5, 1);
 }
 
 .pill-group-shell[data-syncing="true"] .pill-group-membrane {
@@ -6250,7 +6246,7 @@ select:focus-visible {
   min-width: 0;
 }
 
-.masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"] {
+.masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"][data-intro-state="active"] {
   opacity: 0;
   transform: translateY(10px) scale(0.98);
   animation: archive-card-enter 500ms cubic-bezier(0.25, 0, 0, 0.75) both;
@@ -6380,14 +6376,14 @@ select:focus-visible {
   transform: translateY(12px);
 }
 
-:root[data-debug-no-intro-scale] .masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"] {
+:root[data-debug-no-intro-scale] .masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"][data-intro-state="active"] {
   animation-name: archive-card-enter-no-scale !important;
   transform: translateY(10px) !important;
 }
 
-:root[data-browser-safari] .masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"] {
-  animation-name: archive-card-enter-opacity;
-  transform: none;
+:root[data-browser-safari] .masonry-grid[data-entry-state="initial"] .masonry-grid__item[data-entry-card="intro"][data-intro-state="active"] {
+  animation-name: archive-card-enter-no-scale;
+  transform: translateY(10px);
 }
 
 :root[data-browser-safari] .item-card__content,
