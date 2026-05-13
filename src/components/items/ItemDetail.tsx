@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { type ItemStatus } from "../atoms";
 import { ArchiveChevronIcon, ArchiveReturnButton } from "../ui/ArchiveControls";
 import { ArchiveIcon } from "../ui/ArchiveIcons";
@@ -224,10 +224,8 @@ export function ItemDetailView({
               pending={collectionActionPending}
               sourceUrl={sourceUrl}
             />
-            <AdvancedPanel
+            <TechnicalDetailsPanel
               aspectLabel={aspectLabel}
-              deleteActionError={deleteActionError}
-              deleteActionPending={deleteActionPending}
               dimensionsLabel={dimensionsLabel}
               item={item}
               itemFormat={itemFormat}
@@ -236,13 +234,17 @@ export function ItemDetailView({
               onChangeStatus={onChangeStatus}
               onOpenRelatedItem={onOpenRelatedItem}
               onCreateRelationship={onCreateRelationship}
-              onDelete={onDelete}
               relationshipActionError={relationshipActionError}
               relationshipActionPending={relationshipActionPending}
               relationshipTargetOptions={relationshipTargetOptions}
               relationships={item.relationships}
               statusActionError={statusActionError}
               statusActionPending={statusActionPending}
+            />
+            <DangerZonePanel
+              deleteActionError={deleteActionError}
+              deleteActionPending={deleteActionPending}
+              onDelete={onDelete}
             />
           </div>
         </aside>
@@ -713,18 +715,52 @@ function getCollectionThumbLabel(name: string) {
   return letters || "+";
 }
 
-function AdvancedPanel({
+function DrawerDisclosure({
+  bodyClassName = "item-detail__drawer-body",
+  children,
+  className = "",
+  defaultOpen = false,
+  title,
+}: {
+  bodyClassName?: string;
+  children: ReactNode;
+  className?: string;
+  defaultOpen?: boolean;
+  title: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyId = useId();
+
+  return (
+    <section className={`item-detail__drawer ${className}`.trim()} data-open={open ? "true" : "false"}>
+      <button
+        className="item-detail__drawer-summary"
+        type="button"
+        aria-controls={bodyId}
+        aria-expanded={open}
+        onClick={() => setOpen((currentlyOpen) => !currentlyOpen)}
+      >
+        <span className="item-detail__drawer-title">{title}</span>
+        <DrawerChevronIcon />
+      </button>
+      {open ? (
+        <div className={bodyClassName} id={bodyId}>
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TechnicalDetailsPanel({
   aiAnnotations,
   aspectLabel,
-  deleteActionError,
-  deleteActionPending,
   dimensionsLabel,
   events,
   item,
   itemFormat,
   onChangeStatus,
   onCreateRelationship,
-  onDelete,
   onOpenRelatedItem,
   relationshipActionError,
   relationshipActionPending,
@@ -735,15 +771,12 @@ function AdvancedPanel({
 }: {
   aiAnnotations: ItemDetail["aiAnnotations"];
   aspectLabel: string | null;
-  deleteActionError: string | null;
-  deleteActionPending: boolean;
   dimensionsLabel: string | null;
   events: ItemDetail["events"];
   item: ItemDetail;
   itemFormat: string;
   onChangeStatus?: (nextStatus: ItemStatus) => void;
   onCreateRelationship?: (input: RelationshipCreateInput) => Promise<void> | void;
-  onDelete?: () => Promise<void> | void;
   onOpenRelatedItem?: (itemId: string) => void;
   relationshipActionError: string | null;
   relationshipActionPending: boolean;
@@ -753,55 +786,73 @@ function AdvancedPanel({
   statusActionPending: boolean;
 }) {
   return (
-    <details className="item-detail__drawer item-detail__advanced">
-      <summary className="item-detail__drawer-summary">
-        <span>More</span>
-        <DrawerChevronIcon />
-      </summary>
-      <div className="item-detail__advanced-body">
-        <TechnicalDetails
-          aspectLabel={aspectLabel}
-          dimensionsLabel={dimensionsLabel}
-          item={item}
-          itemFormat={itemFormat}
+    <DrawerDisclosure
+      bodyClassName="item-detail__advanced-body"
+      className="item-detail__advanced item-detail__technical-panel"
+      title="Technical details"
+    >
+      <TechnicalDetails
+        aspectLabel={aspectLabel}
+        dimensionsLabel={dimensionsLabel}
+        item={item}
+        itemFormat={itemFormat}
+      />
+      <div className="item-detail__advanced-actions">
+        <CopyTextAction label="Copy internal link" copiedLabel="Copied" text={getItemInternalHref(item)} />
+        <CopyPayloadAction item={item} />
+        <CopyItemIdAction item={item} />
+        <CopyRawJsonAction item={item} />
+        <ArchiveAction
+          status={item.status}
+          pending={statusActionPending}
+          error={statusActionError}
+          onChangeStatus={onChangeStatus}
         />
-        <div className="item-detail__advanced-actions">
-          <CopyTextAction label="Copy internal link" copiedLabel="Copied" text={getItemInternalHref(item)} />
-          <CopyPayloadAction item={item} />
-          <CopyItemIdAction item={item} />
-          <CopyRawJsonAction item={item} />
-          <ArchiveAction
-            status={item.status}
-            pending={statusActionPending}
-            error={statusActionError}
-            onChangeStatus={onChangeStatus}
+        <CollapsibleAction summary="Connect manually">
+          <RelationshipCreateForm
+            currentItemId={item.id}
+            error={relationshipActionError}
+            onCreateRelationship={onCreateRelationship}
+            pending={relationshipActionPending}
+            targetOptions={relationshipTargetOptions}
           />
-          <CollapsibleAction summary="Connect manually">
-            <RelationshipCreateForm
-              currentItemId={item.id}
-              error={relationshipActionError}
-              onCreateRelationship={onCreateRelationship}
-              pending={relationshipActionPending}
-              targetOptions={relationshipTargetOptions}
-            />
-          </CollapsibleAction>
-        </div>
-        <div className="item-detail__danger-zone">
-          <span>Danger zone</span>
-          <DeleteAction
-            pending={deleteActionPending}
-            error={deleteActionError}
-            onDelete={onDelete}
-          />
-        </div>
-        <LowerContextPanel
-          aiAnnotations={aiAnnotations}
-          events={events}
-          relationships={relationships}
-          onOpenRelatedItem={onOpenRelatedItem}
-        />
+        </CollapsibleAction>
       </div>
-    </details>
+      <LowerContextPanel
+        aiAnnotations={aiAnnotations}
+        events={events}
+        relationships={relationships}
+        onOpenRelatedItem={onOpenRelatedItem}
+      />
+    </DrawerDisclosure>
+  );
+}
+
+function DangerZonePanel({
+  deleteActionError,
+  deleteActionPending,
+  onDelete,
+}: {
+  deleteActionError: string | null;
+  deleteActionPending: boolean;
+  onDelete?: () => Promise<void> | void;
+}) {
+  if (!onDelete) {
+    return null;
+  }
+
+  return (
+    <DrawerDisclosure
+      bodyClassName="item-detail__drawer-body item-detail__danger-zone-body"
+      className="item-detail__danger-zone"
+      title="Danger Zone"
+    >
+      <DeleteAction
+        pending={deleteActionPending}
+        error={deleteActionError}
+        onDelete={onDelete}
+      />
+    </DrawerDisclosure>
   );
 }
 
@@ -821,6 +872,8 @@ function TechnicalDetails({
     { label: "Format", value: itemFormat },
     { label: "MIME", value: getMimeType(item) },
     { label: "File size", value: fileSize },
+    { label: "Dimensions", value: dimensionsLabel },
+    { label: "Aspect", value: aspectLabel },
     { label: "Rights", value: String(item.rightsStatus) },
     { label: "Item ID", value: item.id },
     { label: "Source ID", value: item.source?.id ?? null },
@@ -1209,7 +1262,7 @@ function getDownloadPayload(item: ItemDetail): { label: string; text: string } |
   }
 
   if (item.type === "link" && item.content.link?.url) {
-    return { label: "Copy link", text: item.content.link.url };
+    return { label: "Copy source URL", text: item.content.link.url };
   }
 
   return null;
