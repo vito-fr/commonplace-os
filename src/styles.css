@@ -8267,6 +8267,29 @@ select:focus-visible {
   outline: none;
 }
 
+.item-detail__technical-group {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 4%, transparent);
+  padding-top: 10px;
+}
+
+.item-detail__technical-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.item-detail__technical-group h3 {
+  margin: 0;
+  color: color-mix(in srgb, var(--color-ink) 48%, transparent);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.035em;
+  line-height: 1.18;
+  text-transform: lowercase;
+}
+
 .item-detail__primary-actions,
 .item-detail__advanced-actions {
   display: flex;

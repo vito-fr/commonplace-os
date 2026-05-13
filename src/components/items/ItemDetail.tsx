@@ -783,17 +783,25 @@ function TechnicalDetailsPanel({
         item={item}
         itemFormat={itemFormat}
       />
-      <div className="item-detail__advanced-actions">
-        <CopyTextAction label="Copy internal link" copiedLabel="Copied" text={getItemInternalHref(item)} />
-        <CopyPayloadAction item={item} />
-        <CopyItemIdAction item={item} />
-        <CopyRawJsonAction item={item} />
-        <ArchiveAction
-          status={item.status}
-          pending={statusActionPending}
-          error={statusActionError}
-          onChangeStatus={onChangeStatus}
-        />
+      <TechnicalDrawerGroup title="Copy utilities">
+        <div className="item-detail__advanced-actions">
+          <CopyTextAction label="Copy internal link" copiedLabel="Copied" text={getItemInternalHref(item)} />
+          <CopyPayloadAction item={item} />
+          <CopyItemIdAction item={item} />
+          <CopyRawJsonAction item={item} />
+        </div>
+      </TechnicalDrawerGroup>
+      <TechnicalDrawerGroup title="Lifecycle">
+        <div className="item-detail__advanced-actions">
+          <ArchiveAction
+            status={item.status}
+            pending={statusActionPending}
+            error={statusActionError}
+            onChangeStatus={onChangeStatus}
+          />
+        </div>
+      </TechnicalDrawerGroup>
+      <TechnicalDrawerGroup title="Manual connection">
         <CollapsibleAction summary="Connect manually">
           <RelationshipCreateForm
             currentItemId={item.id}
@@ -803,7 +811,7 @@ function TechnicalDetailsPanel({
             targetOptions={relationshipTargetOptions}
           />
         </CollapsibleAction>
-      </div>
+      </TechnicalDrawerGroup>
       <LowerContextPanel
         aiAnnotations={aiAnnotations}
         events={events}
@@ -811,6 +819,43 @@ function TechnicalDetailsPanel({
         onOpenRelatedItem={onOpenRelatedItem}
       />
     </DrawerDisclosure>
+  );
+}
+
+function TechnicalDrawerGroup({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="item-detail__technical-group" aria-label={title}>
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function TechnicalDrawerMetadataGroup({
+  rows,
+  title,
+}: {
+  rows: Array<{ label: string; value: string }>;
+  title: string;
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <TechnicalDrawerGroup title={title}>
+      <dl className="item-detail__technical-list">
+        {rows.map((row) => (
+          <Metadata label={row.label} value={row.value} key={row.label} />
+        ))}
+      </dl>
+    </TechnicalDrawerGroup>
   );
 }
 
@@ -854,24 +899,25 @@ function TechnicalDetails({
   itemFormat: string;
 }) {
   const fileSize = getFileSizeLabel(item);
-  const rows = [
+  const fileRows = [
     { label: "Format", value: itemFormat },
     { label: "MIME", value: getMimeType(item) },
     { label: "File size", value: fileSize },
     { label: "Dimensions", value: dimensionsLabel },
     { label: "Aspect", value: aspectLabel },
     { label: "Rights", value: String(item.rightsStatus) },
+  ].filter((row): row is { label: string; value: string } => Boolean(row.value));
+  const sourceRows = [
     { label: "Item ID", value: item.id },
     { label: "Source ID", value: item.source?.id ?? null },
     { label: "Source external ID", value: item.sourceExternalId },
   ].filter((row): row is { label: string; value: string } => Boolean(row.value));
 
   return (
-    <dl className="item-detail__technical-list">
-      {rows.map((row) => (
-        <Metadata label={row.label} value={row.value} key={row.label} />
-      ))}
-    </dl>
+    <>
+      <TechnicalDrawerMetadataGroup rows={fileRows} title="File/media" />
+      <TechnicalDrawerMetadataGroup rows={sourceRows} title="Source/internal IDs" />
+    </>
   );
 }
 
@@ -891,54 +937,56 @@ function LowerContextPanel({
   }
 
   return (
-    <section className="item-detail__lower-context" aria-label="secondary item context">
-      {relationships.length > 0 ? (
-        <DetailSectionGroup id="detail-links" title="Connections">
-          <div className="detail-list">
-            {relationships.map((relationship) => (
-              <RelationshipRow
-                key={relationship.id}
-                relationship={relationship}
-                onOpenRelatedItem={onOpenRelatedItem}
-              />
-            ))}
-          </div>
-        </DetailSectionGroup>
-      ) : null}
+    <TechnicalDrawerGroup title="Relationships / AI / history">
+      <div className="item-detail__lower-context" aria-label="secondary item context">
+        {relationships.length > 0 ? (
+          <DetailSectionGroup id="detail-links" title="Connections">
+            <div className="detail-list">
+              {relationships.map((relationship) => (
+                <RelationshipRow
+                  key={relationship.id}
+                  relationship={relationship}
+                  onOpenRelatedItem={onOpenRelatedItem}
+                />
+              ))}
+            </div>
+          </DetailSectionGroup>
+        ) : null}
 
-      {aiAnnotations.length > 0 ? (
-        <DetailSectionGroup id="detail-ai-notes" title="AI notes">
-          <div className="annotation-list">
-            {aiAnnotations.map((annotation) => (
-              <article
-                className={`annotation-row annotation-row--${annotation.reviewStatus}`}
-                key={annotation.id}
-              >
-                <div className="annotation-row__header">
-                  <span>{annotation.fieldName}</span>
-                  <ProvenanceMark annotation={annotation} />
+        {aiAnnotations.length > 0 ? (
+          <DetailSectionGroup id="detail-ai-notes" title="AI notes">
+            <div className="annotation-list">
+              {aiAnnotations.map((annotation) => (
+                <article
+                  className={`annotation-row annotation-row--${annotation.reviewStatus}`}
+                  key={annotation.id}
+                >
+                  <div className="annotation-row__header">
+                    <span>{annotation.fieldName}</span>
+                    <ProvenanceMark annotation={annotation} />
+                  </div>
+                  <pre>{formatPayload(annotation.payload)}</pre>
+                </article>
+              ))}
+            </div>
+          </DetailSectionGroup>
+        ) : null}
+
+        {events.length > 0 ? (
+          <DetailSectionGroup id="detail-history-group" title="History">
+            <div className="detail-list">
+              {events.map((event) => (
+                <div className="detail-list__row" key={event.id}>
+                  <span className="detail-list__label">{event.eventType}</span>
+                  <span>{event.actor}</span>
+                  <span className="detail-muted">{formatDate(event.createdAt)}</span>
                 </div>
-                <pre>{formatPayload(annotation.payload)}</pre>
-              </article>
-            ))}
-          </div>
-        </DetailSectionGroup>
-      ) : null}
-
-      {events.length > 0 ? (
-        <DetailSectionGroup id="detail-history-group" title="History">
-          <div className="detail-list">
-            {events.map((event) => (
-              <div className="detail-list__row" key={event.id}>
-                <span className="detail-list__label">{event.eventType}</span>
-                <span>{event.actor}</span>
-                <span className="detail-muted">{formatDate(event.createdAt)}</span>
-              </div>
-            ))}
-          </div>
-        </DetailSectionGroup>
-      ) : null}
-    </section>
+              ))}
+            </div>
+          </DetailSectionGroup>
+        ) : null}
+      </div>
+    </TechnicalDrawerGroup>
   );
 }
 
@@ -1240,11 +1288,11 @@ function DeleteAction({
 
 function getDownloadPayload(item: ItemDetail): { label: string; text: string } | null {
   if (item.type === "caption" && item.content.caption?.body) {
-    return { label: "Copy caption", text: item.content.caption.body };
+    return { label: "Copy caption text", text: item.content.caption.body };
   }
 
   if (item.type === "note" && item.content.note?.body) {
-    return { label: "Copy note", text: item.content.note.body };
+    return { label: "Copy note text", text: item.content.note.body };
   }
 
   if (item.type === "link" && item.content.link?.url) {
