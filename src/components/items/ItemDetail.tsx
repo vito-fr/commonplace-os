@@ -1050,6 +1050,17 @@ function getItemDownloadTarget(item: ItemDetail): { filename: string; url: strin
     };
   }
 
+  if (item.type === "video") {
+    const video = item.content.video;
+    const videoUrl = video?.fileUrl ?? video?.fileRef ?? video?.asset?.fileUrl ?? null;
+    if (videoUrl) {
+      return {
+        filename: video?.asset?.originalName || getDownloadFilename(videoUrl, title, video?.mimeType ?? video?.asset?.mimeType, "mp4"),
+        url: videoUrl,
+      };
+    }
+  }
+
   const asset = item.content.link?.asset ?? null;
   if (asset?.fileUrl) {
     return {
@@ -1107,6 +1118,15 @@ function getExtensionFromMimeType(value: string | null | undefined) {
   }
   if (normalized.includes("pdf")) {
     return "pdf";
+  }
+  if (normalized.includes("webm")) {
+    return "webm";
+  }
+  if (normalized.includes("quicktime")) {
+    return "mov";
+  }
+  if (normalized.includes("mp4") || normalized.includes("video")) {
+    return "mp4";
   }
 
   return null;
@@ -1299,6 +1319,13 @@ function getDownloadPayload(item: ItemDetail): { label: string; text: string } |
 
   if (item.type === "link" && item.content.link?.url) {
     return { label: "Copy source URL", text: item.content.link.url };
+  }
+
+  if (item.type === "video") {
+    const videoUrl = item.content.video?.fileUrl ?? item.content.video?.fileRef ?? null;
+    if (videoUrl) {
+      return { label: "Copy video URL", text: videoUrl };
+    }
   }
 
   return null;
@@ -1618,6 +1645,10 @@ function ItemHero({
     );
   }
 
+  if (item.type === "video") {
+    return <VideoHero item={item} />;
+  }
+
   if (item.type === "link") {
     const pdfUrl = getPdfUrl(item);
 
@@ -1652,6 +1683,39 @@ function ItemHero({
   }
 
   return <div className="item-detail__media-placeholder">Preview unavailable</div>;
+}
+
+function VideoHero({ item }: { item: ItemDetail }) {
+  const video = item.content.video;
+  const videoUrl = video?.fileUrl ?? video?.fileRef ?? video?.asset?.fileUrl ?? null;
+  const posterUrl = video?.posterUrl ?? video?.posterFileRef ?? undefined;
+  const title = getItemDisplayTitle(item);
+
+  if (!videoUrl) {
+    return (
+      <div className="item-detail__media-placeholder item-detail__media-placeholder--video">
+        <span className="item-detail__missing-glyph" aria-hidden="true">video</span>
+        <strong>{title}</strong>
+        <small>No local video file available</small>
+      </div>
+    );
+  }
+
+  return (
+    <figure className="item-detail__video-hero">
+      <video
+        className="item-detail__hero-video"
+        src={videoUrl}
+        poster={posterUrl}
+        controls
+        playsInline
+        preload="metadata"
+        width={video?.width ?? undefined}
+        height={video?.height ?? undefined}
+        aria-label={title}
+      />
+    </figure>
+  );
 }
 
 function ExpandImageIcon() {
@@ -2226,6 +2290,10 @@ function getItemFormat(item: ItemDetail) {
     return item.content.image?.mimeType ?? "image";
   }
 
+  if (item.type === "video") {
+    return item.content.video?.mimeType ?? "video";
+  }
+
   if (item.type === "link") {
     if (item.content.link?.contentType === "pdf") {
       return item.content.link.asset?.mimeType ?? "PDF";
@@ -2254,6 +2322,10 @@ function getMimeType(item: ItemDetail) {
     return item.content.image?.mimeType ?? null;
   }
 
+  if (item.type === "video") {
+    return item.content.video?.mimeType ?? item.content.video?.asset?.mimeType ?? null;
+  }
+
   if (item.type === "link") {
     return item.content.link?.asset?.mimeType ?? null;
   }
@@ -2262,7 +2334,7 @@ function getMimeType(item: ItemDetail) {
 }
 
 function getFileSizeLabel(item: ItemDetail) {
-  const size = item.content.link?.asset?.sizeBytes ?? null;
+  const size = item.content.video?.asset?.sizeBytes ?? item.content.link?.asset?.sizeBytes ?? null;
 
   if (!size || size <= 0) {
     return null;
@@ -2292,6 +2364,10 @@ function formatItemType(item: ItemDetail) {
     return "Caption";
   }
 
+  if (item.type === "video") {
+    return "Video";
+  }
+
   if (item.type === "link" && item.content.link?.contentType === "pdf") {
     return "PDF";
   }
@@ -2312,12 +2388,12 @@ function formatItemType(item: ItemDetail) {
 }
 
 function getDimensionsLabel(item: ItemDetail) {
-  if (item.type !== "image") {
+  if (item.type !== "image" && item.type !== "video") {
     return null;
   }
 
-  const width = item.content.image?.width;
-  const height = item.content.image?.height;
+  const width = item.type === "video" ? item.content.video?.width : item.content.image?.width;
+  const height = item.type === "video" ? item.content.video?.height : item.content.image?.height;
 
   if (!width || !height) {
     return null;
@@ -2327,7 +2403,7 @@ function getDimensionsLabel(item: ItemDetail) {
 }
 
 function getAspectRatioLabel(item: ItemDetail) {
-  const ratio = item.content.image?.aspectRatio;
+  const ratio = item.type === "video" ? item.content.video?.aspectRatio : item.content.image?.aspectRatio;
 
   if (!ratio || !Number.isFinite(ratio)) {
     return null;
@@ -2632,7 +2708,7 @@ function getExternalSourceTitle(item: ItemDetail, sourceUrl: string) {
     return "PDF source";
   }
 
-  if (item.type === "link" && item.content.link?.contentType === "video") {
+  if (item.type === "video" || (item.type === "link" && item.content.link?.contentType === "video")) {
     return "Video source";
   }
 
@@ -2769,6 +2845,10 @@ function getItemDisplayTitle(item: ItemDetail, kindLabel = formatItemType(item))
     return formatDisplayTitle(explicitTitle);
   }
 
+  if (item.type === "video") {
+    return formatDisplayTitle(getItemFileLabel(item) ?? "Untitled video");
+  }
+
   if (item.type === "note") {
     return getTextPreviewTitle(item.content.note?.body, "Untitled note");
   }
@@ -2827,6 +2907,9 @@ function getHighResolutionMediaUrl(value: string) {
 function getItemFileLabel(item: ItemDetail) {
   const candidates = [
     item.title && looksLikeFileName(item.title) ? item.title : null,
+    item.content.video?.asset?.originalName,
+    getFileNameFromUrl(item.content.video?.asset?.fileUrl),
+    getFileNameFromPath(item.content.video?.fileRef),
     item.content.link?.asset?.originalName,
     getFileNameFromUrl(item.content.link?.asset?.fileUrl),
     getFileNameFromUrl(item.content.link?.url),

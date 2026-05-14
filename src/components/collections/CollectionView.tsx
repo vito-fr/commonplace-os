@@ -687,7 +687,7 @@ function CollectionUploadTile({
         aria-label="upload files to this collection"
         hidden
         multiple
-        accept="image/*,application/pdf"
+        accept="image/*,application/pdf,video/*"
         type="file"
         onChange={onChange}
       />
@@ -1050,7 +1050,7 @@ function matchesKindFilter(item: CollectionDetailItem, kindFilter: CollectionKin
   }
 
   if (kindFilter === "video") {
-    return item.type === "link" && item.linkContentType === "video";
+    return item.type === "video" || (item.type === "link" && item.linkContentType === "video");
   }
 
   if (kindFilter === "website") {
@@ -1103,7 +1103,7 @@ function buildCollectionPreviewItems(items: CollectionDetailItem[]): CollectionC
       title: item.title ?? item.ogTitle,
       kind: item.type,
       format: item.linkContentType,
-      thumbnailUrl: item.thumbnailUrl ?? item.imageUrl ?? item.ogImageUrl,
+      thumbnailUrl: item.thumbnailUrl ?? item.imageUrl ?? item.videoPosterUrl ?? item.ogImageUrl,
       previewUrl: item.previewUrl,
       imageUrl: item.imageUrl,
       ogImageUrl: item.ogImageUrl,
@@ -1122,15 +1122,19 @@ function getPreviewRank(item: CollectionDetailItem) {
     return 0;
   }
 
-  if (item.ogImageUrl) {
+  if (item.type === "video" && item.videoPosterUrl) {
     return 1;
   }
 
-  if (item.linkContentType === "pdf") {
+  if (item.ogImageUrl) {
     return 2;
   }
 
-  return 3;
+  if (item.linkContentType === "pdf") {
+    return 3;
+  }
+
+  return 4;
 }
 
 function renderCoverTiles(items: CollectionCardPreviewItem[]) {

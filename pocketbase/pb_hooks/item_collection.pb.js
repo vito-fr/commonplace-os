@@ -92,6 +92,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     const captionCount = Number(row.captionCount) || 0;
     const noteCount = Number(row.noteCount) || 0;
     const linkCount = Number(row.linkCount) || 0;
+    const videoCount = Number(row.videoCount) || 0;
 
     if (imageCount > 0) {
       parts.push(`${imageCount} ${imageCount === 1 ? "image" : "images"}`);
@@ -107,6 +108,10 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
 
     if (linkCount > 0) {
       parts.push(`${linkCount} ${linkCount === 1 ? "link" : "links"}`);
+    }
+
+    if (videoCount > 0) {
+      parts.push(`${videoCount} ${videoCount === 1 ? "video" : "videos"}`);
     }
 
     return parts.join(" · ") || "no pieces";
@@ -178,6 +183,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       captionCount: 0,
       noteCount: 0,
       linkCount: 0,
+      videoCount: 0,
     }),
   );
 
@@ -199,7 +205,8 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
           SUM(CASE WHEN i.type = 'image' THEN 1 ELSE 0 END) AS imageCount,
           SUM(CASE WHEN i.type = 'caption' THEN 1 ELSE 0 END) AS captionCount,
           SUM(CASE WHEN i.type = 'note' THEN 1 ELSE 0 END) AS noteCount,
-          SUM(CASE WHEN i.type = 'link' THEN 1 ELSE 0 END) AS linkCount
+          SUM(CASE WHEN i.type = 'link' THEN 1 ELSE 0 END) AS linkCount,
+          SUM(CASE WHEN i.type = 'video' THEN 1 ELSE 0 END) AS videoCount
         FROM collections c
         LEFT JOIN collection_items ci
           ON ci.collection_id = c.id
@@ -226,6 +233,11 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       imageHeight: nullString(),
       ogMetadata: nullString(),
       assetFileRef: nullString(),
+      assetMimeType: nullString(),
+      videoFileRef: nullString(),
+      videoMimeType: nullString(),
+      videoPosterFileRef: nullString(),
+      videoAspectRatio: nullString(),
       thumbnailFileRef: nullString(),
       textPreview: nullString(),
       sourceUrl: nullString(),
@@ -250,6 +262,11 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
             link.og_metadata AS ogMetadata,
             asset.file_ref AS assetFileRef,
+            asset.mime_type AS assetMimeType,
+            video.file_ref AS videoFileRef,
+            video.mime_type AS videoMimeType,
+            video.poster_file_ref AS videoPosterFileRef,
+            CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
             thumb.file_ref AS thumbnailFileRef,
             SUBSTR(
               COALESCE(
@@ -257,6 +274,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
                 caption.body,
                 note.body,
                 link.url,
+                CASE WHEN i.type = 'video' THEN 'video' ELSE NULL END,
                 ''
               ),
               1,
@@ -282,6 +300,9 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
                   WHEN i.type = 'link'
                     AND link.content_type = 'video'
                     AND COALESCE(link.og_metadata, '') LIKE '%"image"%' THEN 2
+                  WHEN i.type = 'video'
+                    AND COALESCE(video.poster_file_ref, '') != '' THEN 2
+                  WHEN i.type = 'video' THEN 3
                   WHEN i.type = 'link'
                     AND link.content_type = 'pdf'
                     AND asset.file_ref IS NOT NULL
@@ -305,6 +326,8 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             ON note.item_id = i.id
           LEFT JOIN items_link link
             ON link.item_id = i.id
+          LEFT JOIN items_video video
+            ON video.item_id = i.id
           LEFT JOIN sources s
             ON s.id = i.source_id
             AND s.workspace_id = i.workspace_id
@@ -329,6 +352,11 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
           imageHeight,
           ogMetadata,
           assetFileRef,
+          assetMimeType,
+          videoFileRef,
+          videoMimeType,
+          videoPosterFileRef,
+          videoAspectRatio,
           thumbnailFileRef,
           textPreview,
           sourceUrl,
@@ -355,23 +383,29 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
     const ogImageUrl = openGraph.image || (isDirectImageUrl(sourceUrl) ? sourceUrl : null);
     const format = nullableString(row.format);
-    const assetFileRef = nullableString(row.assetFileRef);
+    const videoFileRef = nullableString(row.videoFileRef);
+    const videoPosterFileRef = nullableString(row.videoPosterFileRef);
+    const assetFileRef = videoFileRef || nullableString(row.assetFileRef);
+    const assetMimeType = nullableString(row.videoMimeType) || nullableString(row.assetMimeType);
     const thumbnailFileRef = nullableString(row.thumbnailFileRef);
-    const videoPosterUrl = format === "video" ? ogImageUrl : null;
-    const previewUrl = imageUrl || ogImageUrl || videoPosterUrl || (format === "pdf" ? assetFileRef : null);
+    const videoPosterUrl = row.kind === "video" ? videoPosterFileRef || thumbnailFileRef : format === "video" ? ogImageUrl : null;
+    const previewUrl = imageUrl || videoPosterUrl || ogImageUrl || (format === "pdf" ? assetFileRef : null);
+    const previewAspectRatio = row.kind === "video" ? nullableNumber(row.videoAspectRatio) || aspectRatio : aspectRatio;
     const previewItem = {
       id: row.id,
       title: nullableString(row.title) || openGraph.title,
       kind: row.kind,
       format,
-      thumbnailUrl: thumbnailFileRef || imageUrl || ogImageUrl,
+      thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || ogImageUrl,
       previewUrl,
       imageUrl,
       ogImageUrl,
       videoPosterUrl,
+      assetFileUrl: assetFileRef,
+      assetMimeType,
       width: imageWidth,
       height: imageHeight,
-      aspectRatio,
+      aspectRatio: previewAspectRatio,
       textPreview: nullableString(row.textPreview),
       sourceUrl,
       source: nullableString(row.sourceKind),
@@ -472,7 +506,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
   }
 
   function formatKindSummary(items) {
-    const order = ["image", "caption", "note", "link"];
+    const order = ["image", "caption", "note", "link", "video"];
     const counts = {};
 
     for (let index = 0; index < items.length; index += 1) {
@@ -542,6 +576,13 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         link.url AS url,
         link.content_type AS linkContentType,
         link.og_metadata AS ogMetadata,
+        video.file_ref AS videoFileRef,
+        video.mime_type AS videoMimeType,
+        CASE WHEN video.width IS NULL THEN NULL ELSE CAST(video.width AS TEXT) END AS videoWidth,
+        CASE WHEN video.height IS NULL THEN NULL ELSE CAST(video.height AS TEXT) END AS videoHeight,
+        CASE WHEN video.duration_ms IS NULL THEN NULL ELSE CAST(video.duration_ms AS TEXT) END AS videoDurationMs,
+        video.poster_file_ref AS videoPosterFileRef,
+        CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
         asset.file_ref AS assetFileUrl,
         asset.mime_type AS assetMimeType,
         thumb.file_ref AS thumbnailFileRef
@@ -562,6 +603,8 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
+      LEFT JOIN items_video video
+        ON video.item_id = i.id
       LEFT JOIN item_assets asset
         ON asset.item_id = i.id
         AND asset.workspace_id = i.workspace_id
@@ -595,6 +638,13 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       url: nullString(),
       linkContentType: nullString(),
       ogMetadata: nullString(),
+      videoFileRef: nullString(),
+      videoMimeType: nullString(),
+      videoWidth: nullString(),
+      videoHeight: nullString(),
+      videoDurationMs: nullString(),
+      videoPosterFileRef: nullString(),
+      videoAspectRatio: nullString(),
       assetFileUrl: nullString(),
       assetMimeType: nullString(),
       thumbnailFileRef: nullString(),
@@ -609,15 +659,22 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     const row = itemRows[index];
     const openGraph = parseOpenGraph(row.ogMetadata);
     const imageUrl = nullableString(row.imageUrl);
-    const imageWidth = nullableNumber(row.imageWidth);
-    const imageHeight = nullableNumber(row.imageHeight);
-    const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
     const linkContentType = nullableString(row.linkContentType);
-    const assetFileUrl = nullableString(row.assetFileUrl);
-    const assetMimeType = nullableString(row.assetMimeType);
+    const videoFileRef = nullableString(row.videoFileRef);
+    const videoMimeType = nullableString(row.videoMimeType);
+    const videoWidth = nullableNumber(row.videoWidth);
+    const videoHeight = nullableNumber(row.videoHeight);
+    const videoDurationMs = nullableNumber(row.videoDurationMs);
+    const videoPosterFileRef = nullableString(row.videoPosterFileRef);
+    const videoAspectRatio = nullableNumber(row.videoAspectRatio);
+    const assetFileUrl = videoFileRef || nullableString(row.assetFileUrl);
+    const assetMimeType = videoMimeType || nullableString(row.assetMimeType);
+    const imageWidth = row.type === "video" ? videoWidth : nullableNumber(row.imageWidth);
+    const imageHeight = row.type === "video" ? videoHeight : nullableNumber(row.imageHeight);
+    const aspectRatio = row.type === "video" ? videoAspectRatio || aspectRatioFor(videoWidth, videoHeight) : aspectRatioFor(imageWidth, imageHeight);
     const thumbnailFileRef = nullableString(row.thumbnailFileRef);
-    const videoPosterUrl = linkContentType === "video" ? openGraph.image : null;
-    const previewUrl = imageUrl || openGraph.image || videoPosterUrl || (linkContentType === "pdf" ? assetFileUrl : null);
+    const videoPosterUrl = row.type === "video" ? videoPosterFileRef || thumbnailFileRef : linkContentType === "video" ? openGraph.image : null;
+    const previewUrl = imageUrl || videoPosterUrl || openGraph.image || (linkContentType === "pdf" ? assetFileUrl : null);
     const sourceLabel =
       nullableString(row.sourceLabel) ||
       nullableString(row.sourceIdentifier) ||
@@ -650,17 +707,18 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       noteParagraph: nullableString(row.noteParagraph),
       url: nullableString(row.url),
       linkContentType,
+      videoDurationMs,
       ogImageUrl: openGraph.image,
       ogTitle: openGraph.title,
       assetFileUrl,
       assetMimeType,
       previewUrl,
-      thumbnailUrl: thumbnailFileRef || imageUrl || openGraph.image,
+      thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || openGraph.image,
       videoPosterUrl,
       mediaPreview: {
         previewUrl,
         imageUrl,
-        thumbnailUrl: thumbnailFileRef || imageUrl || openGraph.image,
+        thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || openGraph.image,
         ogImageUrl: openGraph.image,
         videoPosterUrl,
         assetFileUrl,

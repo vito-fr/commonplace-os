@@ -60,6 +60,7 @@ const typeFilterOptions: ArchiveTypeFilter[] = [
   "caption",
   "note",
   "link",
+  "video",
 ];
 const sourceFilterOptions: ArchiveSourceFilter[] = [
   "all",
@@ -1512,23 +1513,30 @@ export function App() {
     for (const file of files) {
       const kind = getCollectionImportFileKind(file);
       if (!kind) {
-        throw new Error("Only image and PDF files can be imported into a collection.");
+        throw new Error("Only image, PDF, and video files can be imported into a collection.");
       }
 
       const captureResult =
-        kind === "pdf"
-          ? await itemCaptureWriter.capturePdf({
+        kind === "video"
+          ? await itemCaptureWriter.captureVideo({
               workspaceId,
-              type: "pdf",
+              type: "video",
               file,
               actor: "system",
             })
-          : await itemCaptureWriter.captureImage({
-              workspaceId,
-              type: "image",
-              file,
-              actor: "system",
-            });
+          : kind === "pdf"
+            ? await itemCaptureWriter.capturePdf({
+                workspaceId,
+                type: "pdf",
+                file,
+                actor: "system",
+              })
+            : await itemCaptureWriter.captureImage({
+                workspaceId,
+                type: "image",
+                file,
+                actor: "system",
+              });
 
       await itemCollectionClient.attachCollection({
         workspaceId,
@@ -1847,6 +1855,13 @@ export function App() {
           file: captureInput.file,
           actor: "system",
         });
+      } else if (captureInput.type === "video") {
+        captureResult = await itemCaptureWriter.captureVideo({
+          workspaceId,
+          type: "video",
+          file: captureInput.file,
+          actor: "system",
+        });
       } else {
         captureResult = await itemCaptureWriter.captureNote({
           workspaceId,
@@ -1867,7 +1882,9 @@ export function App() {
             ? "Imported image."
             : captureInput.type === "pdf"
               ? "Imported PDF."
-            : "Added note.",
+              : captureInput.type === "video"
+                ? "Imported video."
+                : "Added note.",
       );
       return {
         created: captureResult.created,
@@ -2409,7 +2426,7 @@ function buildArchiveObjects({
   ].sort(compareArchiveObjectsByCreatedAt);
 }
 
-function getCollectionImportFileKind(file: File): "image" | "pdf" | null {
+function getCollectionImportFileKind(file: File): "image" | "pdf" | "video" | null {
   const mimeType = file.type.toLowerCase();
   if (mimeType.startsWith("image/")) {
     return "image";
@@ -2417,6 +2434,10 @@ function getCollectionImportFileKind(file: File): "image" | "pdf" | null {
 
   if (mimeType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
     return "pdf";
+  }
+
+  if (mimeType.startsWith("video/") || /\.(m4v|mov|mp4|webm)$/i.test(file.name)) {
+    return "video";
   }
 
   return null;
@@ -2636,7 +2657,7 @@ function ArchiveEmptyState({
       <div className="archive-state">
         <span className="archive-state__kicker">empty items</span>
         <h2 className="archive-state__title">No items in Gallery yet.</h2>
-        <p className="archive-state__copy">Use Import to add notes, links, images, or PDFs.</p>
+        <p className="archive-state__copy">Use Import to add notes, links, images, PDFs, or videos.</p>
       </div>
     );
   }

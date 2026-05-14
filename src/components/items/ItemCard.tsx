@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent, 
 import { type ItemStatus, type ItemType } from "../atoms";
 import { CardActionMenu, CardGlyph, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
 import { CardMediaImage } from "./CardMediaImage";
+import { VideoCard } from "./VideoCard";
 import { downloadArchiveFile } from "../../data/archiveDownload";
 
 export type ItemCardActionAnchor = {
@@ -50,6 +51,7 @@ export interface ItemCardProps {
   noteParagraph?: string | null;
   url?: string | null;
   linkContentType?: string | null;
+  videoDurationMs?: number | null;
   ogImageUrl?: string | null;
   ogTitle?: string | null;
   assetFileUrl?: string | null;
@@ -96,6 +98,7 @@ export function ItemCard({
   noteParagraph = null,
   url = null,
   linkContentType = null,
+  videoDurationMs = null,
   ogImageUrl = null,
   ogTitle = null,
   assetFileUrl = null,
@@ -167,6 +170,10 @@ export function ItemCard({
     mediaPreview?.ogImageUrl,
     mediaPreview?.videoPosterUrl,
     videoPosterUrl,
+    mediaPreview?.assetFileUrl,
+    assetFileUrl,
+    assetMimeType,
+    videoDurationMs ?? "",
     url,
   ].join("|");
   const [failedMediaUrls, setFailedMediaUrls] = useState<string[]>([]);
@@ -204,6 +211,19 @@ export function ItemCard({
     ],
     failedMediaUrls,
   );
+  const resolvedVideoPosterUrl = getFirstAvailableMediaUrl(
+    [
+      videoPosterUrl,
+      mediaPreview?.videoPosterUrl,
+      thumbnailUrl,
+      mediaPreview?.thumbnailUrl,
+      previewUrl,
+      mediaPreview?.previewUrl,
+      ogImageUrl,
+      mediaPreview?.ogImageUrl,
+    ],
+    failedMediaUrls,
+  );
   const resolvedAssetFileUrl = assetFileUrl ?? mediaPreview?.assetFileUrl ?? null;
   const resolvedAspectRatio = getMediaAspectRatio({
     aspectRatio,
@@ -217,9 +237,11 @@ export function ItemCard({
   const masonryPreviewImageUrl =
     type === "image"
       ? resolvedImageUrl
-      : linkContentType === "pdf"
-        ? null
-        : resolvedOgImageUrl || directRemoteImageUrl;
+      : type === "video"
+        ? resolvedVideoPosterUrl
+        : linkContentType === "pdf"
+          ? null
+          : resolvedOgImageUrl || directRemoteImageUrl;
   const masonryImageRatioState = variant === "masonry" ? (resolvedAspectRatio ? "reserved" : "fallback") : undefined;
   const masonryAspectRatio =
     variant === "masonry"
@@ -439,6 +461,7 @@ export function ItemCard({
             resolvedAssetFileUrl,
             assetMimeType ?? mediaPreview?.assetMimeType ?? null,
             resolvedOgImageUrl,
+            resolvedVideoPosterUrl,
             ogTitle,
             mediaPreview?.width ?? imageWidth,
             mediaPreview?.height ?? imageHeight,
@@ -648,6 +671,9 @@ function getMasonryFallbackRatio({
     return type === "caption" ? "1 / 1.12" : "1 / 1.24";
   }
 
+  if (type === "video") {
+    return "16 / 9";
+  }
   if (linkContentType === "pdf") {
     return "3 / 4";
   }
@@ -710,6 +736,7 @@ function renderContent(
   assetFileUrl: string | null,
   assetMimeType: string | null,
   ogImageUrl: string | null,
+  videoPosterUrl: string | null,
   ogTitle: string | null,
   width: number | null | undefined,
   height: number | null | undefined,
@@ -751,6 +778,22 @@ function renderContent(
       <p className="item-card__text item-card__text--note">{noteParagraph}</p>
     ) : (
       <Placeholder label="note pending" />
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <VideoCard
+        src={assetFileUrl}
+        posterUrl={videoPosterUrl || ogImageUrl || directImageUrl}
+        title={title ?? ogTitle}
+        mimeType={assetMimeType}
+        width={width ?? undefined}
+        height={height ?? undefined}
+        loading={mediaLoading}
+        onMediaError={onMediaError}
+        onPosterLoad={onMediaLoad}
+      />
     );
   }
 
@@ -842,7 +885,7 @@ function getDownloadFilename(url: string, primaryLabel: string, type: ItemType, 
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const extension = linkContentType === "pdf" ? "pdf" : type === "image" ? "jpg" : "txt";
+  const extension = linkContentType === "pdf" ? "pdf" : type === "image" ? "jpg" : type === "video" ? "mp4" : "txt";
 
   return `${label || "archive-item"}.${extension}`;
 }

@@ -93,6 +93,15 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         link.og_metadata AS linkOgMetadata,
         link.content_type AS linkContentType,
         link.fetched_at AS linkFetchedAt,
+        video.file_ref AS videoFileRef,
+        video.mime_type AS videoMimeType,
+        CASE WHEN video.width IS NULL THEN NULL ELSE CAST(video.width AS TEXT) END AS videoWidth,
+        CASE WHEN video.height IS NULL THEN NULL ELSE CAST(video.height AS TEXT) END AS videoHeight,
+        CASE WHEN video.duration_ms IS NULL THEN NULL ELSE CAST(video.duration_ms AS TEXT) END AS videoDurationMs,
+        video.poster_file_ref AS videoPosterFileRef,
+        video.dominant_colors AS videoDominantColors,
+        video.perceptual_hash AS videoPerceptualHash,
+        CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
         asset.file_ref AS assetFileRef,
         asset.original_name AS assetOriginalName,
         asset.mime_type AS assetMimeType,
@@ -109,6 +118,8 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         ON note.item_id = i.id
       LEFT JOIN items_link link
         ON link.item_id = i.id
+      LEFT JOIN items_video video
+        ON video.item_id = i.id
       LEFT JOIN item_assets asset
         ON asset.item_id = i.id
         AND asset.workspace_id = i.workspace_id
@@ -154,6 +165,15 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       linkOgMetadata: nullString(),
       linkContentType: nullString(),
       linkFetchedAt: nullString(),
+      videoFileRef: nullString(),
+      videoMimeType: nullString(),
+      videoWidth: nullString(),
+      videoHeight: nullString(),
+      videoDurationMs: nullString(),
+      videoPosterFileRef: nullString(),
+      videoDominantColors: nullString(),
+      videoPerceptualHash: nullString(),
+      videoAspectRatio: nullString(),
       assetFileRef: nullString(),
       assetOriginalName: nullString(),
       assetMimeType: nullString(),
@@ -325,6 +345,9 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
   const sourceId = nullableString(row.sourceId);
   const imageWidth = nullableNumber(row.imageWidth);
   const imageHeight = nullableNumber(row.imageHeight);
+  const videoWidth = nullableNumber(row.videoWidth);
+  const videoHeight = nullableNumber(row.videoHeight);
+  const videoAspectRatio = nullableNumber(row.videoAspectRatio);
   const content = {
     kind: row.type,
     image:
@@ -363,6 +386,28 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
             ogMetadata: parseJson(row.linkOgMetadata, null),
             contentType: nullableString(row.linkContentType),
             fetchedAt: nullableString(row.linkFetchedAt),
+            asset: nullableString(row.assetFileRef)
+              ? {
+                  fileRef: nullableString(row.assetFileRef),
+                  originalName: nullableString(row.assetOriginalName),
+                  mimeType: nullableString(row.assetMimeType),
+                  sizeBytes: nullableNumber(row.assetSizeBytes),
+                }
+              : null,
+          }
+        : null,
+    video:
+      row.type === "video"
+        ? {
+            fileRef: nullableString(row.videoFileRef),
+            mimeType: nullableString(row.videoMimeType),
+            width: videoWidth,
+            height: videoHeight,
+            durationMs: nullableNumber(row.videoDurationMs),
+            posterFileRef: nullableString(row.videoPosterFileRef),
+            dominantColors: parseJson(row.videoDominantColors, null),
+            perceptualHash: nullableString(row.videoPerceptualHash),
+            aspectRatio: videoAspectRatio || aspectRatioFor(videoWidth, videoHeight),
             asset: nullableString(row.assetFileRef)
               ? {
                   fileRef: nullableString(row.assetFileRef),

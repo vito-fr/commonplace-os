@@ -1839,6 +1839,10 @@ function getCollectionPreviewLabel(kind: string, format?: string | null) {
     return "video";
   }
 
+  if (kind === "video") {
+    return "video";
+  }
+
   return kind.slice(0, 1).toUpperCase();
 }
 

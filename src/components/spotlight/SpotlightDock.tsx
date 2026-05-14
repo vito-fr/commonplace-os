@@ -6,7 +6,10 @@ export type SpotlightCaptureRequest =
   | { type: "link"; url: string }
   | { type: "note"; body: string }
   | { type: "image"; file: File }
-  | { type: "pdf"; file: File };
+  | { type: "pdf"; file: File }
+  | { type: "video"; file: File };
+
+type SpotlightFileCaptureRequest = Extract<SpotlightCaptureRequest, { file: File }>;
 
 export type SpotlightCaptureResult = {
   created: boolean;
@@ -39,7 +42,7 @@ type ImportQueueItem = {
 };
 
 const MAX_BATCH_FILES = 20;
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_FILE_BYTES = 250 * 1024 * 1024;
 
 export function SpotlightDock({
   captureError,
@@ -177,7 +180,7 @@ export function SpotlightDock({
     const readyItems = fileQueue.filter((item) => item.status === "ready");
 
     if (readyItems.length === 0) {
-      setBatchNotice("Choose image or PDF files first.");
+      setBatchNotice("Choose image, PDF, or video files first.");
       return;
     }
 
@@ -188,11 +191,7 @@ export function SpotlightDock({
       updateQueueItem(item.id, { status: "importing", message: "importing" });
 
       try {
-        const result = await onCapture(
-          isPdfFile(item.file)
-            ? { type: "pdf", file: item.file }
-            : { type: "image", file: item.file },
-        );
+        const result = await onCapture(getFileCaptureRequest(item.file));
         updateQueueItem(item.id, {
           status: result?.created === false ? "duplicate" : "imported",
           message: result?.created === false ? "already in archive" : "imported",
@@ -212,7 +211,7 @@ export function SpotlightDock({
     setImportMode("files");
 
     if (nextFiles.length === 0) {
-      setBatchNotice("Choose image or PDF files first.");
+      setBatchNotice("Choose image, PDF, or video files first.");
       return;
     }
 
@@ -354,8 +353,8 @@ export function SpotlightDock({
                           }
                         }}
                       >
-                        Drop or choose images and PDFs
-                        <span>{MAX_BATCH_FILES} files · 25MB each</span>
+                        Drop or choose images, PDFs, and videos
+                        <span>{MAX_BATCH_FILES} files · 250MB each</span>
                       </div>
                       <FileQueueList queue={fileQueue} />
                     </>
@@ -368,7 +367,7 @@ export function SpotlightDock({
                   ref={fileInputRef}
                   className="visually-hidden"
                   type="file"
-                  accept="image/*,application/pdf,video/*,audio/*"
+                  accept="image/*,application/pdf,video/*"
                   multiple
                   onChange={(event) => {
                     if (event.target.files) {
@@ -469,8 +468,8 @@ function FileQueueList({ queue }: { queue: ImportQueueItem[] }) {
   if (queue.length === 0) {
     return (
       <div className="spotlight-import-panel__queue spotlight-import-panel__queue--empty">
-        <span>Images and PDFs import now.</span>
-        <small>Video and audio stay staged for the next media slice.</small>
+        <span>Images, PDFs, and videos import now.</span>
+        <small>Accepted files land in the archive.</small>
       </div>
     );
   }
@@ -519,7 +518,7 @@ function getImportHint(importMode: ImportMode) {
   }
 
   if (importMode === "files") {
-    return "images and PDFs import now";
+    return "images, PDFs, and videos import now";
   }
 
   return "platform URLs are classified";
@@ -619,7 +618,7 @@ function fileToQueueItem(file: File): ImportQueueItem {
 
 function validateImportFile(file: File): Pick<ImportQueueItem, "status" | "message"> {
   if (file.size > MAX_FILE_BYTES) {
-    return { status: "failed", message: "over 25MB limit" };
+    return { status: "failed", message: "over 250MB limit" };
   }
 
   if (isImageFile(file)) {
@@ -630,7 +629,23 @@ function validateImportFile(file: File): Pick<ImportQueueItem, "status" | "messa
     return { status: "ready", message: "PDF ready" };
   }
 
-  return { status: "unsupported", message: "media import next" };
+  if (isVideoFile(file)) {
+    return { status: "ready", message: "video ready" };
+  }
+
+  return { status: "unsupported", message: "unsupported file" };
+}
+
+function getFileCaptureRequest(file: File): SpotlightFileCaptureRequest {
+  if (isPdfFile(file)) {
+    return { type: "pdf", file };
+  }
+
+  if (isVideoFile(file)) {
+    return { type: "video", file };
+  }
+
+  return { type: "image", file };
 }
 
 function isImageFile(file: File) {
@@ -639,6 +654,10 @@ function isImageFile(file: File) {
 
 function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function isVideoFile(file: File) {
+  return file.type.startsWith("video/") || /\.(m4v|mov|mp4|webm)$/i.test(file.name);
 }
 
 function isPinterestHost(host: string) {

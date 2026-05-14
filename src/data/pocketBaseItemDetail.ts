@@ -84,6 +84,26 @@ export type ItemDetailContent = {
       sizeBytes: number | null;
     } | null;
   } | null;
+  video?: {
+    fileRef: string | null;
+    fileUrl?: string | null;
+    mimeType: string | null;
+    width: number | null;
+    height: number | null;
+    durationMs: number | null;
+    posterFileRef: string | null;
+    posterUrl?: string | null;
+    dominantColors: string[] | null;
+    perceptualHash: string | null;
+    aspectRatio: number | null;
+    asset: {
+      fileRef: string | null;
+      fileUrl: string | null;
+      originalName: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+    } | null;
+  } | null;
 };
 
 export type ItemDetailTag = {
@@ -278,8 +298,21 @@ function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetai
           : null,
       }
     : null;
+  const resolvedVideo = item.content.video
+    ? {
+        ...item.content.video,
+        fileUrl: resolvePocketBaseFileUrl(baseUrl, item.content.video.fileRef),
+        posterUrl: resolvePocketBaseFileUrl(baseUrl, item.content.video.posterFileRef),
+        asset: item.content.video.asset
+          ? {
+              ...item.content.video.asset,
+              fileUrl: resolvePocketBaseFileUrl(baseUrl, item.content.video.asset.fileRef),
+            }
+          : null,
+      }
+    : null;
 
-  if (!resolvedImage && !resolvedLink) {
+  if (!resolvedImage && !resolvedLink && !resolvedVideo) {
     return item;
   }
 
@@ -289,6 +322,7 @@ function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetai
       ...item.content,
       image: resolvedImage,
       link: resolvedLink,
+      video: resolvedVideo,
     },
   };
 }

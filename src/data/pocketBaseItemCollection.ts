@@ -1,5 +1,6 @@
-import { normalizeRemoteMediaUrl, resolvePocketBaseFileUrl } from "./pocketBaseFiles";
+import type { ItemType } from "../components/atoms";
 import type { ItemMediaPreview } from "../components/items";
+import { normalizeRemoteMediaUrl, resolvePocketBaseFileUrl } from "./pocketBaseFiles";
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -17,7 +18,7 @@ export type CollectionDetailQuery = {
 
 export type CollectionDetailItem = {
   id: string;
-  type: "image" | "caption" | "note" | "link";
+  type: ItemType;
   status: string;
   title: string | null;
   description: string | null;
@@ -37,6 +38,7 @@ export type CollectionDetailItem = {
   noteParagraph: string | null;
   url: string | null;
   linkContentType: string | null;
+  videoDurationMs?: number | null;
   ogImageUrl: string | null;
   ogTitle: string | null;
   assetFileUrl: string | null;
@@ -69,6 +71,8 @@ export type CollectionPreviewItem = {
   imageUrl?: string | null;
   ogImageUrl?: string | null;
   videoPosterUrl?: string | null;
+  assetFileUrl?: string | null;
+  assetMimeType?: string | null;
   width?: number | null;
   height?: number | null;
   aspectRatio?: number | null;
@@ -279,6 +283,7 @@ export function createPocketBaseItemCollectionClient({
         ...collection,
         previewItems: (collection.previewItems ?? []).map((item) => {
           const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
+          const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl);
           const ogImageUrl = normalizeRemoteMediaUrl(item.ogImageUrl);
           const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
           const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
@@ -288,12 +293,14 @@ export function createPocketBaseItemCollectionClient({
             imageUrl ??
             videoPosterUrl ??
             ogImageUrl ??
+            assetFileUrl ??
             null;
 
           return {
             ...item,
             imageUrl,
             ogImageUrl,
+            assetFileUrl,
             previewUrl,
             thumbnailUrl,
             videoPosterUrl,

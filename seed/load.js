@@ -18,6 +18,7 @@ const fixturePlan = [
   { file: "05_items_caption.json", table: "items_caption", conflict: ["item_id"] },
   { file: "06_items_note.json", table: "items_note", conflict: ["item_id"] },
   { file: "07_items_link.json", table: "items_link", conflict: ["item_id"] },
+  { file: "18_items_video.json", table: "items_video", conflict: ["item_id"], optional: true },
   { file: "08_campaign_profiles.json", table: "campaign_profiles", conflict: ["item_id"] },
   { file: "09_tags.json", table: "tags", conflict: ["id"] },
   { file: "10_item_tags.json", table: "item_tags", conflict: ["item_id", "tag_id"] },
@@ -112,6 +113,9 @@ function readFixtures(fixturesDir) {
   return fixturePlan.map((entry) => {
     const fixturePath = path.join(fixturesDir, entry.file);
     if (!fs.existsSync(fixturePath)) {
+      if (entry.optional) {
+        return { ...entry, rows: [] };
+      }
       throw new Error(`missing fixture file: ${fixturePath}`);
     }
 
@@ -258,7 +262,7 @@ function applyPersonalArchivePivot(fixtures) {
         }));
     } else if (fixture.table === "relationship_types") {
       rows = rows.filter((type) => type.type !== "retired_by");
-    } else if (["items_image", "items_caption", "items_note", "items_link", "item_tags", "collection_items", "ai_annotations", "item_events", "embeddings"].includes(fixture.table)) {
+    } else if (["items_image", "items_caption", "items_note", "items_link", "items_video", "item_tags", "collection_items", "ai_annotations", "item_events", "embeddings"].includes(fixture.table)) {
       rows = rows.filter((row) => !removedItemIds.has(row.item_id) && (!row.item_id || keptItemIds.has(row.item_id)));
     } else if (fixture.table === "relationships") {
       rows = rows.filter(
@@ -309,6 +313,7 @@ function validateFixtureIntegrity(fixtures) {
   validateExtensions(rowsFor("items_caption"), items, "caption extension");
   validateExtensions(rowsFor("items_note"), items, "note extension");
   validateExtensions(rowsFor("items_link"), items, "link extension");
+  validateExtensions(rowsFor("items_video"), items, "video extension");
   validateExtensions(rowsFor("campaign_profiles"), items, "campaign profile");
 
   for (const tag of rowsFor("tags")) {

@@ -564,6 +564,9 @@ function getItemFallbackRatio(item: ItemCardProps) {
   if (item.type === "note") {
     return "1 / 1.24";
   }
+  if (item.type === "video") {
+    return "16 / 9";
+  }
   if (item.linkContentType === "pdf") {
     return "3 / 4";
   }
@@ -764,6 +767,8 @@ function getItemPreviewUrl(item: ItemCardProps) {
     item.mediaPreview?.previewUrl ||
     item.mediaPreview?.imageUrl ||
     item.mediaPreview?.thumbnailUrl ||
+    item.mediaPreview?.videoPosterUrl ||
+    item.videoPosterUrl ||
     item.previewUrl ||
     item.imageUrl ||
     item.thumbnailUrl ||
