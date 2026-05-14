@@ -1,4 +1,4 @@
-# Vita Brain Live Backend
+# Commonplace OS Live Backend
 
 PocketBase is the live backend for the archive. It is a single-binary server with an embedded SQLite database, JS migrations, and JS hooks under `pocketbase/`.
 
