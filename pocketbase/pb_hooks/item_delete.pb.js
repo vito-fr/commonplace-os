@@ -122,6 +122,7 @@ routerAdd("POST", "/api/vita/item-delete", (e) => {
       "items_caption",
       "items_note",
       "items_link",
+      "items_video",
     ];
 
     for (let index = 0; index < extensionTables.length; index += 1) {

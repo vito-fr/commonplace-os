@@ -1,6 +1,9 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+
 routerAdd("GET", "/api/vita/imported-file", (e) => {
+  const immutableFileCacheControl = "public, max-age=31536000, immutable";
+
   function isSafeImportedFileKey(fileKey) {
     return (
       typeof fileKey === "string" &&
@@ -16,55 +19,15 @@ routerAdd("GET", "/api/vita/imported-file", (e) => {
     return parts[parts.length - 1] || "imported-file";
   }
 
-  function mimeTypeForImportedFile(fileKey) {
-    const lower = fileNameFromKey(fileKey).toLowerCase();
-
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-      return "image/jpeg";
-    }
-
-    if (lower.endsWith(".png")) {
-      return "image/png";
-    }
-
-    if (lower.endsWith(".webp")) {
-      return "image/webp";
-    }
-
-    if (lower.endsWith(".gif")) {
-      return "image/gif";
-    }
-
-    if (lower.endsWith(".avif")) {
-      return "image/avif";
-    }
-
-    if (lower.endsWith(".pdf")) {
-      return "application/pdf";
-    }
-
-    return "application/octet-stream";
-  }
-
   const fileKey = e.request.url.query().get("key");
 
   if (!isSafeImportedFileKey(fileKey)) {
     throw new BadRequestError("file key is invalid");
   }
 
-  const filesystem = e.app.newFilesystem();
-  let reader = null;
-
-  try {
-    reader = filesystem.getReader(fileKey);
-    e.stream(200, mimeTypeForImportedFile(fileKey), reader);
-  } finally {
-    if (reader) {
-      reader.close();
-    }
-
-    filesystem.close();
-  }
+  e.response.header().set("Cache-Control", immutableFileCacheControl);
+  e.response.header().set("Accept-Ranges", "bytes");
+  e.fileFS($os.dirFS($filepath.join(e.app.dataDir(), "storage")), fileKey);
 });
 
 routerAdd("POST", "/api/vita/backfill-image-dimensions", (e) => {
@@ -643,6 +606,9 @@ routerAdd("POST", "/api/vita/item-thumbnail", (e) => {
 });
 
 routerAdd("POST", "/api/vita/item-capture", (e) => {
+  const videoUploadMaxBytes = 250 * 1024 * 1024;
+  const videoPosterMaxBytes = 10 * 1024 * 1024;
+
   const body = new DynamicModel({
     workspace_id: "",
     type: "",
@@ -650,6 +616,12 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     url: "",
     source_external_id: "",
     actor: "",
+    width: "",
+    height: "",
+    duration_ms: "",
+    aspect_ratio: "",
+    dominant_colors: "",
+    perceptual_hash: "",
   });
   e.bindBody(body);
 
@@ -660,9 +632,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   const actor = optionalString(body.actor) || "system";
   let uploadedFile = null;
   let uploadedThumbnailFile = null;
+  let uploadedPosterFile = null;
 
-  if (!["note", "link", "image", "pdf"].includes(type)) {
-    throw new BadRequestError("capture type must be note, link, image, or pdf");
+  if (!["note", "link", "image", "pdf", "video"].includes(type)) {
+    throw new BadRequestError("capture type must be note, link, image, pdf, or video");
   }
 
   if (type === "note" && !noteBody) {
@@ -673,7 +646,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     throw new BadRequestError("url is required");
   }
 
-  if (type === "image" || type === "pdf") {
+  if (type === "image" || type === "pdf" || type === "video") {
     const uploadedFiles = e.findUploadedFiles("file");
     uploadedFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
 
@@ -681,10 +654,19 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       const uploadedThumbnailFiles = e.findUploadedFiles("thumbnail_file");
       uploadedThumbnailFile = uploadedThumbnailFiles.length > 0 ? uploadedThumbnailFiles[0] : null;
     }
+
+    if (type === "video") {
+      const uploadedPosterFiles = e.findUploadedFiles("poster_file");
+      uploadedPosterFile = uploadedPosterFiles.length > 0 ? uploadedPosterFiles[0] : null;
+    }
   }
 
-  if ((type === "image" || type === "pdf") && !uploadedFile) {
+  if ((type === "image" || type === "pdf" || type === "video") && !uploadedFile) {
     throw new BadRequestError("file is required");
+  }
+
+  if (type === "video" && !uploadedPosterFile) {
+    throw new BadRequestError("poster_file is required");
   }
 
   function requiredString(value, fieldName) {
@@ -734,6 +716,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       return `capture:pdf:${timestamp}:${idSuffix()}`;
     }
 
+    if (itemType === "video") {
+      return `capture:video:${timestamp}:${idSuffix()}`;
+    }
+
     if (itemType === "link") {
       return `capture:link:${timestamp}:${idSuffix()}`;
     }
@@ -751,6 +737,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
   function pdfExternalIdFor(fileName, fileSize) {
     return `local:pdf:${safePathSegment(fileName)}:${fileSize || 0}`;
+  }
+
+  function videoExternalIdFor(fileName, fileSize, durationMs, width, height) {
+    return `local:video:${safePathSegment(fileName)}:${fileSize || 0}:${durationMs}:${width}x${height}`;
   }
 
   function eventIdFor(itemId, timestamp) {
@@ -1510,6 +1500,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/thumb-${fileName}`;
   }
 
+  function videoPosterFileKeyFor(workspaceId, itemId, fileName) {
+    return `imports/${safePathSegment(workspaceId)}/${safePathSegment(itemId)}/poster-${fileName}`;
+  }
+
   function thumbnailMimeTypeForFileName(fileName) {
     const lower = fileName.toLowerCase();
 
@@ -1614,6 +1608,161 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     return fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "";
   }
 
+  function videoMimeTypeForFile(file, fileName) {
+    const uploadedType = typeof file.type === "string" ? file.type.toLowerCase() : "";
+
+    if (["video/mp4", "video/webm", "video/quicktime"].includes(uploadedType)) {
+      return uploadedType;
+    }
+
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) {
+      return "video/mp4";
+    }
+
+    if (lower.endsWith(".webm")) {
+      return "video/webm";
+    }
+
+    if (lower.endsWith(".mov") || lower.endsWith(".qt")) {
+      return "video/quicktime";
+    }
+
+    return "";
+  }
+
+  function posterMimeTypeForFile(file, fileName) {
+    const uploadedType = typeof file.type === "string" ? file.type.toLowerCase() : "";
+
+    if (["image/jpeg", "image/png", "image/webp"].includes(uploadedType)) {
+      return uploadedType;
+    }
+
+    return thumbnailMimeTypeForFileName(fileName);
+  }
+
+  function assertMaxFileSize(file, maxBytes, label) {
+    const fileSize = Number(file && file.size) || 0;
+    if (fileSize > maxBytes) {
+      throw new BadRequestError(label + " must be " + formatMegabytes(maxBytes) + "MB or smaller");
+    }
+  }
+
+  function formatMegabytes(bytes) {
+    return Math.floor(bytes / 1024 / 1024);
+  }
+
+  function videoMetadataFromBody(value) {
+    const width = requiredPositiveInteger(value.width, "width", 100000);
+    const height = requiredPositiveInteger(value.height, "height", 100000);
+    const durationMs = requiredPositiveInteger(value.duration_ms, "duration_ms", 24 * 60 * 60 * 1000);
+    const aspectRatio = requiredPositiveNumber(value.aspect_ratio, "aspect_ratio", 1000);
+    const expectedAspectRatio = width / height;
+    const tolerance = Math.max(0.01, expectedAspectRatio * 0.02);
+
+    if (Math.abs(aspectRatio - expectedAspectRatio) > tolerance) {
+      throw new BadRequestError("aspect_ratio must match width / height");
+    }
+
+    return {
+      width,
+      height,
+      durationMs,
+      aspectRatio,
+      dominantColors: normalizedDominantColorsJson(value.dominant_colors),
+      perceptualHash: optionalHashString(value.perceptual_hash),
+    };
+  }
+
+  function requiredPositiveInteger(value, fieldName, maxValue) {
+    const parsed = Number(optionalString(value));
+
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed > maxValue) {
+      throw new BadRequestError(fieldName + " must be a positive integer");
+    }
+
+    return parsed;
+  }
+
+  function requiredPositiveNumber(value, fieldName, maxValue) {
+    const parsed = Number(optionalString(value));
+
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > maxValue) {
+      throw new BadRequestError(fieldName + " must be a positive number");
+    }
+
+    return parsed;
+  }
+
+  function normalizedDominantColorsJson(value) {
+    const raw = optionalString(value);
+    if (!raw) {
+      return null;
+    }
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BadRequestError("dominant_colors must be a JSON array of hex colors");
+    }
+
+    if (!Array.isArray(parsed) || parsed.length > 12) {
+      throw new BadRequestError("dominant_colors must be a JSON array of up to 12 hex colors");
+    }
+
+    const colors = parsed.map((color) => String(color || "").trim().toLowerCase());
+    for (let index = 0; index < colors.length; index += 1) {
+      if (!/^#[0-9a-f]{6}$/.test(colors[index])) {
+        throw new BadRequestError("dominant_colors must contain only #rrggbb values");
+      }
+    }
+
+    return JSON.stringify(colors);
+  }
+
+  function optionalHashString(value) {
+    const raw = optionalString(value);
+    if (!raw) {
+      return null;
+    }
+
+    if (!/^[a-zA-Z0-9:_-]{1,128}$/.test(raw)) {
+      throw new BadRequestError("perceptual_hash is invalid");
+    }
+
+    return raw;
+  }
+
+  function uploadStoredFile(app, file, fileRef, storedFileRefs) {
+    const filesystem = app.newFilesystem();
+    try {
+      filesystem.uploadFile(file, fileRef);
+      storedFileRefs.push(fileRef);
+    } finally {
+      filesystem.close();
+    }
+  }
+
+  function cleanupStoredFiles(app, fileRefs) {
+    if (!fileRefs.length) {
+      return;
+    }
+
+    const filesystem = app.newFilesystem();
+    try {
+      for (let index = fileRefs.length - 1; index >= 0; index -= 1) {
+        try {
+          filesystem.delete(fileRefs[index]);
+        } catch (error) {
+          console.warn("failed to clean up orphan upload " + fileRefs[index], error);
+        }
+      }
+    } finally {
+      filesystem.close();
+    }
+  }
+
   let linkMetadata = null;
 
   if (type === "link") {
@@ -1621,8 +1770,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
   }
 
   let result = null;
+  const storedFileRefs = [];
 
-  e.app.runInTransaction((txApp) => {
+  try {
+    e.app.runInTransaction((txApp) => {
     const workspaceRows = queryAll(
       txApp,
       `
@@ -1654,6 +1805,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
     let storedItemType = type;
     let imageWidth = null;
     let imageHeight = null;
+    let videoMetadata = null;
+    let videoPosterFileName = "";
+    let videoPosterFileRef = "";
+    let videoPosterMimeType = "";
 
     if (type === "link") {
       normalizedUrl = normalizeUrl(rawUrl);
@@ -1695,6 +1850,29 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       linkContentType = "pdf";
       itemTitle = assetFileName;
       storedItemType = "link";
+    } else if (type === "video") {
+      assetFileName = fileOriginalName(uploadedFile, "imported-video.mp4");
+      assetMimeType = videoMimeTypeForFile(uploadedFile, assetFileName);
+
+      if (!assetMimeType) {
+        throw new BadRequestError("video file must be mp4, webm, or quicktime");
+      }
+
+      assertMaxFileSize(uploadedFile, videoUploadMaxBytes, "video file");
+      videoPosterFileName = fileOriginalName(uploadedPosterFile, "poster.webp");
+      videoPosterMimeType = posterMimeTypeForFile(uploadedPosterFile, videoPosterFileName);
+
+      if (!videoPosterMimeType) {
+        throw new BadRequestError("poster_file must be jpg, png, or webp");
+      }
+
+      assertMaxFileSize(uploadedPosterFile, videoPosterMaxBytes, "poster_file");
+      videoMetadata = videoMetadataFromBody(body);
+      sourceExternalId = sourceExternalId || videoExternalIdFor(assetFileName, uploadedFile.size, videoMetadata.durationMs, videoMetadata.width, videoMetadata.height);
+      sourceKind = "local";
+      sourceIdentifier = "local";
+      sourceLabel = "Local files";
+      itemTitle = assetFileName;
     } else {
       sourceExternalId = sourceExternalId || externalIdFor(now);
     }
@@ -1813,7 +1991,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         }
       }
 
-      if (type === "link" || type === "pdf") {
+      if (type === "link" || type === "pdf" || type === "video") {
         result = {
           created: false,
           item: {
@@ -1900,23 +2078,23 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
     const itemId = itemIdFor(type, now);
     const eventId = eventIdFor(itemId, now);
-    if (type === "image" || type === "pdf") {
+    if (type === "image" || type === "pdf" || type === "video") {
       assetFileRef = imageFileKeyFor(workspaceId, itemId, assetFileName);
-      const filesystem = txApp.newFilesystem();
-      try {
-        filesystem.uploadFile(uploadedFile, assetFileRef);
-      } finally {
-        filesystem.close();
+      uploadStoredFile(txApp, uploadedFile, assetFileRef, storedFileRefs);
+
+      if (type === "video") {
+        videoPosterFileRef = videoPosterFileKeyFor(workspaceId, itemId, videoPosterFileName);
+        uploadStoredFile(txApp, uploadedPosterFile, videoPosterFileRef, storedFileRefs);
       }
     }
 
     const metadataBody = {
       source_id: sourceId,
       source_external_id: sourceExternalId,
-      capture_type: type === "link" ? "url" : type === "image" ? "local_image" : type === "pdf" ? "local_pdf" : "manual_note",
+      capture_type: type === "link" ? "url" : type === "image" ? "local_image" : type === "pdf" ? "local_pdf" : type === "video" ? "local_video" : "manual_note",
     };
 
-    if (type === "image" || type === "pdf") {
+    if (type === "image" || type === "pdf" || type === "video") {
       metadataBody.file_ref = assetFileRef;
       metadataBody.mime_type = assetMimeType;
       metadataBody.original_name = assetFileName;
@@ -1924,6 +2102,13 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
       if (type === "image" && imageWidth !== null && imageHeight !== null) {
         metadataBody.width = imageWidth;
         metadataBody.height = imageHeight;
+      }
+      if (type === "video" && videoMetadata) {
+        metadataBody.width = videoMetadata.width;
+        metadataBody.height = videoMetadata.height;
+        metadataBody.duration_ms = videoMetadata.durationMs;
+        metadataBody.aspect_ratio = videoMetadata.aspectRatio;
+        metadataBody.poster_file_ref = videoPosterFileRef;
       }
     }
 
@@ -2023,7 +2208,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           now,
         })
         .execute();
-    } else {
+    } else if (type === "image") {
       txApp
         .db()
         .newQuery(
@@ -2053,6 +2238,49 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         .execute();
 
       storeThumbnailAsset(txApp, workspaceId, itemId, uploadedThumbnailFile, now);
+    } else if (type === "video" && videoMetadata) {
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO items_video (
+              item_id,
+              file_ref,
+              mime_type,
+              width,
+              height,
+              duration_ms,
+              poster_file_ref,
+              dominant_colors,
+              perceptual_hash,
+              aspect_ratio
+            ) VALUES (
+              {:itemId},
+              {:assetFileRef},
+              {:assetMimeType},
+              {:videoWidth},
+              {:videoHeight},
+              {:durationMs},
+              {:posterFileRef},
+              {:dominantColors},
+              {:perceptualHash},
+              {:aspectRatio}
+            )
+          `,
+        )
+        .bind({
+          itemId,
+          assetFileRef,
+          assetMimeType,
+          videoWidth: videoMetadata.width,
+          videoHeight: videoMetadata.height,
+          durationMs: videoMetadata.durationMs,
+          posterFileRef: videoPosterFileRef,
+          dominantColors: videoMetadata.dominantColors,
+          perceptualHash: videoMetadata.perceptualHash,
+          aspectRatio: videoMetadata.aspectRatio,
+        })
+        .execute();
     }
 
     if (type === "pdf") {
@@ -2091,6 +2319,60 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           assetFileName,
           assetMimeType,
           assetSize: uploadedFile.size,
+          now,
+        })
+        .execute();
+    } else if (type === "video") {
+      txApp
+        .db()
+        .newQuery(
+          `
+            INSERT INTO item_assets (
+              id,
+              workspace_id,
+              item_id,
+              role,
+              file_ref,
+              original_name,
+              mime_type,
+              size_bytes,
+              created_at
+            ) VALUES (
+              {:sourceAssetId},
+              {:workspaceId},
+              {:itemId},
+              'source_file',
+              {:assetFileRef},
+              {:assetFileName},
+              {:assetMimeType},
+              {:assetSize},
+              {:now}
+            ), (
+              {:posterAssetId},
+              {:workspaceId},
+              {:itemId},
+              'thumbnail',
+              {:posterFileRef},
+              {:posterFileName},
+              {:posterMimeType},
+              {:posterSize},
+              {:now}
+            )
+          `,
+        )
+        .bind({
+          sourceAssetId: "asset:" + itemId + ":source_file",
+          posterAssetId: "asset:" + itemId + ":thumbnail",
+          workspaceId,
+          itemId,
+          assetFileRef,
+          assetFileName,
+          assetMimeType,
+          assetSize: uploadedFile.size,
+          posterFileRef: videoPosterFileRef,
+          posterFileName: videoPosterFileName,
+          posterMimeType: videoPosterMimeType,
+          posterSize: uploadedPosterFile.size,
           now,
         })
         .execute();
@@ -2140,7 +2422,11 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         createdAt: now,
       },
     };
-  });
+    });
+  } catch (error) {
+    cleanupStoredFiles(e.app, storedFileRefs);
+    throw error;
+  }
 
   return e.json(200, result);
-});
+}, $apis.bodyLimit(250 * 1024 * 1024 + 10 * 1024 * 1024 + 1024 * 1024));
