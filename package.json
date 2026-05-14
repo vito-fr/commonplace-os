@@ -16,6 +16,7 @@
     "visual:qa": "node scripts/visual-qa.mjs",
     "visual:qa:refs": "node scripts/visual-qa.mjs --refs",
     "link-metadata:backfill": "node scripts/backfill-link-metadata.mjs",
+    "import:arena": "node scripts/import-arena.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

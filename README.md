@@ -67,6 +67,22 @@ curl -X POST "http://127.0.0.1:8090/api/vita/backfill-image-dimensions?workspace
 
 The backfill is idempotent by default. It skips records that already have both `width` and `height`, skips unreadable files, and does not delete, rewrite, or recreate media files.
 
+### Import An Are.na Channel
+
+Are.na imports run through the local PocketBase hook and are CLI-triggered in v0.1. Set `ARENA_API_KEY` in the environment that starts PocketBase, then run:
+
+```sh
+npm run import:arena -- --channel <channel-slug>
+```
+
+Optional flags:
+
+```sh
+npm run import:arena -- --channel <channel-slug> --workspace seed:ws001 --base-url http://127.0.0.1:8090
+```
+
+The importer creates one `arena/global` source row per workspace, creates one collection for the channel, downloads Image/GIF blocks to local storage, maps Text blocks to notes, and maps Link/Embed/Attachment/fallback content to link items. Re-running the same channel is idempotent and prints a summary.
+
 ---
 
 ## Migrations
