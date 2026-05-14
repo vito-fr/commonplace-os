@@ -38,7 +38,6 @@ export function VideoCard({
   const [shouldLoadVideo, setShouldLoadVideo] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const fetchPriority = loading === "eager" ? "high" : "auto";
-  const label = title ? `${title} video preview` : "Video preview";
 
   const stopPlayback = useCallback(() => {
     const video = videoRef.current;
@@ -97,38 +96,39 @@ export function VideoCard({
     }
 
     let cancelled = false;
+    const markPlaying = () => {
+      if (!cancelled && mountedRef.current) {
+        setIsPlaying(true);
+      }
+    };
     const beginPlayback = async () => {
       if (cancelled) {
         return;
       }
 
       claimAutoplaySlot({ id: playerId, stop: stopPlayback });
+      video.muted = true;
+      video.playsInline = true;
 
       try {
         await video.play();
-        if (!cancelled && mountedRef.current) {
-          setIsPlaying(true);
-        }
+        markPlaying();
       } catch {
         stopPlayback();
       }
     };
-    const handleCanPlay = () => void beginPlayback();
     const handleError = () => {
       onMediaError(src);
       stopPlayback();
     };
 
-    video.addEventListener("canplay", handleCanPlay, { once: true });
+    video.addEventListener("playing", markPlaying);
     video.addEventListener("error", handleError);
-
-    if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
-      void beginPlayback();
-    }
+    void beginPlayback();
 
     return () => {
       cancelled = true;
-      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("playing", markPlaying);
       video.removeEventListener("error", handleError);
       releaseAutoplaySlot(playerId);
     };
@@ -165,6 +165,7 @@ export function VideoCard({
           className="item-card__video-player"
           src={src}
           poster={posterUrl ?? undefined}
+          autoPlay
           muted
           playsInline
           loop
@@ -174,7 +175,6 @@ export function VideoCard({
           disablePictureInPicture
         />
       ) : null}
-      <span className="item-card__video-badge" aria-label={label}>video</span>
     </div>
   );
 }
