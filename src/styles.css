@@ -145,6 +145,7 @@ html {
   min-height: 100%;
   overflow-x: clip;
   background: var(--color-paper);
+  scrollbar-gutter: stable;
 }
 
 body {

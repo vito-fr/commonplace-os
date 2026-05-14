@@ -47,6 +47,7 @@ type GridObjectContentProps = {
 
 const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => `loading-${index}`);
 const gridInitialEntryDurationMs = 980;
+const galleryResizeSettleMs = 160;
 const minGridEntryCards = 12;
 const gridIntroAnimationNames = new Set([
   "archive-card-enter",
@@ -72,17 +73,26 @@ export function MasonryGrid({
   const entryCardLimit = Math.max(minGridEntryCards, columns * 3);
   const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
   const [settledIntroKeys, setSettledIntroKeys] = useState<Set<string>>(() => new Set());
+  const objectOrderSignature = useMemo(() => objects.map(getArchiveObjectKey).join("|"), [objects]);
   const layoutSignature = useMemo(
-    () => [columns, density, hasLeadingTile ? "leading" : "none", objects.map(getArchiveObjectKey).join("|")].join("::"),
-    [columns, density, hasLeadingTile, objects],
+    () => [columns, density, hasLeadingTile ? "leading" : "none", objectOrderSignature].join("::"),
+    [columns, density, hasLeadingTile, objectOrderSignature],
   );
-  const roundedTrackWidth = useRoundedGalleryTrackWidth(gridRef, columns, layoutSignature);
+  const resizeLayoutToken = useLiveGalleryTrackMetrics(gridRef, columns, layoutSignature);
+  const flipSignature = useMemo(
+    () => [layoutSignature, "resize", resizeLayoutToken].join("::"),
+    [layoutSignature, resizeLayoutToken],
+  );
   const gridStyle: GalleryGridStyle = {
     "--gallery-columns": columns,
-    ...(roundedTrackWidth ? { "--gallery-column-width": `${roundedTrackWidth}px` } : {}),
   };
 
-  useGridFlipAnimation(gridRef, layoutSignature);
+  useGridFlipAnimation(gridRef, flipSignature, {
+    maxResizeItems: 90,
+    reason: "layout",
+    scaleChildSelector: ".item-card, .collection-card",
+    suppressViewportResize: false,
+  });
 
   const settleIntroCard = useCallback((event: AnimationEvent<HTMLElement>) => {
     if (!gridIntroAnimationNames.has(event.animationName)) {
@@ -209,35 +219,56 @@ function areGridObjectContentPropsEqual(previousProps: GridObjectContentProps, n
   return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
 }
 
-function useRoundedGalleryTrackWidth(containerRef: RefObject<HTMLElement | null>, columns: number, measureKey: string) {
-  const [trackWidth, setTrackWidth] = useState<number | null>(null);
+function useLiveGalleryTrackMetrics(
+  containerRef: RefObject<HTMLElement | null>,
+  columns: number,
+  measureKey: string,
+) {
+  const [resizeLayoutToken, setResizeLayoutToken] = useState(0);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) {
       return;
     }
+    const previousTrackWidthRef = { current: null as number | null };
 
     let frame = 0;
-    const measureTrackWidth = () => {
+    let settleTimeout = 0;
+    const measureTrackWidth = (isResizeFrame: boolean) => {
       frame = 0;
       const styles = window.getComputedStyle(container);
       const gap = parseFloat(styles.columnGap || styles.gap) || 0;
       const containerWidth = container.getBoundingClientRect().width;
       const safeColumns = Math.max(1, columns);
-      const nextTrackWidth = Math.max(1, Math.floor((containerWidth - gap * (safeColumns - 1)) / safeColumns));
+      const nextTrackWidth = Math.max(1, (containerWidth - gap * (safeColumns - 1)) / safeColumns);
 
-      setTrackWidth((currentTrackWidth) => (currentTrackWidth === nextTrackWidth ? currentTrackWidth : nextTrackWidth));
+      const previousTrackWidth = previousTrackWidthRef.current;
+      const widthChanged = previousTrackWidth == null || Math.abs(previousTrackWidth - nextTrackWidth) > 0.1;
+      if (widthChanged) {
+        previousTrackWidthRef.current = nextTrackWidth;
+        if (!isResizeFrame) {
+          container.style.setProperty("--gallery-column-width", formatGridTrackWidth(nextTrackWidth) + "px");
+          setResizeLayoutToken((currentToken) => currentToken + 1);
+        }
+      }
+
+      if (isResizeFrame && widthChanged) {
+        if (settleTimeout) {
+          window.clearTimeout(settleTimeout);
+        }
+        settleTimeout = window.setTimeout(() => measureTrackWidth(false), galleryResizeSettleMs);
+      }
     };
     const scheduleTrackWidth = () => {
       if (frame) {
         return;
       }
 
-      frame = window.requestAnimationFrame(measureTrackWidth);
+      frame = window.requestAnimationFrame(() => measureTrackWidth(true));
     };
 
-    measureTrackWidth();
+    measureTrackWidth(false);
 
     const observer = new ResizeObserver(scheduleTrackWidth);
     observer.observe(container);
@@ -246,9 +277,16 @@ function useRoundedGalleryTrackWidth(containerRef: RefObject<HTMLElement | null>
       if (frame) {
         window.cancelAnimationFrame(frame);
       }
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
+      }
       observer.disconnect();
     };
   }, [columns, containerRef, measureKey]);
 
-  return trackWidth;
+  return resizeLayoutToken;
+}
+function formatGridTrackWidth(value: number) {
+  const rounded = Math.round(value * 1000) / 1000;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }

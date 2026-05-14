@@ -82,6 +82,8 @@ const defaultGalleryColumns = 5;
 const minMasonryColumns = 2;
 const maxMasonryColumns = 8;
 const maxCollectionTitleLength = 50;
+const responsiveColumnHysteresisPx = 18;
+const responsiveResizeSettleMs = 160;
 const shortcutStorageKey = "vita:shortcut-bindings:v1";
 const defaultShortcutBindings: ShortcutBindings = {
   search: { key: "k", modifier: "mod" },
@@ -153,29 +155,29 @@ type PendingItemDeleteSnapshot = {
 };
 
 function useResponsiveGalleryColumnCap() {
-  const [columnCap, setColumnCap] = useState(() => getResponsiveGalleryColumnCap());
+  const [columnCap, setColumnCap] = useState<number>(() => getResponsiveGalleryColumnCap());
 
   useEffect(() => {
-    let frame = 0;
+    let settleTimeout = 0;
     const updateColumnCap = () => {
-      frame = 0;
-      const nextColumnCap = getResponsiveGalleryColumnCap();
-      setColumnCap((currentColumnCap) =>
-        currentColumnCap === nextColumnCap ? currentColumnCap : nextColumnCap,
-      );
+      settleTimeout = 0;
+      setColumnCap((currentColumnCap) => {
+        const nextColumnCap = getStableResponsiveGalleryColumnCap(currentColumnCap);
+        return currentColumnCap === nextColumnCap ? currentColumnCap : nextColumnCap;
+      });
     };
     const scheduleUpdate = () => {
-      if (frame) {
-        return;
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
-      frame = window.requestAnimationFrame(updateColumnCap);
+      settleTimeout = window.setTimeout(updateColumnCap, responsiveResizeSettleMs);
     };
 
     updateColumnCap();
     window.addEventListener("resize", scheduleUpdate);
     return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
       window.removeEventListener("resize", scheduleUpdate);
     };
@@ -193,69 +195,123 @@ function getResponsiveGalleryColumnCap() {
     return defaultGalleryColumns;
   }
 
-  const width = window.innerWidth;
-  if (width >= 1440) {
-    return maxGalleryColumns;
-  }
-  if (width >= 1180) {
-    return defaultGalleryColumns;
-  }
-  if (width >= 900) {
-    return 4;
-  }
-  if (width >= 620) {
-    return 3;
-  }
-  return 2;
+  return getResponsiveGalleryColumnCapForWidth(window.innerWidth);
 }
+
+const galleryColumnCapBands = [
+  { minWidth: 0, columnCap: 2 },
+  { minWidth: 620, columnCap: 3 },
+  { minWidth: 900, columnCap: 4 },
+  { minWidth: 1180, columnCap: defaultGalleryColumns },
+  { minWidth: 1440, columnCap: maxGalleryColumns },
+] as const;
+
+function getResponsiveGalleryColumnCapForWidth(width: number) {
+  return galleryColumnCapBands[getResponsiveBandIndex(galleryColumnCapBands, width)]?.columnCap ?? 2;
+}
+
+function getStableResponsiveGalleryColumnCap(currentColumnCap: number) {
+  if (typeof window === "undefined") {
+    return currentColumnCap;
+  }
+
+  const currentIndex = galleryColumnCapBands.findIndex((band) => band.columnCap === currentColumnCap);
+  const nextIndex = getStableResponsiveBandIndex(
+    currentIndex >= 0 ? currentIndex : getResponsiveBandIndex(galleryColumnCapBands, window.innerWidth),
+    galleryColumnCapBands,
+    window.innerWidth,
+  );
+  return galleryColumnCapBands[nextIndex]?.columnCap ?? currentColumnCap;
+}
+
+const masonryColumnConfigBands = [
+  { minWidth: 0, columnCap: 2, columnCount: 2 },
+  { minWidth: 680, columnCap: 4, columnCount: 3 },
+  { minWidth: 980, columnCap: 6, columnCount: 4 },
+  { minWidth: 1180, columnCap: 7, columnCount: 4 },
+  { minWidth: 1440, columnCap: 8, columnCount: 5 },
+] as const;
 
 function getResponsiveMasonryColumnConfig() {
   if (typeof window === "undefined") {
     return { columnCap: 8, columnCount: 4 };
   }
 
-  const width = window.innerWidth;
-  if (width >= 1440) {
-    return { columnCap: 8, columnCount: 5 };
+  return getResponsiveMasonryColumnConfigForWidth(window.innerWidth);
+}
+
+function getResponsiveMasonryColumnConfigForWidth(width: number) {
+  const band = masonryColumnConfigBands[getResponsiveBandIndex(masonryColumnConfigBands, width)];
+  return { columnCap: band?.columnCap ?? 2, columnCount: band?.columnCount ?? 2 };
+}
+
+function getStableResponsiveMasonryColumnConfig(currentConfig: { columnCap: number; columnCount: number }) {
+  if (typeof window === "undefined") {
+    return currentConfig;
   }
-  if (width >= 1180) {
-    return { columnCap: 7, columnCount: 4 };
+
+  const currentIndex = masonryColumnConfigBands.findIndex(
+    (band) => band.columnCap === currentConfig.columnCap && band.columnCount === currentConfig.columnCount,
+  );
+  const nextIndex = getStableResponsiveBandIndex(
+    currentIndex >= 0 ? currentIndex : getResponsiveBandIndex(masonryColumnConfigBands, window.innerWidth),
+    masonryColumnConfigBands,
+    window.innerWidth,
+  );
+  return getResponsiveMasonryColumnConfigForWidth(masonryColumnConfigBands[nextIndex]?.minWidth ?? window.innerWidth);
+}
+
+function getResponsiveBandIndex<T extends { minWidth: number }>(bands: readonly T[], width: number) {
+  let index = 0;
+  for (let nextIndex = 1; nextIndex < bands.length; nextIndex += 1) {
+    if (width >= bands[nextIndex].minWidth) {
+      index = nextIndex;
+    }
   }
-  if (width >= 980) {
-    return { columnCap: 6, columnCount: 4 };
+  return index;
+}
+
+function getStableResponsiveBandIndex<T extends { minWidth: number }>(
+  currentIndex: number,
+  bands: readonly T[],
+  width: number,
+) {
+  let nextIndex = Math.max(0, Math.min(currentIndex, bands.length - 1));
+  while (nextIndex < bands.length - 1 && width >= bands[nextIndex + 1].minWidth + responsiveColumnHysteresisPx) {
+    nextIndex += 1;
   }
-  if (width >= 680) {
-    return { columnCap: 4, columnCount: 3 };
+  while (nextIndex > 0 && width < bands[nextIndex].minWidth - responsiveColumnHysteresisPx) {
+    nextIndex -= 1;
   }
-  return { columnCap: 2, columnCount: 2 };
+  return nextIndex;
 }
 
 function useResponsiveMasonryColumnConfig() {
   const [config, setConfig] = useState(() => getResponsiveMasonryColumnConfig());
 
   useEffect(() => {
-    let frame = 0;
+    let settleTimeout = 0;
     const updateConfig = () => {
-      frame = 0;
-      const nextConfig = getResponsiveMasonryColumnConfig();
-      setConfig((currentConfig) =>
-        currentConfig.columnCap === nextConfig.columnCap && currentConfig.columnCount === nextConfig.columnCount
+      settleTimeout = 0;
+      setConfig((currentConfig) => {
+        const nextConfig = getStableResponsiveMasonryColumnConfig(currentConfig);
+        return currentConfig.columnCap === nextConfig.columnCap && currentConfig.columnCount === nextConfig.columnCount
           ? currentConfig
-          : nextConfig,
-      );
+          : nextConfig;
+      });
     };
     const scheduleUpdate = () => {
-      if (frame) {
-        return;
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
-      frame = window.requestAnimationFrame(updateConfig);
+      settleTimeout = window.setTimeout(updateConfig, responsiveResizeSettleMs);
     };
 
     updateConfig();
     window.addEventListener("resize", scheduleUpdate);
     return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
       window.removeEventListener("resize", scheduleUpdate);
     };

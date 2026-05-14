@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import type { CollectionCardModel } from "./CollectionCard";
@@ -24,8 +24,7 @@ type MasonryItemStyle = CSSProperties & {
   "--archive-card-index": number;
   "--masonry-media-height": string;
   height: number;
-  left: number;
-  top: number;
+  transform: string;
   width: number;
 };
 
@@ -39,6 +38,7 @@ type MasonryObjectContentProps = {
 
 const loadingPlaceholders = Array.from({ length: 10 }, (_, index) => `masonry-loading-${index}`);
 const masonryGap = 12;
+const masonryResizeSettleMs = 160;
 const masonryMediaRatioStorageKey = "vita:masonry-media-ratios:v1";
 const masonryMediaRatioCacheLimit = 500;
 const masonryIntroAnimationNames = new Set([
@@ -60,11 +60,16 @@ export function MasonryView({
   const requestedColumnCount = controlledColumns ?? responsiveColumns.columnCount;
   const columnCount = Math.max(1, Math.min(requestedColumnCount, responsiveColumns.columnCap));
   const viewRef = useRef<HTMLElement | null>(null);
+  const [viewElement, setViewElement] = useState<HTMLElement | null>(null);
+  const setViewNode = useCallback((node: HTMLElement | null) => {
+    viewRef.current = node;
+    setViewElement(node);
+  }, []);
   const {
     containerWidth: measuredContainerWidth,
     introViewportBottom,
     isResizing,
-  } = useMasonryContainerWidth(viewRef);
+  } = useMasonryContainerWidth(viewElement, loading ? "loading" : "ready");
   const cachedMediaRatios = useMemo(() => readCachedMasonryMediaRatios(objects), [objects]);
   const runtimeMediaRatios = cachedMediaRatios;
   const layoutSignature = useMemo(
@@ -84,7 +89,7 @@ export function MasonryView({
     () => buildInitialIntroOrder(layout.items, introViewportBottom),
     [introViewportBottom, layout.items],
   );
-  const flipSignature = useMemo(
+  const exactFlipSignature = useMemo(
     () =>
       layout.items
         .map(({ height, objectKey, width, x, y }) =>
@@ -93,7 +98,12 @@ export function MasonryView({
         .join("|"),
     [layout.items],
   );
-  useGridFlipAnimation(viewRef, flipSignature, { disabled: isResizing });
+  useGridFlipAnimation(viewRef, exactFlipSignature, {
+    maxResizeItems: 90,
+    reason: "layout",
+    scaleChildSelector: ".masonry-view__motion",
+    suppressViewportResize: false,
+  });
 
   const handleMediaAspectRatio = useCallback((id: string, aspectRatio: number, sourceUrl: string | null) => {
     if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
@@ -119,7 +129,7 @@ export function MasonryView({
   if (loading) {
     return (
       <section
-        ref={viewRef}
+        ref={setViewNode}
         className={`${viewClassName} masonry-view--loading`}
         style={{ "--masonry-columns": columnCount } as MasonryViewStyle}
         aria-label={ariaLabel}
@@ -146,7 +156,7 @@ export function MasonryView({
 
   return (
     <section
-      ref={viewRef}
+      ref={setViewNode}
       className={viewClassName}
       data-resizing={isResizing ? "true" : undefined}
       onAnimationEnd={settleIntroMotion}
@@ -159,12 +169,13 @@ export function MasonryView({
         const isIntroEntry = introIndex != null;
         const measuredAspectRatio =
           object.objectType === "item" ? runtimeMediaRatios[object.item.id] ?? null : null;
+        const layoutX = roundLayoutPixel(x);
+        const layoutY = roundLayoutPixel(y);
         const itemStyle: MasonryItemStyle = {
           "--archive-card-index": introIndex ?? enterIndex,
-          "--masonry-media-height": `${roundLayoutPixel(mediaHeight)}px`,
+          "--masonry-media-height": `${formatLayoutPixel(mediaHeight)}px`,
           height: roundLayoutPixel(height),
-          left: roundLayoutPixel(x),
-          top: roundLayoutPixel(y),
+          transform: `translate3d(${formatLayoutPixel(layoutX)}px, ${formatLayoutPixel(layoutY)}px, 0)`,
           width: roundLayoutPixel(width),
         };
 
@@ -173,6 +184,8 @@ export function MasonryView({
             className="masonry-view__item"
             data-archive-key={objectKey}
             data-entry-card={isIntroEntry ? "intro" : undefined}
+            data-layout-x={formatLayoutPixel(layoutX)}
+            data-layout-y={formatLayoutPixel(layoutY)}
             key={objectKey}
             style={itemStyle}
           >
@@ -247,76 +260,93 @@ function buildInitialIntroOrder(items: MasonryLayout["items"], introViewportBott
   return introOrder;
 }
 
-function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
+function useMasonryContainerWidth(element: HTMLElement | null, measureKey: string) {
   const [containerState, setContainerState] = useState(() => ({
     containerWidth: getInitialMasonryContainerWidth(),
     introViewportBottom: getInitialMasonryIntroViewportBottom(),
     isResizing: false,
   }));
 
-  useLayoutEffect(() => {
-    const element = ref.current;
+  useEffect(() => {
     if (!element) {
       return;
     }
 
     let frame = 0;
     let settleTimeout = 0;
-    let lastObservedWidth = Math.max(1, Math.round(element.getBoundingClientRect().width));
-    const setResizeSettled = () => {
-      settleTimeout = 0;
-      setContainerState((currentState) =>
-        currentState.isResizing ? { ...currentState, isResizing: false } : currentState,
-      );
-    };
-    const updateWidth = (width: number, isResizing: boolean) => {
-      const roundedWidth = Math.max(1, Math.round(width));
-      lastObservedWidth = roundedWidth;
-      const nextIntroViewportBottom = getMasonryIntroViewportBottom(element);
-      setContainerState((currentState) =>
-        currentState.containerWidth === roundedWidth &&
-        currentState.introViewportBottom === nextIntroViewportBottom &&
-        currentState.isResizing === isResizing
-          ? currentState
-          : {
-              containerWidth: roundedWidth,
-              introViewportBottom: nextIntroViewportBottom,
-              isResizing,
-            },
-      );
+    const latestWidthRef = { current: Math.max(1, element.getBoundingClientRect().width) };
+    const committedWidthRef = { current: latestWidthRef.current };
+    const observedWidthRef = { current: latestWidthRef.current };
+    const updateWidth = (width: number, isResizeFrame: boolean) => {
+      const measuredWidth = Math.max(1, width || latestWidthRef.current);
+      latestWidthRef.current = measuredWidth;
 
-      if (isResizing) {
-        if (settleTimeout) {
-          window.clearTimeout(settleTimeout);
-        }
-        settleTimeout = window.setTimeout(setResizeSettled, 180);
-      }
-    };
-    const scheduleWidthUpdate = (width: number) => {
-      const roundedWidth = Math.max(1, Math.round(width));
-      const isWidthResize = Math.abs(roundedWidth - lastObservedWidth) > 1;
-
-      if (!isWidthResize) {
-        updateWidth(width, false);
+      if (isResizeFrame) {
+        setContainerState((currentState) =>
+          currentState.isResizing ? currentState : { ...currentState, isResizing: true },
+        );
         return;
       }
 
-      if (frame) {
-        window.cancelAnimationFrame(frame);
+      const nextWidth = roundLayoutPixel(measuredWidth);
+      const widthChanged = Math.abs(nextWidth - committedWidthRef.current) > 0.1;
+      committedWidthRef.current = widthChanged ? nextWidth : committedWidthRef.current;
+      const nextIntroViewportBottom = getMasonryIntroViewportBottom(element);
+
+      setContainerState((currentState) =>
+        Math.abs(currentState.containerWidth - committedWidthRef.current) <= 0.1 &&
+        currentState.introViewportBottom === nextIntroViewportBottom &&
+        !currentState.isResizing
+          ? currentState
+          : {
+              containerWidth: committedWidthRef.current,
+              introViewportBottom: nextIntroViewportBottom,
+              isResizing: false,
+            },
+      );
+    };
+    const setResizeSettled = () => {
+      settleTimeout = 0;
+      updateWidth(element.getBoundingClientRect().width, false);
+    };
+    const commitWidth = (isResizeFrame: boolean) => {
+      frame = 0;
+      updateWidth(element.getBoundingClientRect().width || latestWidthRef.current, isResizeFrame);
+      if (isResizeFrame) {
+        if (settleTimeout) {
+          window.clearTimeout(settleTimeout);
+        }
+        settleTimeout = window.setTimeout(setResizeSettled, masonryResizeSettleMs);
       }
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        updateWidth(width, true);
-      });
+    };
+    const scheduleWidthUpdate = (width: number, isResizeFrame = true) => {
+      const measuredWidth = Math.max(1, width);
+      if (isResizeFrame && Math.abs(measuredWidth - observedWidthRef.current) <= 0.5) {
+        return;
+      }
+
+      observedWidthRef.current = measuredWidth;
+      latestWidthRef.current = measuredWidth;
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(() => commitWidth(isResizeFrame));
     };
 
     updateWidth(element.getBoundingClientRect().width, false);
 
+    const scheduleElementWidthUpdate = () => {
+      scheduleWidthUpdate(element.getBoundingClientRect().width, true);
+    };
     const observer = new ResizeObserver((entries) => {
-      const nextWidth = entries[0]?.contentRect.width ?? element.getBoundingClientRect().width;
-      scheduleWidthUpdate(nextWidth);
+      const entry = entries[0];
+      const borderBox = Array.isArray(entry?.borderBoxSize) ? entry?.borderBoxSize[0] : entry?.borderBoxSize;
+      const nextWidth = borderBox?.inlineSize ?? entry?.contentRect.width ?? element.getBoundingClientRect().width;
+      scheduleWidthUpdate(nextWidth, true);
     });
     observer.observe(element);
+    window.addEventListener("resize", scheduleElementWidthUpdate);
+    window.visualViewport?.addEventListener("resize", scheduleElementWidthUpdate);
 
     return () => {
       if (frame) {
@@ -326,12 +356,13 @@ function useMasonryContainerWidth(ref: RefObject<HTMLElement | null>) {
         window.clearTimeout(settleTimeout);
       }
       observer.disconnect();
+      window.removeEventListener("resize", scheduleElementWidthUpdate);
+      window.visualViewport?.removeEventListener("resize", scheduleElementWidthUpdate);
     };
-  }, [ref]);
+  }, [element, measureKey]);
 
   return containerState;
 }
-
 function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCount: boolean }) {
   const [responsiveColumns, setResponsiveColumns] = useState(() =>
     getResponsiveMasonryColumns(includeDefaultCount),
@@ -423,24 +454,22 @@ function buildMasonryLayout(
 ) {
   const safeColumnCount = Math.max(1, columnCount);
   const safeContainerWidth = Math.max(1, containerWidth);
-  const columnWidth = roundLayoutPixel(
-    Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount),
-  );
+  const columnWidth = Math.max(1, (safeContainerWidth - masonryGap * (safeColumnCount - 1)) / safeColumnCount);
   const columnHeights = Array.from({ length: safeColumnCount }, () => 0);
   const items = objects.map((object, enterIndex) => {
     const columnIndex = getShortestColumnIndex(columnHeights);
-    const x = roundLayoutPixel(columnIndex * (columnWidth + masonryGap));
-    const y = roundLayoutPixel(columnHeights[columnIndex]);
+    const x = columnIndex * (columnWidth + masonryGap);
+    const y = columnHeights[columnIndex];
     const objectKey = getArchiveObjectKey(object);
     const metrics = estimateObjectLayoutMetrics(object, columnWidth, mediaRatios);
-    const estimatedHeight = roundLayoutPixel(metrics.height);
+    const estimatedHeight = metrics.height;
 
-    columnHeights[columnIndex] = roundLayoutPixel(y + estimatedHeight + masonryGap);
+    columnHeights[columnIndex] = y + estimatedHeight + masonryGap;
 
     return {
       enterIndex,
       height: estimatedHeight,
-      mediaHeight: roundLayoutPixel(metrics.mediaHeight),
+      mediaHeight: metrics.mediaHeight,
       object,
       objectKey,
       renderSignature: getArchiveObjectRenderSignature(object),
@@ -606,7 +635,11 @@ function roundRatio(value: number) {
 }
 
 function roundLayoutPixel(value: number) {
-  return Math.round(value);
+  return Math.round(value * 1000) / 1000;
+}
+
+function formatLayoutPixel(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function getInitialMasonryContainerWidth() {
