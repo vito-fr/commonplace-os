@@ -5026,6 +5026,27 @@ select:focus-visible {
   height: 100%;
 }
 
+.item-card__video-player {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.item-card__video-card[data-playing="true"] .item-card__video-player {
+  opacity: 1;
+}
+
+.item-card__video-card[data-playing="true"] .item-card__video-poster,
+.item-card__video-card[data-playing="true"] .item-card__placeholder--video {
+  opacity: 0;
+}
+
 .item-card__placeholder--video {
   border-radius: var(--archive-card-radius);
 }
