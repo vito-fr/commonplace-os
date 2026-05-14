@@ -17,9 +17,9 @@ Operating protocol for Claude Code in this repo. Read every session. If you are 
 ## Hard rules — never violate, never request override
 
 1. AI subagents never write to canonical fields on `items` or extension tables. AI output goes to `ai_annotations`.
-2. AI subagents never write to a row whose `status != 'inbox'` without going through the suggestion / annotation path.
+2. AI annotations remain `review_status='pending'` until human review. There is no auto-approval path.
 3. Every query against tenant-scoped tables filters by `workspace_id`. There are no exceptions for "personal use" — the default workspace is still `personal`, and the filter still applies.
-4. Imports always set `status='inbox'`. They never write `triaged`, `active`, `archived`, or `retired`.
+4. Imports and uploads land at `status='active'`.
 5. Imports are idempotent on `(workspace_id, source_type, source_id)`. Duplicates are a bug, not a feature.
 6. State changes log to `item_events`. No silent state mutation.
 7. Symmetric relationships are stored once with canonical ordering (`from_id < to_id`). Never insert both directions.

@@ -1,6 +1,6 @@
 # Schema Reference
 
-Human-readable schema documentation. The source of truth is `pocketbase/pb_migrations/`, currently `pocketbase/pb_migrations/0001_initial_schema.js`. When this file and the migrations diverge, migrations win and this file is updated to match.
+Human-readable schema documentation. The source of truth is `pocketbase/pb_migrations/`, currently through `pocketbase/pb_migrations/0004_item_asset_thumbnails.js`. When this file and the migrations diverge, migrations win and this file is updated to match.
 
 Tenant scope is stored directly on root tables such as `items`, `sources`, `relationships`, `tags`, `collections`, `ai_annotations`, and `item_events`; extension and junction tables inherit tenant scope through their item, tag, or collection foreign keys. All timestamps are stored as ISO 8601 UTC text. Collection IDs are text IDs; records inserted through PocketBase use PocketBase's generated ID format, while seed data may use explicit `seed:*` IDs.
 
@@ -57,11 +57,11 @@ The atomic unit. Every piece of content is an item, distinguished by `type` and 
 |---|---|---|
 | id | TEXT NOT NULL | Primary key |
 | workspace_id | TEXT NOT NULL | FK -> workspaces(id) |
-| type | TEXT NOT NULL | CHECK(type IN ('image', 'caption', 'note', 'link', 'campaign')) |
-| status | TEXT NOT NULL | CHECK(status IN ('inbox', 'triaged', 'active', 'archived', 'retired')) |
+| type | TEXT NOT NULL | CHECK(type IN ('image', 'caption', 'note', 'link')) |
+| status | TEXT NOT NULL | CHECK(status IN ('active', 'archived')) |
 | title | TEXT | Nullable. Human-authored canonical title |
-| description | TEXT | Nullable. Human-authored canonical description. AI never writes this |
-| summary | TEXT | Nullable. Human-authored canonical summary. AI never writes this |
+| description | TEXT | Nullable canonical description |
+| summary | TEXT | Nullable canonical summary |
 | source_id | TEXT | Nullable FK -> sources(id) |
 | source_external_id | TEXT | Nullable. Source's identifier for this item, used for re-import idempotency |
 | privacy_level | TEXT | Nullable. CHECK(privacy_level IS NULL OR privacy_level IN ('private', 'personal', 'team', 'public')) |
@@ -134,14 +134,14 @@ Extension for `type='link'`.
 
 ### `item_assets`
 
-Stored files attached to an item. v0.1 uses this for local PDF source files while keeping the item itself as `type='link'` with `items_link.content_type='pdf'`.
+Stored files attached to an item. v0.1 uses this for local PDF source files while keeping the item itself as `type='link'` with `items_link.content_type='pdf'`, and for client-generated thumbnail files.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | TEXT NOT NULL | Primary key |
 | workspace_id | TEXT NOT NULL | FK -> workspaces(id) |
 | item_id | TEXT NOT NULL | FK -> items(id) |
-| role | TEXT NOT NULL | CHECK(role IN ('source_file')) |
+| role | TEXT NOT NULL | CHECK(role IN ('source_file', 'thumbnail')) |
 | file_ref | TEXT NOT NULL | PocketBase filesystem key |
 | original_name | TEXT NOT NULL | Original uploaded filename |
 | mime_type | TEXT NOT NULL | Uploaded file MIME type |
@@ -155,21 +155,14 @@ Constraints:
 Indexes:
 - `idx_item_assets_workspace_item` on (`workspace_id`, `item_id`)
 
-### `campaign_profiles`
+### Removed by migration `0002_personal_archive_pivot.js`
 
-Extension for `type='campaign'`.
+The current schema no longer includes:
 
-| Column | Type | Notes |
-|---|---|---|
-| item_id | TEXT NOT NULL | Primary key. FK -> items(id) |
-| phase | TEXT NOT NULL | DEFAULT 'planning'. CHECK(phase IN ('planning', 'live', 'wrapping', 'post_mortem')) |
-| channel | TEXT | Nullable. CHECK(channel IS NULL OR channel IN ('email', 'social', 'paid', 'web', 'multi', 'other')) |
-| start_at | TEXT | Nullable ISO 8601 UTC |
-| end_at | TEXT | Nullable ISO 8601 UTC |
-| brief | TEXT | Nullable human-authored brief |
-| kpi_summary | TEXT | Nullable human-authored post-mortem notes |
-
-The campaign lifecycle status lives on `items.status`; `campaign_profiles.phase` is campaign-specific and orthogonal.
+- `type='campaign'`
+- `status IN ('inbox', 'triaged', 'retired')`
+- `campaign_profiles`
+- `relationship_types.type='retired_by'`
 
 ---
 
@@ -255,7 +248,7 @@ Constraints:
 
 ### `collections`
 
-Organizational groupings of items, orthogonal to campaigns and status.
+Organizational groupings of items, orthogonal to item status.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -279,7 +272,7 @@ Many-to-many junction between collections and items.
 Constraints:
 - PRIMARY KEY (`collection_id`, `item_id`)
 
-Campaign attachment is represented by a `used_in` relationship to a `type='campaign'` item, not by collection membership.
+Collections are flat groups. Reuse history is represented by relationships such as `used_in`, not by collection membership.
 
 ---
 
@@ -287,7 +280,7 @@ Campaign attachment is represented by a `used_in` relationship to a `type='campa
 
 ### `ai_annotations`
 
-Every AI-generated metadata observation about an item. AI never writes canonical item fields or extension-table fields.
+Every AI-generated metadata observation about an item. Annotation rows default to `review_status='pending'` and remain pending until human review.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -391,7 +384,7 @@ Indexed columns:
 - `description`
 - `summary`
 
-The FTS rowid corresponds to the SQLite internal integer `rowid` of the `items` table row. Structured filters such as type, status, source, tags, collections, and campaign membership are handled through normal tables and indexes, not by FTS columns.
+The FTS rowid corresponds to the SQLite internal integer `rowid` of the `items` table row. Structured filters such as type, status, source, tags, and collections are handled through normal tables and indexes, not by FTS columns.
 
 Triggers:
 - `trg_items_fts_after_insert` AFTER INSERT ON `items`: inserts `NEW.rowid`, title, description, summary into `items_fts`
@@ -402,7 +395,7 @@ Triggers:
 
 ## What Is Intentionally Not In The Schema
 
-- No `is_deleted` / soft-delete column. Retirement is `status='retired'`; deletion is real.
+- No `is_deleted` / soft-delete column. Archiving is `status='archived'`; deletion is real.
 - No `tags` JSON column on items. Tags are normalized for searchability and vocabulary lock.
 - No materialized reverse edges. Indexes on `to_id` are sufficient.
 - No `parent_item_id` for hierarchies. Hierarchies are relationships (`derived_from`, `annotates`).
