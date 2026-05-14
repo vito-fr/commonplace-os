@@ -452,7 +452,10 @@ export function ItemCard({
                 className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
                 data-source={item.source}
                 key={item.key}
-                style={{ "--card-label-delay": `${Math.min(index, 8) * 25}ms` } as CSSProperties}
+                style={{
+                  "--card-label-enter-delay": `${Math.min(index, 8) * 35}ms`,
+                  "--card-label-exit-delay": `${Math.min(frameTags.length - index - 1, 8) * 28}ms`,
+                } as CSSProperties}
               >
                 {item.label}
               </span>

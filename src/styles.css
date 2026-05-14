@@ -60,7 +60,7 @@
   --collection-shell-max-width: 1480px;
   --collection-hero-max-width: 1320px;
   --item-detail-shell-max-width: 1540px;
-  --archive-control-height: 31px;
+  --archive-control-height: 36px;
   --archive-hit-target: 44px;
   --archive-pill-height: 28px;
   --archive-pill-padding-y: 6px;
@@ -4035,6 +4035,7 @@ select:focus-visible {
 }
 
 .collection-workspace__cover {
+  --collection-preview-tile-radius: max(2px, calc(var(--archive-card-radius) - 4px));
   position: relative;
   display: grid;
   aspect-ratio: 4 / 3;
@@ -4043,7 +4044,7 @@ select:focus-visible {
   grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 4px;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--archive-card-radius);
   background: color-mix(in srgb, var(--color-ink) 9%, var(--color-paper));
   background-clip: padding-box;
   contain: paint;
@@ -4314,7 +4315,7 @@ select:focus-visible {
   align-content: center;
   gap: 9px;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--archive-card-radius);
   background: color-mix(in srgb, var(--nav-cell-bg) 92%, var(--color-paper));
   color: var(--color-ink);
   padding: 18px;
@@ -4621,10 +4622,10 @@ select:focus-visible {
   --card-pill-bg: color-mix(in srgb, var(--color-ink) 10%, var(--color-paper));
   --card-pill-glass: color-mix(in srgb, var(--color-paper) 78%, transparent);
   --card-pill-dark: color-mix(in srgb, var(--color-ink) 92%, transparent);
-  --card-control-size: 28px;
-  --card-control-shell-size: 28px;
+  --card-control-size: 36px;
+  --card-control-shell-size: 36px;
   --card-control-membrane-padding: 0px;
-  --card-control-icon-size: 16px;
+  --card-control-icon-size: 22px;
   --card-control-padding: 10px;
   --card-motion-ease: cubic-bezier(0.5, 0, 0, 1);
   --card-label-ease: cubic-bezier(0.25, 0, 0, 0.75);
@@ -4652,10 +4653,6 @@ select:focus-visible {
 .item-card:focus-within,
 .item-card--selected {
   border-color: var(--color-accent);
-}
-
-.item-card--selected .item-card__content {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-ink) 86%, transparent);
 }
 
 .item-card__link {
@@ -4770,10 +4767,10 @@ select:focus-visible {
 
 .item-card__select span::before {
   position: absolute;
-  top: calc((var(--card-control-size) - 8px) / 2);
-  left: calc((var(--card-control-size) - 8px) / 2);
-  width: 8px;
-  height: 8px;
+  top: calc((var(--card-control-size) - 12px) / 2);
+  left: calc((var(--card-control-size) - 12px) / 2);
+  width: 12px;
+  height: 12px;
   border: 0;
   border-radius: 999px;
   background: currentColor;
@@ -4870,7 +4867,7 @@ select:focus-visible {
 
 .item-card__more-control::after {
   position: absolute;
-  top: 28px;
+  top: var(--card-control-size);
   right: 0;
   z-index: 4;
   width: 100%;
@@ -4902,9 +4899,9 @@ select:focus-visible {
 
   .item-card__action-cell,
   .item-card__select {
-    --card-control-size: 28px;
-    --card-control-shell-size: 28px;
-    --card-control-icon-size: 16px;
+    --card-control-size: 32px;
+    --card-control-shell-size: 32px;
+    --card-control-icon-size: 20px;
   }
 
   .item-card__action-cell--add {
@@ -4924,16 +4921,28 @@ select:focus-visible {
 .item-card__content::after {
   position: absolute;
   inset: 0;
+  z-index: 4;
+  border-radius: inherit;
   background: transparent;
+  box-shadow: inset 0 0 0 0 color-mix(in srgb, var(--color-ink) 86%, transparent);
   content: "";
   opacity: 0;
   pointer-events: none;
-  transition: none;
+  transition:
+    box-shadow 260ms var(--card-motion-ease),
+    opacity 260ms var(--card-motion-ease);
 }
 
 .item-card:hover .item-card__content::after,
 .item-card:focus-within .item-card__content::after {
   opacity: 0;
+}
+
+.item-card--selected .item-card__content::after,
+.item-card--selected:hover .item-card__content::after,
+.item-card--selected:focus-within .item-card__content::after {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-ink) 86%, transparent);
+  opacity: 1;
 }
 
 .item-card__placeholder {
@@ -4999,7 +5008,7 @@ select:focus-visible {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.015em;
-  line-height: 1.28;
+  line-height: 1.32;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 7;
 }
@@ -5071,11 +5080,11 @@ select:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  opacity: 0;
+  overflow: visible;
+  opacity: 1;
   pointer-events: none;
   transform: none;
-  transition:
-    opacity 500ms var(--card-label-ease);
+  transition: none;
 }
 
 .item-card:hover .item-card__frame-tags,
@@ -5102,21 +5111,21 @@ select:focus-visible {
   line-height: 1.16;
   opacity: 0;
   white-space: nowrap;
-  filter: blur(2px);
-  transform: translateX(-12px);
+  filter: blur(7px);
+  transform: translateY(8px);
   transition:
-    filter 500ms var(--card-label-ease),
-    opacity 500ms var(--card-label-ease),
-    transform 500ms var(--card-label-ease);
-  transition-delay: 0ms;
+    filter 420ms var(--card-label-ease),
+    opacity 420ms var(--card-label-ease),
+    transform 420ms var(--card-label-ease);
+  transition-delay: var(--card-label-exit-delay, 0ms);
 }
 
 .item-card:hover .item-card__frame-tag,
 .item-card:focus-within .item-card__frame-tag {
   filter: blur(0px);
   opacity: 1;
-  transform: translateX(0);
-  transition-delay: var(--card-label-delay, 0ms);
+  transform: translateY(0);
+  transition-delay: var(--card-label-enter-delay, 0ms);
 }
 
 .item-card__frame-tag--upload {
@@ -5189,6 +5198,17 @@ select:focus-visible {
   opacity: 1;
   transform: translateY(0);
   transition-delay: 34ms;
+}
+
+.item-card--has-added-time:has(.item-card__select:hover, .item-card__actions:hover, .item-card__actions:focus-within, .item-card__more-control[data-open="true"]) .item-card__label-text {
+  opacity: 1;
+  transform: none;
+}
+
+.item-card--has-added-time:has(.item-card__select:hover, .item-card__actions:hover, .item-card__actions:focus-within, .item-card__more-control[data-open="true"]) .item-card__label-time {
+  opacity: 0;
+  transform: translateY(6px);
+  transition-delay: 0ms;
 }
 
 .item-card__plus-icon,
@@ -5267,7 +5287,7 @@ select:focus-visible {
 
 .item-card__more-menu {
   position: absolute;
-  top: 34px;
+  top: calc(var(--card-control-size) + 6px);
   right: 0;
   z-index: 5;
   display: grid;
@@ -5293,10 +5313,10 @@ select:focus-visible {
 .item-card__menu-action {
   position: relative;
   display: inline-flex;
-  width: 28px;
-  min-width: 28px;
-  max-width: 116px;
-  min-height: 28px;
+  width: var(--card-control-size);
+  min-width: var(--card-control-size);
+  max-width: 132px;
+  min-height: var(--card-control-size);
   align-items: center;
   justify-content: flex-start;
   border: 0;
@@ -5310,7 +5330,7 @@ select:focus-visible {
   letter-spacing: -0.015em;
   line-height: 1.16;
   overflow: hidden;
-  padding: 0 2px;
+  padding: 0 calc((var(--card-control-size) - var(--card-control-icon-size)) / 2);
   text-align: left;
   transition:
     width 280ms var(--card-motion-ease),
@@ -5323,7 +5343,7 @@ select:focus-visible {
 .item-card__menu-action:focus-visible,
 .item-card__menu-action[aria-expanded="true"],
 .item-card__menu-action[data-confirming="true"] {
-  width: 96px;
+  width: 104px;
   color: color-mix(in srgb, var(--color-ink) 74%, var(--color-paper));
 }
 
@@ -5333,8 +5353,9 @@ select:focus-visible {
 }
 
 .item-card__menu-action:disabled:hover {
-  width: 28px;
+  width: var(--card-control-size);
   color: var(--color-ink);
+  padding: 0 calc((var(--card-control-size) - var(--card-control-icon-size)) / 2);
 }
 
 .item-card__menu-icon {
@@ -5460,10 +5481,10 @@ select:focus-visible {
 
 .collection-card {
   --card-pill-glass: color-mix(in srgb, var(--color-paper) 78%, transparent);
-  --card-control-size: 28px;
-  --card-control-shell-size: 28px;
+  --card-control-size: 36px;
+  --card-control-shell-size: 36px;
   --card-control-membrane-padding: 0px;
-  --card-control-icon-size: 16px;
+  --card-control-icon-size: 22px;
   --card-motion-ease: cubic-bezier(0.5, 0, 0, 1);
   --card-label-ease: cubic-bezier(0.25, 0, 0, 0.75);
   position: relative;
@@ -5512,6 +5533,7 @@ select:focus-visible {
 }
 
 .collection-card__cover {
+  --collection-preview-tile-radius: max(2px, calc(var(--archive-card-radius) - 4px));
   position: relative;
   z-index: 0;
   display: grid;
@@ -5564,7 +5586,7 @@ select:focus-visible {
   min-height: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 2px;
+  border-radius: var(--collection-preview-tile-radius);
   background: var(--nav-cell-material);
   color: var(--color-ink);
   font-weight: 700;
@@ -5709,6 +5731,17 @@ select:focus-visible {
   transition-delay: 34ms;
 }
 
+.collection-card--has-added-time:has(.collection-card__actions:hover, .collection-card__actions:focus-within, .collection-card__more-control[data-open="true"]) .collection-card__title-text {
+  opacity: 1;
+  transform: none;
+}
+
+.collection-card--has-added-time:has(.collection-card__actions:hover, .collection-card__actions:focus-within, .collection-card__more-control[data-open="true"]) .collection-card__title-time {
+  opacity: 0;
+  transform: translateY(6px);
+  transition-delay: 0ms;
+}
+
 .collection-card__count {
   grid-column: 2 / 3;
   display: inline-flex;
@@ -5735,11 +5768,11 @@ select:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  opacity: 0;
+  overflow: visible;
+  opacity: 1;
   pointer-events: none;
   transform: none;
-  transition:
-    opacity 500ms var(--card-label-ease);
+  transition: none;
 }
 
 .collection-card:hover .collection-card__frame-tags,
@@ -5763,13 +5796,13 @@ select:focus-visible {
   letter-spacing: -0.015em;
   line-height: 1.16;
   opacity: 0;
-  filter: blur(2px);
-  transform: translateX(-12px);
+  filter: blur(7px);
+  transform: translateY(8px);
   transition:
-    filter 500ms var(--card-label-ease),
-    opacity 500ms var(--card-label-ease),
-    transform 500ms var(--card-label-ease);
-  transition-delay: 0ms;
+    filter 420ms var(--card-label-ease),
+    opacity 420ms var(--card-label-ease),
+    transform 420ms var(--card-label-ease);
+  transition-delay: var(--card-label-exit-delay, 0ms);
   white-space: nowrap;
 }
 
@@ -5777,8 +5810,8 @@ select:focus-visible {
 .collection-card:focus-within .collection-card__frame-tag {
   filter: blur(0px);
   opacity: 1;
-  transform: translateX(0);
-  transition-delay: var(--card-label-delay, 0ms);
+  transform: translateY(0);
+  transition-delay: var(--card-label-enter-delay, 0ms);
 }
 
 .collection-card__actions {
@@ -5860,13 +5893,13 @@ select:focus-visible {
   }
 
   .collection-card__action-cell {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
   }
 
   .collection-card__action-cell--add {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
   }
 
 }
@@ -6219,9 +6252,10 @@ select:focus-visible {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  grid-template-columns: repeat(var(--gallery-columns, 4), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--gallery-columns, 4), minmax(0, var(--gallery-column-width, 1fr)));
   gap: 12px;
   align-items: start;
+  justify-content: start;
   overflow-x: clip;
 }
 
@@ -6397,6 +6431,24 @@ select:focus-visible {
   border-radius: 0;
 }
 
+:root[data-browser-safari] .item-card__select,
+:root[data-browser-safari] .item-card__more-menu,
+:root[data-browser-safari] .collection-card__more-menu {
+  contain: paint;
+  isolation: isolate;
+}
+
+:root[data-browser-safari] .item-card__actions,
+:root[data-browser-safari] .collection-card__actions {
+  isolation: isolate;
+}
+
+:root[data-browser-safari] .item-card__more-menu,
+:root[data-browser-safari] .collection-card__more-menu {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 :root[data-debug-disable-card-hover-transforms] .item-card:hover .item-card__label-text,
 :root[data-debug-disable-card-hover-transforms] .item-card:focus-within .item-card__label-text,
 :root[data-debug-disable-card-hover-transforms] .item-card:hover .item-card__label-time,
@@ -6449,6 +6501,19 @@ select:focus-visible {
 :root[data-browser-safari] .collection-card--has-added-time:hover .collection-card__title-time,
 :root[data-browser-safari] .collection-card--has-added-time:focus-within .collection-card__title-time {
   transform: translateY(0);
+}
+
+:root[data-browser-safari] .item-card--has-added-time:has(.item-card__select:hover, .item-card__actions:hover, .item-card__actions:focus-within, .item-card__more-control[data-open="true"]) .item-card__label-text,
+:root[data-browser-safari] .collection-card--has-added-time:has(.collection-card__actions:hover, .collection-card__actions:focus-within, .collection-card__more-control[data-open="true"]) .collection-card__title-text {
+  opacity: 1;
+  transform: none;
+}
+
+:root[data-browser-safari] .item-card--has-added-time:has(.item-card__select:hover, .item-card__actions:hover, .item-card__actions:focus-within, .item-card__more-control[data-open="true"]) .item-card__label-time,
+:root[data-browser-safari] .collection-card--has-added-time:has(.collection-card__actions:hover, .collection-card__actions:focus-within, .collection-card__more-control[data-open="true"]) .collection-card__title-time {
+  opacity: 0;
+  transform: translateY(6px);
+  transition-delay: 0ms;
 }
 
 :root[data-browser-safari] .item-card__plus-icon,

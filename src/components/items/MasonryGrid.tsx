@@ -1,4 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type CSSProperties, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import { ItemCard } from "./ItemCard";
@@ -20,6 +32,7 @@ export interface MasonryGridProps {
 
 type GalleryGridStyle = CSSProperties & {
   "--gallery-columns": number;
+  "--gallery-column-width"?: string;
 };
 
 type CardEnterStyle = CSSProperties & {
@@ -54,7 +67,6 @@ export function MasonryGrid({
   const gridClassName = ["masonry-grid", `masonry-grid--${density}`, className]
     .filter(Boolean)
     .join(" ");
-  const gridStyle: GalleryGridStyle = { "--gallery-columns": columns };
   const gridRef = useRef<HTMLElement | null>(null);
   const hasLeadingTile = Boolean(leadingTile);
   const entryCardLimit = Math.max(minGridEntryCards, columns * 3);
@@ -64,6 +76,11 @@ export function MasonryGrid({
     () => [columns, density, hasLeadingTile ? "leading" : "none", objects.map(getArchiveObjectKey).join("|")].join("::"),
     [columns, density, hasLeadingTile, objects],
   );
+  const roundedTrackWidth = useRoundedGalleryTrackWidth(gridRef, columns, layoutSignature);
+  const gridStyle: GalleryGridStyle = {
+    "--gallery-columns": columns,
+    ...(roundedTrackWidth ? { "--gallery-column-width": `${roundedTrackWidth}px` } : {}),
+  };
 
   useGridFlipAnimation(gridRef, layoutSignature);
 
@@ -190,4 +207,48 @@ const GridObjectContent = memo(function GridObjectContent({
 
 function areGridObjectContentPropsEqual(previousProps: GridObjectContentProps, nextProps: GridObjectContentProps) {
   return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
+}
+
+function useRoundedGalleryTrackWidth(containerRef: RefObject<HTMLElement | null>, columns: number, measureKey: string) {
+  const [trackWidth, setTrackWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    let frame = 0;
+    const measureTrackWidth = () => {
+      frame = 0;
+      const styles = window.getComputedStyle(container);
+      const gap = parseFloat(styles.columnGap || styles.gap) || 0;
+      const containerWidth = container.getBoundingClientRect().width;
+      const safeColumns = Math.max(1, columns);
+      const nextTrackWidth = Math.max(1, Math.floor((containerWidth - gap * (safeColumns - 1)) / safeColumns));
+
+      setTrackWidth((currentTrackWidth) => (currentTrackWidth === nextTrackWidth ? currentTrackWidth : nextTrackWidth));
+    };
+    const scheduleTrackWidth = () => {
+      if (frame) {
+        return;
+      }
+
+      frame = window.requestAnimationFrame(measureTrackWidth);
+    };
+
+    measureTrackWidth();
+
+    const observer = new ResizeObserver(scheduleTrackWidth);
+    observer.observe(container);
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      observer.disconnect();
+    };
+  }, [columns, containerRef, measureKey]);
+
+  return trackWidth;
 }

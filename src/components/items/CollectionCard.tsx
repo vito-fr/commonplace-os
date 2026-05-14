@@ -142,7 +142,10 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
                 <span
                   className="collection-card__frame-tag"
                   key={tag.key}
-                  style={{ "--card-label-delay": `${Math.min(index, 8) * 25}ms` } as CSSProperties}
+                  style={{
+                    "--card-label-enter-delay": `${Math.min(index, 8) * 35}ms`,
+                    "--card-label-exit-delay": `${Math.min(frameTags.length - index - 1, 8) * 28}ms`,
+                  } as CSSProperties}
                 >
                   {tag.label}
                 </span>
