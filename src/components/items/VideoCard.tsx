@@ -19,6 +19,7 @@ type AutoplayPlayer = {
 };
 
 const activeAutoplayPlayers = new Map<string, AutoplayPlayer>();
+const autoplayStartRatio = 0.15;
 
 export function VideoCard({
   height = null,
@@ -72,13 +73,20 @@ export function VideoCard({
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (entry?.isIntersecting && entry.intersectionRatio >= 0.5) {
+        if (!entry) {
+          return;
+        }
+
+        if (entry.isIntersecting && entry.intersectionRatio >= autoplayStartRatio) {
           setShouldLoadVideo(true);
           return;
         }
-        stopPlayback();
+
+        if (!entry.isIntersecting) {
+          stopPlayback();
+        }
       },
-      { threshold: [0, 0.5] },
+      { rootMargin: "180px 0px", threshold: [0, autoplayStartRatio, 0.5, 1] },
     );
 
     observer.observe(node);
@@ -118,6 +126,8 @@ export function VideoCard({
         stopPlayback();
       }
     };
+    let lastPlaybackTime = video.currentTime;
+    let stagnantTicks = 0;
     const restartPlayback = () => {
       if (cancelled || !mountedRef.current || document.visibilityState === "hidden") {
         return;
@@ -129,13 +139,47 @@ export function VideoCard({
 
       void beginPlayback();
     };
+    const nudgePlayback = () => {
+      const currentTime = video.currentTime;
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        const nextTime = Math.min(currentTime + 0.04, Math.max(0, video.duration - 0.12));
+        if (nextTime > currentTime) {
+          video.currentTime = nextTime;
+        }
+      }
+      void beginPlayback();
+    };
     const handleError = () => {
       onMediaError(src);
       stopPlayback();
     };
     const loopWatch = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
       if (video.paused || video.ended || (Number.isFinite(video.duration) && video.duration - video.currentTime < 0.12)) {
         restartPlayback();
+        lastPlaybackTime = video.currentTime;
+        stagnantTicks = 0;
+        return;
+      }
+
+      const progressDelta = video.currentTime - lastPlaybackTime;
+      if (progressDelta > 0.05 || progressDelta < -0.05) {
+        lastPlaybackTime = video.currentTime;
+        stagnantTicks = 0;
+        return;
+      }
+
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        stagnantTicks += 1;
+      }
+
+      if (stagnantTicks >= 4) {
+        nudgePlayback();
+        lastPlaybackTime = video.currentTime;
+        stagnantTicks = 0;
       }
     }, 500);
 
