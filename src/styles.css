@@ -6962,15 +6962,18 @@ select:focus-visible {
 
 .item-detail__video-hero {
   position: relative;
-  display: grid;
+  display: flex;
   width: min(100%, 1080px);
+  align-items: center;
+  justify-content: center;
   margin: 0;
 }
 
 .item-detail__hero-video {
   display: block;
-  width: 100%;
+  width: auto;
   max-width: 100%;
+  height: auto;
   max-height: min(calc(100vh - 92px), 1080px);
   border-radius: var(--archive-card-radius);
   background: #000;

@@ -107,6 +107,7 @@ export function VideoCard({
       }
 
       claimAutoplaySlot({ id: playerId, stop: stopPlayback });
+      video.loop = true;
       video.muted = true;
       video.playsInline = true;
 
@@ -117,17 +118,36 @@ export function VideoCard({
         stopPlayback();
       }
     };
+    const restartPlayback = () => {
+      if (cancelled || !mountedRef.current || document.visibilityState === "hidden") {
+        return;
+      }
+
+      if (video.ended || (Number.isFinite(video.duration) && video.duration - video.currentTime < 0.12)) {
+        video.currentTime = 0;
+      }
+
+      void beginPlayback();
+    };
     const handleError = () => {
       onMediaError(src);
       stopPlayback();
     };
+    const loopWatch = window.setInterval(() => {
+      if (video.paused || video.ended || (Number.isFinite(video.duration) && video.duration - video.currentTime < 0.12)) {
+        restartPlayback();
+      }
+    }, 500);
 
+    video.addEventListener("ended", restartPlayback);
     video.addEventListener("playing", markPlaying);
     video.addEventListener("error", handleError);
     void beginPlayback();
 
     return () => {
       cancelled = true;
+      window.clearInterval(loopWatch);
+      video.removeEventListener("ended", restartPlayback);
       video.removeEventListener("playing", markPlaying);
       video.removeEventListener("error", handleError);
       releaseAutoplaySlot(playerId);
