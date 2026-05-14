@@ -136,6 +136,8 @@ function readFixtures(fixturesDir) {
       }
     });
 
+    rows = rows.filter((row) => row.__todo !== true);
+
     return { ...entry, rows };
   });
 }

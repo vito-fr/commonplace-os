@@ -1,0 +1,15 @@
+[
+  {
+    "__todo": true,
+    "item_id": "TODO: replace with a real video item id after fixture binaries are provided",
+    "file_ref": "TODO: PocketBase file reference for the uploaded video",
+    "mime_type": "TODO: video/mp4, video/webm, or video/quicktime",
+    "width": 0,
+    "height": 0,
+    "duration_ms": 0,
+    "poster_file_ref": "TODO: PocketBase file reference for the generated poster frame",
+    "dominant_colors": "[]",
+    "perceptual_hash": null,
+    "aspect_ratio": 1
+  }
+]
