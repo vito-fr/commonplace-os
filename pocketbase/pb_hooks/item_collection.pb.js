@@ -526,6 +526,26 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     return parts.join(" · ") || "no pieces";
   }
 
+  function formatKindSummaryFromCounts(row) {
+    const parts = [];
+    const counts = [
+      { count: Number(row.imageCount) || 0, singular: "image", plural: "images" },
+      { count: Number(row.captionCount) || 0, singular: "caption", plural: "captions" },
+      { count: Number(row.noteCount) || 0, singular: "note", plural: "notes" },
+      { count: Number(row.linkCount) || 0, singular: "link", plural: "links" },
+      { count: Number(row.videoCount) || 0, singular: "video", plural: "videos" },
+    ];
+
+    for (let index = 0; index < counts.length; index += 1) {
+      const entry = counts[index];
+      if (entry.count > 0) {
+        parts.push(`${entry.count} ${entry.count === 1 ? entry.singular : entry.plural}`);
+      }
+    }
+
+    return parts.join(" · ") || "no pieces";
+  }
+
   const collectionRows = queryAll(
     `
       SELECT
@@ -652,6 +672,72 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     { workspaceId, collectionId },
   );
 
+  const subCollectionRows = queryAll(
+    `
+      SELECT
+        child.id,
+        child.workspace_id AS workspaceId,
+        child.name,
+        child.description,
+        child.created_at AS createdAt,
+        CASE
+          WHEN MAX(i.updated_at) IS NOT NULL AND MAX(i.updated_at) > child.created_at THEN MAX(i.updated_at)
+          ELSE child.created_at
+        END AS lastUpdatedAt,
+        cr.position,
+        cr.added_at AS addedAt,
+        cr.added_by AS addedBy,
+        COUNT(i.id) AS pieceCount,
+        SUM(CASE WHEN i.type = 'image' THEN 1 ELSE 0 END) AS imageCount,
+        SUM(CASE WHEN i.type = 'caption' THEN 1 ELSE 0 END) AS captionCount,
+        SUM(CASE WHEN i.type = 'note' THEN 1 ELSE 0 END) AS noteCount,
+        SUM(CASE WHEN i.type = 'link' THEN 1 ELSE 0 END) AS linkCount,
+        SUM(CASE WHEN i.type = 'video' THEN 1 ELSE 0 END) AS videoCount
+      FROM collection_relationships cr
+      INNER JOIN collections parent
+        ON parent.id = cr.parent_collection_id
+        AND parent.workspace_id = cr.workspace_id
+      INNER JOIN collections child
+        ON child.id = cr.child_collection_id
+        AND child.workspace_id = cr.workspace_id
+      LEFT JOIN collection_items ci
+        ON ci.collection_id = child.id
+      LEFT JOIN items i
+        ON i.id = ci.item_id
+        AND i.workspace_id = child.workspace_id
+      WHERE cr.workspace_id = {:workspaceId}
+        AND cr.parent_collection_id = {:collectionId}
+      GROUP BY
+        child.id,
+        child.workspace_id,
+        child.name,
+        child.description,
+        child.created_at,
+        cr.position,
+        cr.added_at,
+        cr.added_by
+      ORDER BY cr.position ASC, cr.added_at ASC, child.name ASC, child.id ASC
+    `,
+    {
+      id: "",
+      workspaceId: "",
+      name: "",
+      description: nullString(),
+      createdAt: "",
+      lastUpdatedAt: "",
+      position: 0,
+      addedAt: "",
+      addedBy: "",
+      pieceCount: 0,
+      imageCount: 0,
+      captionCount: 0,
+      noteCount: 0,
+      linkCount: 0,
+      videoCount: 0,
+    },
+    { workspaceId, collectionId },
+  );
+
   const items = [];
   let lastUpdatedAt = collectionRows[0].createdAt;
 
@@ -730,6 +816,28 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     });
   }
 
+  const subCollections = [];
+  for (let index = 0; index < subCollectionRows.length; index += 1) {
+    const row = subCollectionRows[index];
+    subCollections.push({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      name: row.name,
+      description: nullableString(row.description),
+      createdAt: row.createdAt,
+      lastUpdatedAt: row.lastUpdatedAt,
+      pieceCount: row.pieceCount,
+      kindSummary: formatKindSummaryFromCounts(row),
+      previewItems: [],
+      relationship: {
+        parentCollectionId: collectionId,
+        position: Number(row.position) || 0,
+        addedAt: row.addedAt,
+        addedBy: row.addedBy,
+      },
+    });
+  }
+
   const collection = collectionRows[0];
   return e.json(200, {
     collection: {
@@ -742,6 +850,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       pieceCount: items.length,
       kindSummary: formatKindSummary(items),
       items,
+      subCollections,
     },
   });
 });
