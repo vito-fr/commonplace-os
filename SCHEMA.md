@@ -260,7 +260,7 @@ Organizational groupings of items, orthogonal to item status.
 
 ### `collection_items`
 
-Many-to-many junction between collections and items.
+Many-to-many junction between collections and items. Item membership remains separate from collection-to-collection references.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -272,7 +272,32 @@ Many-to-many junction between collections and items.
 Constraints:
 - PRIMARY KEY (`collection_id`, `item_id`)
 
-Collections are flat groups. Reuse history is represented by relationships such as `used_in`, not by collection membership.
+### `collection_relationships`
+
+Directed references between collections. Used for imported nested Are.na channels and future local sub-collection references. The top-level archive remains flat; nested collections are rendered only inside a parent collection view.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT NOT NULL | Primary key |
+| workspace_id | TEXT NOT NULL | FK -> workspaces(id) |
+| parent_collection_id | TEXT NOT NULL | FK -> collections(id) |
+| child_collection_id | TEXT NOT NULL | FK -> collections(id) |
+| position | INTEGER NOT NULL DEFAULT 0 | Ordering within the parent collection's child collection list |
+| added_at | TEXT NOT NULL | ISO 8601 UTC |
+| added_by | TEXT NOT NULL | Actor string |
+
+Constraints:
+- PRIMARY KEY (`id`)
+- CHECK (`parent_collection_id != child_collection_id`)
+- UNIQUE (`workspace_id`, `parent_collection_id`, `child_collection_id`)
+
+Indexes:
+- `idx_collection_relationships_parent` on (`workspace_id`, `parent_collection_id`, `position`)
+- `idx_collection_relationships_child` on (`workspace_id`, `child_collection_id`)
+
+Multi-hop cycle prevention is handled in application code. Collection relationship reads always filter by `workspace_id`.
+
+Reuse history is represented by item relationships such as `used_in`, not by collection membership or collection references.
 
 ---
 

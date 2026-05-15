@@ -39,6 +39,7 @@ These are the durable rules. The full UI architecture lives in `UI_ARCHITECTURE.
 8. Desktop is the primary surface. Density wins. Mobile renders capture, browse, single-item triage, and search — and almost nothing else. No mobile-first compromises that weaken desktop.
 9. No hover-only core actions. Triage, retire, attach to campaign, attach to collection, advance status are always visible. Hover may reveal secondary affordances only.
 10. No unlabeled mystery icons. No decorative graph theater (no 3D, no force animation by default, no >30-node hairballs, no glowing nodes). Every icon has a label or unambiguous convention.
+11. Collections may reference other collections via `collection_relationships`; this is visible inside collection views only. The top-level archive remains masonry-flat.
 
 ## Stop-and-ask triggers
 
