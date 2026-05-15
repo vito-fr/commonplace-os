@@ -6,7 +6,6 @@ import https from "node:https";
 const args = parseArgs(process.argv.slice(2));
 const channel = args.channel;
 const workspaceId = args.workspace || args["workspace-id"] || "seed:ws001";
-const depth = parseDepth(args.depth ?? "1");
 const baseUrl = normalizeBaseUrl(args["base-url"] || process.env.POCKETBASE_URL || "http://127.0.0.1:8090");
 
 if (!channel) {
@@ -14,10 +13,14 @@ if (!channel) {
   process.exit(1);
 }
 
+if (args.depth !== undefined) {
+  console.error("--depth is no longer supported. Import nested channels separately with --channel <slug>.");
+  process.exit(1);
+}
+
 const response = await postJson(new URL("/api/vita/import-arena", baseUrl), {
   workspace_id: workspaceId,
   channel,
-  depth,
 });
 
 const text = response.body;
@@ -38,6 +41,7 @@ if (!response.ok) {
 }
 
 console.log(JSON.stringify(payload, null, 2));
+printNestedChannelFollowup(payload);
 
 function parseArgs(argv) {
   const parsed = {};
@@ -109,16 +113,28 @@ function normalizeBaseUrl(value) {
   return String(value || "http://127.0.0.1:8090").endsWith("/") ? String(value) : `${value}/`;
 }
 
-function parseDepth(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    console.error("--depth must be a non-negative integer");
-    process.exit(1);
-  }
-
-  return parsed;
+function printUsage() {
+  console.error("Usage: npm run import:arena -- --channel <slug> [--workspace seed:ws001] [--base-url http://127.0.0.1:8090]");
 }
 
-function printUsage() {
-  console.error("Usage: npm run import:arena -- --channel <slug> [--workspace seed:ws001] [--depth 1] [--base-url http://127.0.0.1:8090]");
+function printNestedChannelFollowup(payload) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const nestedChannels = Array.isArray(payload.nested_channels) ? payload.nested_channels : [];
+  const skippedCount = Number(payload.nested_channels_skipped) || nestedChannels.length;
+  if (skippedCount <= 0) {
+    return;
+  }
+
+  console.log("");
+  console.log(`Skipped ${skippedCount} nested ${skippedCount === 1 ? "channel" : "channels"}:`);
+  for (const nestedChannel of nestedChannels) {
+    const title = nestedChannel && nestedChannel.title ? String(nestedChannel.title) : "Untitled channel";
+    const slug = nestedChannel && nestedChannel.slug ? String(nestedChannel.slug) : "";
+    console.log(`  - ${title}${slug ? `  (slug: ${slug})` : ""}`);
+  }
+  console.log("To import any of these as a separate top-level collection, run:");
+  console.log("  npm run import:arena -- --channel <slug>");
 }

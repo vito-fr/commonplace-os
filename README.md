@@ -81,7 +81,7 @@ Optional flags:
 npm run import:arena -- --channel <channel-slug> --workspace seed:ws001 --base-url http://127.0.0.1:8090
 ```
 
-The importer creates one `arena/global` source row per workspace, creates one collection for the channel, downloads Image/GIF blocks to local storage, maps Text blocks to notes, and maps Link/Embed/Attachment/fallback content to link items. Re-running the same channel is idempotent and prints a summary.
+The importer creates one `arena/global` source row per workspace, creates one collection for the channel, downloads Image/GIF blocks to local storage, maps Text blocks to notes, and maps Link/Embed/Attachment/fallback content to link items. Channel blocks are skipped and listed in the CLI summary; import those slugs separately if you want them as independent top-level collections. Re-running the same channel is idempotent and prints a summary.
 
 ---
 

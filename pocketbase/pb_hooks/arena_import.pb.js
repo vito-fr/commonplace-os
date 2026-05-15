@@ -7,14 +7,12 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
   const body = new DynamicModel({
       workspace_id: "",
       channel: "",
-      depth: 1,
       actor: "",
     });
     e.bindBody(body);
 
     const workspaceId = requiredString(body.workspace_id, "workspace_id");
     const channelSlug = requiredString(body.channel, "channel");
-    const depth = nonNegativeInteger(body.depth, 1, "depth");
     const actor = optionalString(body.actor) || "subagent:import";
     const apiKey = optionalString($os.getenv("ARENA_API_KEY"));
 
@@ -35,18 +33,16 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     const sourceId = ensureArenaSource(e.app, workspaceId, now);
     const collection = ensureArenaCollection(e.app, workspaceId, channel, now);
     const existingItems = existingArenaItems(e.app, workspaceId, sourceId);
-    const summary = emptyImportSummary(workspaceId, channel, collection.id, sourceId, depth);
+    const summary = emptyImportSummary(workspaceId, channel, collection.id, sourceId);
 
     try {
       importArenaChannel(e.app, {
         actor,
         client,
         collection,
-        depthRemaining: depth,
         existingItems,
         sourceId,
         summary,
-        visitedChannelIds: {},
         workspaceId,
       });
     } catch (error) {
@@ -236,48 +232,28 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     return index;
   }
 
-  function importArenaChannel(app, { actor, client, collection, depthRemaining, existingItems, sourceId, summary, visitedChannelIds, workspaceId }) {
-    const channelKey = channelVisitedKey(collection);
-    if (channelKey) {
-      visitedChannelIds[channelKey] = true;
-    }
-
+  function importArenaChannel(app, { actor, client, collection, existingItems, sourceId, summary, workspaceId }) {
     const contents = client.getChannelContents(channelHandle(collection), { per: 100, sort: "position_desc" });
     for (let index = 0; index < contents.length; index += 1) {
       const draft = mapArenaConnectableToItemDraft(contents[index]);
       processArenaDraft(app, {
         actor,
-        client,
         collection,
-        depthRemaining,
         draft,
         existingItems,
         position: index,
         sourceId,
         summary,
-        visitedChannelIds,
         workspaceId,
       });
     }
   }
 
-  function processArenaDraft(app, { actor, client, collection, depthRemaining, draft, existingItems, position, sourceId, summary, visitedChannelIds, workspaceId }) {
+  function processArenaDraft(app, { actor, collection, draft, existingItems, position, sourceId, summary, workspaceId }) {
     recordArenaDraft(summary, draft);
 
     if (draft.itemType === "collection") {
-      importNestedCollectionDraft(app, {
-        actor,
-        client,
-        collection,
-        depthRemaining,
-        draft,
-        existingItems,
-        position,
-        sourceId,
-        summary,
-        visitedChannelIds,
-        workspaceId,
-      });
+      recordSkippedNestedChannel(summary, draft);
       return;
     }
 
@@ -317,80 +293,10 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     }
   }
 
-  function importNestedCollectionDraft(app, { actor, client, collection, depthRemaining, draft, existingItems, position, sourceId, summary, visitedChannelIds, workspaceId }) {
-    if (depthRemaining <= 0) {
-      summary.sub_collections_skipped += 1;
-      summary.warnings.push({
-        source_external_id: draft.sourceExternalId,
-        block_type: draft.blockType,
-        warning: "nested channel skipped because depth limit was reached",
-      });
-      return;
-    }
-
-    try {
-      const now = new Date().toISOString();
-      const childCollection = ensureArenaCollection(app, workspaceId, draft.collection, now);
-
-      if (childCollection.created) {
-        summary.sub_collections_created += 1;
-      } else {
-        summary.sub_collections_skipped += 1;
-      }
-
-      if (childCollection.id === collection.id) {
-        summary.warnings.push({
-          source_external_id: draft.sourceExternalId,
-          block_type: draft.blockType,
-          warning: "nested channel self-reference skipped",
-        });
-        return;
-      }
-
-      ensureCollectionRelationship(app, {
-        actor,
-        childCollection,
-        parentCollection: collection,
-        position,
-        summary,
-        workspaceId,
-        now,
-      });
-
-      const childKey = channelVisitedKey(childCollection);
-      if (childKey && visitedChannelIds[childKey]) {
-        summary.warnings.push({
-          source_external_id: draft.sourceExternalId,
-          block_type: draft.blockType,
-          warning: "nested channel already visited; relationship kept without recursing",
-        });
-        return;
-      }
-
-      importArenaChannel(app, {
-        actor,
-        client,
-        collection: childCollection,
-        depthRemaining: depthRemaining - 1,
-        existingItems,
-        sourceId,
-        summary,
-        visitedChannelIds,
-        workspaceId,
-      });
-    } catch (error) {
-      summary.errors.push({
-        source_external_id: draft.sourceExternalId,
-        block_type: draft.blockType,
-        error: error && error.message ? error.message : String(error),
-      });
-      console.warn("Are.na import skipped nested channel " + draft.sourceExternalId, error);
-    }
-  }
-
   function recordArenaDraft(summary, draft) {
     summary.blocks_seen += 1;
-    summary.by_block_type[draft.blockType] = (summary.by_block_type[draft.blockType] || 0) + 1;
+    const blockType = draft.itemType === "collection" ? "nested_channel_skipped" : draft.blockType;
+    summary.by_block_type[blockType] = (summary.by_block_type[blockType] || 0) + 1;
     summary.by_import_type[importTypeForDraft(draft)] = (summary.by_import_type[importTypeForDraft(draft)] || 0) + 1;
 
     for (let warningIndex = 0; warningIndex < draft.warnings.length; warningIndex += 1) {
@@ -402,63 +308,20 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     }
   }
 
-  function importTypeForDraft(draft) {
-    return draft.itemType === "collection" ? "nested_collection" : draft.itemType;
+  function recordSkippedNestedChannel(summary, draft) {
+    summary.nested_channels_skipped += 1;
+    summary.nested_channels.push({
+      title: optionalString(draft && draft.collection && draft.collection.title) || optionalString(draft && draft.title) || null,
+      slug: optionalString(draft && draft.collection && draft.collection.slug) || null,
+    });
   }
 
-  function ensureCollectionRelationship(app, { actor, childCollection, parentCollection, position, summary, workspaceId, now }) {
-    const relationshipId = collectionRelationshipIdFor(workspaceId, parentCollection.id, childCollection.id);
-    const result = app
-      .db()
-      .newQuery(
-        `
-          INSERT OR IGNORE INTO collection_relationships (
-            id,
-            workspace_id,
-            parent_collection_id,
-            child_collection_id,
-            position,
-            added_at,
-            added_by
-          ) VALUES (
-            {:relationshipId},
-            {:workspaceId},
-            {:parentCollectionId},
-            {:childCollectionId},
-            {:position},
-            {:now},
-            {:actor}
-          )
-        `,
-      )
-      .bind({
-        relationshipId,
-        workspaceId,
-        parentCollectionId: parentCollection.id,
-        childCollectionId: childCollection.id,
-        position: Number.isInteger(position) ? position : 0,
-        now,
-        actor,
-      })
-      .execute();
-
-    if (countAffected(result) > 0) {
-      summary.collection_relationships_created += 1;
-    } else {
-      summary.collection_relationships_skipped += 1;
-    }
+  function importTypeForDraft(draft) {
+    return draft.itemType === "collection" ? "nested_channel_skipped" : draft.itemType;
   }
 
   function channelHandle(collection) {
     return requiredString(collection.slug || collection.arenaChannelId, "channel handle");
-  }
-
-  function channelVisitedKey(collection) {
-    return optionalString(collection && collection.arenaChannelId) || optionalString(collection && collection.slug) || optionalString(collection && collection.id);
-  }
-
-  function collectionRelationshipIdFor(workspaceId, parentCollectionId, childCollectionId) {
-    return "collection-rel:arena:" + safePathSegment(workspaceId) + ":" + safePathSegment(parentCollectionId) + ":" + safePathSegment(childCollectionId);
   }
 
   function existingItemFromDraft(itemId, draft) {
@@ -986,7 +849,7 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     }
   }
 
-  function emptyImportSummary(workspaceId, channel, collectionId, sourceId, depth) {
+  function emptyImportSummary(workspaceId, channel, collectionId, sourceId) {
     return {
       workspace_id: workspaceId,
       channel: {
@@ -996,16 +859,13 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
       },
       collection_id: collectionId,
       source_id: sourceId,
-      depth,
       blocks_seen: 0,
       items_created: 0,
       items_skipped: 0,
       items_updated: 0,
       collection_memberships_created: 0,
-      collection_relationships_created: 0,
-      collection_relationships_skipped: 0,
-      sub_collections_created: 0,
-      sub_collections_skipped: 0,
+      nested_channels_skipped: 0,
+      nested_channels: [],
       by_block_type: {},
       by_import_type: {},
       warnings: [],
