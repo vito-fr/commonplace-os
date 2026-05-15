@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import http from "node:http";
+import https from "node:https";
+
 const args = parseArgs(process.argv.slice(2));
 const channel = args.channel;
 const workspaceId = args.workspace || args["workspace-id"] || "seed:ws001";
@@ -11,20 +14,13 @@ if (!channel) {
   process.exit(1);
 }
 
-const response = await fetch(new URL("/api/vita/import-arena", baseUrl), {
-  method: "POST",
-  headers: {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    workspace_id: workspaceId,
-    channel,
-    depth,
-  }),
+const response = await postJson(new URL("/api/vita/import-arena", baseUrl), {
+  workspace_id: workspaceId,
+  channel,
+  depth,
 });
 
-const text = await response.text();
+const text = response.body;
 let payload = null;
 try {
   payload = text ? JSON.parse(text) : null;
@@ -35,7 +31,7 @@ try {
 if (!response.ok) {
   console.error(JSON.stringify({
     error: "Are.na import failed",
-    status: response.status,
+    status: response.statusCode,
     response: payload,
   }, null, 2));
   process.exit(1);
@@ -69,6 +65,44 @@ function parseArgs(argv) {
   }
 
   return parsed;
+}
+
+function postJson(url, payload) {
+  const body = JSON.stringify(payload);
+  const transport = url.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const request = transport.request(
+      url,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        timeout: 0,
+      },
+      (response) => {
+        response.setEncoding("utf8");
+        let responseBody = "";
+        response.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        response.on("end", () => {
+          resolve({
+            body: responseBody,
+            ok: response.statusCode >= 200 && response.statusCode < 300,
+            statusCode: response.statusCode,
+          });
+        });
+      },
+    );
+
+    request.on("error", reject);
+    request.setTimeout(0);
+    request.end(body);
+  });
 }
 
 function normalizeBaseUrl(value) {

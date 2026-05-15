@@ -230,22 +230,7 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
 
     for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
       const row = rows[rowIndex];
-      index[row.sourceExternalId] = {
-        id: row.id,
-        sourceExternalId: row.sourceExternalId,
-        type: row.type,
-        title: nullableString(row.title),
-        description: nullableString(row.description),
-        updateCount: Number(row.updateCount) || 0,
-        imageMimeType: nullableString(row.imageMimeType),
-        imageWidth: nullableNumber(row.imageWidth),
-        imageHeight: nullableNumber(row.imageHeight),
-        noteBody: nullableString(row.noteBody),
-        noteFormat: nullableString(row.noteFormat),
-        linkUrl: nullableString(row.linkUrl),
-        linkContentType: nullableString(row.linkContentType),
-        linkOgMetadata: nullableString(row.linkOgMetadata),
-      };
+      index[row.sourceExternalId] = existingArenaItemFromRow(row);
     }
 
     return index;
@@ -296,10 +281,11 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
       return;
     }
 
-    const existing = existingItems[draft.sourceExternalId] || null;
+    const existing = existingItems[draft.sourceExternalId] || findExistingArenaItem(app, workspaceId, sourceId, draft.sourceExternalId);
 
     try {
       if (existing) {
+        existingItems[draft.sourceExternalId] = existing;
         importExistingDraft(app, {
           actor,
           collection,
@@ -491,6 +477,78 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
       linkUrl: draft.link ? draft.link.url : null,
       linkContentType: draft.link ? draft.link.contentType : null,
       linkOgMetadata: draft.link ? JSON.stringify(draft.link.ogMetadata || { url: draft.link.url }) : null,
+    };
+  }
+
+  function findExistingArenaItem(app, workspaceId, sourceId, sourceExternalId) {
+    const rows = queryAll(
+      app,
+      `
+        SELECT
+          i.id,
+          i.source_external_id AS sourceExternalId,
+          i.type,
+          i.title,
+          i.description,
+          i.update_count AS updateCount,
+          img.mime_type AS imageMimeType,
+          CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
+          CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+          note.body AS noteBody,
+          note.format AS noteFormat,
+          link.url AS linkUrl,
+          link.content_type AS linkContentType,
+          link.og_metadata AS linkOgMetadata
+        FROM items i
+        LEFT JOIN items_image img
+          ON img.item_id = i.id
+        LEFT JOIN items_note note
+          ON note.item_id = i.id
+        LEFT JOIN items_link link
+          ON link.item_id = i.id
+        WHERE i.workspace_id = {:workspaceId}
+          AND i.source_id = {:sourceId}
+          AND i.source_external_id = {:sourceExternalId}
+        LIMIT 1
+      `,
+      {
+        id: "",
+        sourceExternalId: "",
+        type: "",
+        title: nullString(),
+        description: nullString(),
+        updateCount: 0,
+        imageMimeType: nullString(),
+        imageWidth: nullString(),
+        imageHeight: nullString(),
+        noteBody: nullString(),
+        noteFormat: nullString(),
+        linkUrl: nullString(),
+        linkContentType: nullString(),
+        linkOgMetadata: nullString(),
+      },
+      { workspaceId, sourceId, sourceExternalId },
+    );
+
+    return rows.length > 0 ? existingArenaItemFromRow(rows[0]) : null;
+  }
+
+  function existingArenaItemFromRow(row) {
+    return {
+      id: row.id,
+      sourceExternalId: row.sourceExternalId,
+      type: row.type,
+      title: nullableString(row.title),
+      description: nullableString(row.description),
+      updateCount: Number(row.updateCount) || 0,
+      imageMimeType: nullableString(row.imageMimeType),
+      imageWidth: nullableNumber(row.imageWidth),
+      imageHeight: nullableNumber(row.imageHeight),
+      noteBody: nullableString(row.noteBody),
+      noteFormat: nullableString(row.noteFormat),
+      linkUrl: nullableString(row.linkUrl),
+      linkContentType: nullableString(row.linkContentType),
+      linkOgMetadata: nullableString(row.linkOgMetadata),
     };
   }
 
