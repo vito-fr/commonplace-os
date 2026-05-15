@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { ItemStatus, ItemType } from "../atoms";
 import { MasonryGrid } from "../items";
-import type { ArchiveObject, ItemCardProps } from "../items";
+import type { ArchiveObject, CollectionCardModel, ItemCardProps } from "../items";
 import type { CollectionCardPreviewItem } from "../items/CollectionCard";
 import { ArchiveReturnButton } from "../ui/ArchiveControls";
-import type { CollectionDetail, CollectionDetailItem, CollectionIndexItem } from "../../data/pocketBaseItemCollection";
+import type { CollectionDetail, CollectionDetailItem, CollectionDetailSubCollection, CollectionIndexItem } from "../../data/pocketBaseItemCollection";
 
 export type CollectionViewProps = {
   collection: CollectionDetail | null;
@@ -27,6 +27,7 @@ export type CollectionViewProps = {
   onDeleteItem?: (itemId: string, collectionId: string) => Promise<void> | void;
   onImportFilesToCollection?: (input: { collectionId: string; files: File[] }) => Promise<void>;
   onOpenItem?: (itemId: string, collectionId: string) => void;
+  onOpenCollection?: (collectionId: string) => void;
   onRemoveItemsFromCollection: (input: { collectionId: string; itemIds: string[] }) => Promise<void>;
   onUpdateCollection?: (input: { collectionId: string; description: string | null; name: string }) => Promise<void>;
   collectionUpdatePending?: boolean;
@@ -64,6 +65,7 @@ export function CollectionView({
   onDeleteItem,
   onImportFilesToCollection,
   onOpenItem,
+  onOpenCollection,
   onRemoveItemsFromCollection,
   onUpdateCollection,
   collectionUpdatePending = false,
@@ -277,7 +279,11 @@ export function CollectionView({
     );
   }
 
-  const archiveObjects = filteredItems.map((item) => ({
+  const subCollectionObjects = (collection.subCollections ?? []).map((subCollection) => ({
+    objectType: "collection" as const,
+    collection: toSubCollectionCard(subCollection, onOpenCollection),
+  }));
+  const itemObjects = filteredItems.map((item) => ({
     objectType: "item" as const,
     item: toCollectionItemCard({
       collectionId: collection.id,
@@ -288,6 +294,7 @@ export function CollectionView({
       onSelectToggle: toggleSelection,
     }),
   }));
+  const archiveObjects: ArchiveObject[] = [...subCollectionObjects, ...itemObjects];
   const uploadTile = (
     <CollectionUploadTile
       error={uploadError ?? noteError}
@@ -1003,6 +1010,24 @@ function toCollectionItemCard({
   };
 }
 
+function toSubCollectionCard(
+  collection: CollectionDetailSubCollection,
+  onOpenCollection?: (collectionId: string) => void,
+): CollectionCardModel {
+  return {
+    id: collection.id,
+    name: collection.name,
+    description: collection.description,
+    createdAt: collection.createdAt,
+    pieceCount: collection.pieceCount,
+    kindSummary: collection.kindSummary,
+    lastUpdatedAt: collection.lastUpdatedAt,
+    previewItems: collection.previewItems,
+    href: buildCollectionHref(collection.id),
+    onNavigate: onOpenCollection,
+  };
+}
+
 function filterAndSortCollectionItems(
   items: CollectionDetailItem[],
   {
@@ -1298,6 +1323,10 @@ function formatDisplayDate(value: string) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(timestamp));
+}
+
+function buildCollectionHref(collectionId: string) {
+  return `/collections/${encodeURIComponent(collectionId)}`;
 }
 
 function buildCollectionItemHref(itemId: string, collectionId: string) {

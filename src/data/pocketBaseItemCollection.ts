@@ -49,18 +49,6 @@ export type CollectionDetailItem = {
   mediaPreview?: ItemMediaPreview | null;
 };
 
-export type CollectionDetail = {
-  id: string;
-  workspaceId: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-  lastUpdatedAt: string;
-  pieceCount: number;
-  kindSummary: string;
-  items: CollectionDetailItem[];
-};
-
 export type CollectionPreviewItem = {
   id: string;
   title?: string | null;
@@ -91,6 +79,28 @@ export type CollectionIndexItem = {
   pieceCount: number;
   kindSummary: string;
   previewItems: CollectionPreviewItem[];
+};
+
+export type CollectionDetailSubCollection = CollectionIndexItem & {
+  relationship: {
+    parentCollectionId: string;
+    position: number;
+    addedAt: string;
+    addedBy: string;
+  };
+};
+
+export type CollectionDetail = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  lastUpdatedAt: string;
+  pieceCount: number;
+  kindSummary: string;
+  items: CollectionDetailItem[];
+  subCollections: CollectionDetailSubCollection[];
 };
 
 export type CollectionIndexQuery = {
@@ -262,6 +272,7 @@ export function createPocketBaseItemCollectionClient({
       return {
         ...payload.collection,
         items: payload.collection.items.map((item) => resolveCollectionDetailItem(baseUrl, item)),
+        subCollections: (payload.collection.subCollections ?? []).map((collection) => resolveCollectionPreviewUrls(baseUrl, collection)),
       };
     },
 
@@ -279,34 +290,7 @@ export function createPocketBaseItemCollectionClient({
         throw new Error("PocketBase collection index response must include { collections }");
       }
 
-      return payload.collections.map((collection) => ({
-        ...collection,
-        previewItems: (collection.previewItems ?? []).map((item) => {
-          const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
-          const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl);
-          const ogImageUrl = normalizeRemoteMediaUrl(item.ogImageUrl);
-          const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
-          const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
-          const previewUrl =
-            resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
-            thumbnailUrl ??
-            imageUrl ??
-            videoPosterUrl ??
-            ogImageUrl ??
-            assetFileUrl ??
-            null;
-
-          return {
-            ...item,
-            imageUrl,
-            ogImageUrl,
-            assetFileUrl,
-            previewUrl,
-            thumbnailUrl,
-            videoPosterUrl,
-          };
-        }),
-      }));
+      return payload.collections.map((collection) => resolveCollectionPreviewUrls(baseUrl, collection));
     },
 
     async listCollectionOptions(query) {
@@ -570,5 +554,36 @@ function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem
       thumbnailUrl,
       videoPosterUrl,
     },
+  };
+}
+
+function resolveCollectionPreviewUrls<T extends { previewItems: CollectionPreviewItem[] }>(baseUrl: string, collection: T): T {
+  return {
+    ...collection,
+    previewItems: (collection.previewItems ?? []).map((item) => {
+      const imageUrl = resolvePocketBaseFileUrl(baseUrl, item.imageUrl);
+      const assetFileUrl = resolvePocketBaseFileUrl(baseUrl, item.assetFileUrl);
+      const ogImageUrl = normalizeRemoteMediaUrl(item.ogImageUrl);
+      const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
+      const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
+      const previewUrl =
+        resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
+        thumbnailUrl ??
+        imageUrl ??
+        videoPosterUrl ??
+        ogImageUrl ??
+        assetFileUrl ??
+        null;
+
+      return {
+        ...item,
+        imageUrl,
+        ogImageUrl,
+        assetFileUrl,
+        previewUrl,
+        thumbnailUrl,
+        videoPosterUrl,
+      };
+    }),
   };
 }

@@ -2164,6 +2164,7 @@ export function App() {
             onCreateNoteInCollection={createNoteInCollection}
             onImportFilesToCollection={importFilesToCollection}
             onOpenItem={openCollectionItemDetail}
+            onOpenCollection={openCollection}
             onDeleteItem={deleteCollectionWorkspaceItem}
             onRemoveItemsFromCollection={removeCollectionWorkspaceItems}
             onUpdateCollection={updateArchiveCollection}

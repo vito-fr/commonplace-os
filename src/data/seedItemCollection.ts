@@ -132,6 +132,7 @@ export const seedFixtureItemCollectionClient: ItemCollectionClient = {
       pieceCount: detailItems.length,
       kindSummary: formatKindSummary(detailItems),
       items: detailItems,
+      subCollections: [],
     };
   },
 
