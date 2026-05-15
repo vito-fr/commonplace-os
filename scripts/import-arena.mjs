@@ -3,6 +3,7 @@
 const args = parseArgs(process.argv.slice(2));
 const channel = args.channel;
 const workspaceId = args.workspace || args["workspace-id"] || "seed:ws001";
+const depth = parseDepth(args.depth ?? "1");
 const baseUrl = normalizeBaseUrl(args["base-url"] || process.env.POCKETBASE_URL || "http://127.0.0.1:8090");
 
 if (!channel) {
@@ -19,6 +20,7 @@ const response = await fetch(new URL("/api/vita/import-arena", baseUrl), {
   body: JSON.stringify({
     workspace_id: workspaceId,
     channel,
+    depth,
   }),
 });
 
@@ -73,6 +75,16 @@ function normalizeBaseUrl(value) {
   return String(value || "http://127.0.0.1:8090").endsWith("/") ? String(value) : `${value}/`;
 }
 
+function parseDepth(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    console.error("--depth must be a non-negative integer");
+    process.exit(1);
+  }
+
+  return parsed;
+}
+
 function printUsage() {
-  console.error("Usage: npm run import:arena -- --channel <slug> [--workspace seed:ws001] [--base-url http://127.0.0.1:8090]");
+  console.error("Usage: npm run import:arena -- --channel <slug> [--workspace seed:ws001] [--depth 1] [--base-url http://127.0.0.1:8090]");
 }

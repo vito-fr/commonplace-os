@@ -35,6 +35,10 @@ function mapArenaConnectableToItemDraft(connectable) {
     return attachmentDraft(connectable, base);
   }
 
+  if (blockType === "Channel") {
+    return collectionDraft(connectable, base);
+  }
+
   return fallbackLinkDraft(connectable, base, "unknown Are.na content type");
 }
 
@@ -208,6 +212,39 @@ function attachmentDraft(block, base) {
       contentType,
     },
   });
+}
+
+function collectionDraft(block, base) {
+  const slug = stringValue(block && block.slug);
+  const title = base.title || slug || "Are.na channel";
+  const channelId = block && block.id != null ? String(block.id) : base.arenaId;
+  const sourceUrl = base.sourceUrl || (slug ? arenaChannelUrlBase + slug : "");
+
+  return {
+    ...base,
+    itemType: "collection",
+    item: null,
+    image: null,
+    note: null,
+    link: null,
+    collection: {
+      id: channelId,
+      slug: slug || null,
+      title,
+      description: base.description,
+      sourceUrl,
+    },
+    fingerprint: JSON.stringify(compactObject({
+      itemType: "collection",
+      title,
+      description: base.description,
+      collection: {
+        id: channelId,
+        slug,
+        sourceUrl,
+      },
+    })),
+  };
 }
 
 function fallbackLinkDraft(block, base, warning) {
