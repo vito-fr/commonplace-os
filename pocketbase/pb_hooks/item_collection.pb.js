@@ -499,6 +499,24 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     }
   }
 
+  function isDirectImageUrl(value) {
+    const url = nullableString(value);
+    if (!url) {
+      return false;
+    }
+
+    const lower = url.toLowerCase().replace(/[?#].*$/, "");
+    return (
+      lower.includes("://i.pinimg.com/") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".gif") ||
+      lower.endsWith(".avif")
+    );
+  }
+
   function queryAll(sql, shape, params) {
     const rows = arrayOf(new DynamicModel(shape));
     e.app.db().newQuery(sql).bind(params).all(rows);
@@ -738,6 +756,160 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     { workspaceId, collectionId },
   );
 
+  let subCollectionPreviewRows = [];
+  try {
+    subCollectionPreviewRows = queryAll(
+      `
+        WITH child_collections AS (
+          SELECT cr.child_collection_id AS collectionId
+          FROM collection_relationships cr
+          WHERE cr.workspace_id = {:workspaceId}
+            AND cr.parent_collection_id = {:collectionId}
+        ),
+        ranked_preview AS (
+          SELECT
+            ci.collection_id AS collectionId,
+            i.id,
+            i.title,
+            i.type AS kind,
+            link.content_type AS format,
+            img.file_ref AS imageUrl,
+            CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
+            CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+            link.og_metadata AS ogMetadata,
+            asset.file_ref AS assetFileRef,
+            asset.mime_type AS assetMimeType,
+            video.file_ref AS videoFileRef,
+            video.mime_type AS videoMimeType,
+            video.poster_file_ref AS videoPosterFileRef,
+            CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
+            thumb.file_ref AS thumbnailFileRef,
+            SUBSTR(
+              COALESCE(
+                i.title,
+                caption.body,
+                note.body,
+                link.url,
+                CASE WHEN i.type = 'video' THEN 'video' ELSE NULL END,
+                ''
+              ),
+              1,
+              160
+            ) AS textPreview,
+            link.url AS sourceUrl,
+            COALESCE(s.kind, 'manual') AS sourceKind,
+            ROW_NUMBER() OVER (
+              PARTITION BY ci.collection_id
+              ORDER BY
+                CASE
+                  WHEN i.type = 'image' AND img.file_ref IS NOT NULL AND img.file_ref != '' THEN 0
+                  WHEN i.type = 'link'
+                    AND COALESCE(link.content_type, '') NOT IN ('video', 'pdf')
+                    AND (
+                      COALESCE(link.og_metadata, '') LIKE '%"image"%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.jpg%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.jpeg%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.png%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%.webp%'
+                      OR LOWER(COALESCE(link.url, '')) LIKE '%://i.pinimg.com/%'
+                    ) THEN 1
+                  WHEN i.type = 'link'
+                    AND link.content_type = 'video'
+                    AND COALESCE(link.og_metadata, '') LIKE '%"image"%' THEN 2
+                  WHEN i.type = 'video'
+                    AND COALESCE(video.poster_file_ref, '') != '' THEN 2
+                  WHEN i.type = 'video' THEN 3
+                  WHEN i.type = 'link'
+                    AND link.content_type = 'pdf'
+                    AND asset.file_ref IS NOT NULL
+                    AND asset.file_ref != '' THEN 3
+                  ELSE 4
+                END ASC,
+                ci.added_at ASC,
+                i.id ASC
+            ) AS previewRank
+          FROM child_collections child
+          INNER JOIN collection_items ci
+            ON ci.collection_id = child.collectionId
+          INNER JOIN collections c
+            ON c.id = ci.collection_id
+            AND c.workspace_id = {:workspaceId}
+          INNER JOIN items i
+            ON i.id = ci.item_id
+            AND i.workspace_id = c.workspace_id
+          LEFT JOIN items_image img
+            ON img.item_id = i.id
+          LEFT JOIN items_caption caption
+            ON caption.item_id = i.id
+          LEFT JOIN items_note note
+            ON note.item_id = i.id
+          LEFT JOIN items_link link
+            ON link.item_id = i.id
+          LEFT JOIN items_video video
+            ON video.item_id = i.id
+          LEFT JOIN sources s
+            ON s.id = i.source_id
+            AND s.workspace_id = i.workspace_id
+          LEFT JOIN item_assets asset
+            ON asset.item_id = i.id
+            AND asset.workspace_id = i.workspace_id
+            AND asset.role = 'source_file'
+          LEFT JOIN item_assets thumb
+            ON thumb.item_id = i.id
+            AND thumb.workspace_id = i.workspace_id
+            AND thumb.role = 'thumbnail'
+        )
+        SELECT
+          collectionId,
+          id,
+          title,
+          kind,
+          format,
+          imageUrl,
+          imageWidth,
+          imageHeight,
+          ogMetadata,
+          assetFileRef,
+          assetMimeType,
+          videoFileRef,
+          videoMimeType,
+          videoPosterFileRef,
+          videoAspectRatio,
+          thumbnailFileRef,
+          textPreview,
+          sourceUrl,
+          sourceKind
+        FROM ranked_preview
+        WHERE previewRank <= 4
+        ORDER BY collectionId ASC, previewRank ASC
+      `,
+      {
+        collectionId: "",
+        id: "",
+        title: nullString(),
+        kind: "",
+        format: nullString(),
+        imageUrl: nullString(),
+        imageWidth: nullString(),
+        imageHeight: nullString(),
+        ogMetadata: nullString(),
+        assetFileRef: nullString(),
+        assetMimeType: nullString(),
+        videoFileRef: nullString(),
+        videoMimeType: nullString(),
+        videoPosterFileRef: nullString(),
+        videoAspectRatio: nullString(),
+        thumbnailFileRef: nullString(),
+        textPreview: nullString(),
+        sourceUrl: nullString(),
+        sourceKind: nullString(),
+      },
+      { workspaceId, collectionId },
+    );
+  } catch (error) {
+    console.warn("collection-detail sub-collection preview query failed; returning sub-collections without preview items", error);
+  }
+
   const items = [];
   let lastUpdatedAt = collectionRows[0].createdAt;
 
@@ -816,6 +988,54 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     });
   }
 
+  const previewItemsBySubCollection = {};
+  for (let index = 0; index < subCollectionPreviewRows.length; index += 1) {
+    const row = subCollectionPreviewRows[index];
+    const openGraph = parseOpenGraph(row.ogMetadata);
+    const sourceUrl = nullableString(row.sourceUrl);
+    const imageUrl = nullableString(row.imageUrl);
+    const imageWidth = nullableNumber(row.imageWidth);
+    const imageHeight = nullableNumber(row.imageHeight);
+    const aspectRatio = aspectRatioFor(imageWidth, imageHeight);
+    const ogImageUrl = openGraph.image || (isDirectImageUrl(sourceUrl) ? sourceUrl : null);
+    const format = nullableString(row.format);
+    const videoFileRef = nullableString(row.videoFileRef);
+    const videoPosterFileRef = nullableString(row.videoPosterFileRef);
+    const assetFileRef = videoFileRef || nullableString(row.assetFileRef);
+    const assetMimeType = nullableString(row.videoMimeType) || nullableString(row.assetMimeType);
+    const thumbnailFileRef = nullableString(row.thumbnailFileRef);
+    const videoPosterUrl = row.kind === "video" ? videoPosterFileRef || thumbnailFileRef : format === "video" ? ogImageUrl : null;
+    const previewUrl = imageUrl || videoPosterUrl || ogImageUrl || (format === "pdf" ? assetFileRef : null);
+    const previewAspectRatio = row.kind === "video" ? nullableNumber(row.videoAspectRatio) || aspectRatio : aspectRatio;
+    const previewItem = {
+      id: row.id,
+      title: nullableString(row.title) || openGraph.title,
+      kind: row.kind,
+      format,
+      thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || ogImageUrl,
+      previewUrl,
+      imageUrl,
+      ogImageUrl,
+      videoPosterUrl,
+      assetFileUrl: assetFileRef,
+      assetMimeType,
+      width: imageWidth,
+      height: imageHeight,
+      aspectRatio: previewAspectRatio,
+      textPreview: nullableString(row.textPreview),
+      sourceUrl,
+      source: nullableString(row.sourceKind),
+    };
+
+    if (!previewItemsBySubCollection[row.collectionId]) {
+      previewItemsBySubCollection[row.collectionId] = [];
+    }
+
+    if (previewItemsBySubCollection[row.collectionId].length < 4) {
+      previewItemsBySubCollection[row.collectionId].push(previewItem);
+    }
+  }
+
   const subCollections = [];
   for (let index = 0; index < subCollectionRows.length; index += 1) {
     const row = subCollectionRows[index];
@@ -828,7 +1048,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       lastUpdatedAt: row.lastUpdatedAt,
       pieceCount: row.pieceCount,
       kindSummary: formatKindSummaryFromCounts(row),
-      previewItems: [],
+      previewItems: previewItemsBySubCollection[row.id] || [],
       relationship: {
         parentCollectionId: collectionId,
         position: Number(row.position) || 0,
