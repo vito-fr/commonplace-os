@@ -69,7 +69,7 @@ The backfill is idempotent by default. It skips records that already have both `
 
 ### Import An Are.na Channel
 
-Are.na imports run through the local PocketBase hook and are CLI-triggered in v0.1. Set `ARENA_API_KEY` in the environment that starts PocketBase, then run:
+Are.na imports run through the local PocketBase hook and are CLI-triggered in v0.1. Set `ARENA_API_KEY` in the environment that starts PocketBase when importing private channels, when the Are.na V3 API returns 401, or when you need authenticated Are.na rate limits, then run:
 
 ```sh
 npm run import:arena -- --channel <channel-slug>

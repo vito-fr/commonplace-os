@@ -20,13 +20,17 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
       return e.json(403, { error: "Are.na import is only available from localhost" });
     }
 
-    if (!apiKey) {
-      return e.json(400, { error: "ARENA_API_KEY is required for Are.na import" });
+    let channel;
+    let contents;
+    const client = createArenaApiClient({ apiKey });
+
+    try {
+      channel = client.getChannel(channelSlug);
+      contents = client.getChannelContents(channelSlug, { per: 100, sort: "position_desc" });
+    } catch (error) {
+      return e.json(arenaFailureStatus(error), arenaFailureBody(error, apiKey));
     }
 
-    const client = createArenaApiClient({ apiKey });
-    const channel = client.getChannel(channelSlug);
-    const contents = client.getChannelContents(channelSlug, { per: 100, sort: "position_desc" });
     const now = new Date().toISOString();
     const sourceId = ensureArenaSource(e.app, workspaceId, now);
     const collection = ensureArenaCollection(e.app, workspaceId, channel, now);
@@ -747,6 +751,24 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     const rows = arrayOf(new DynamicModel(shape));
     app.db().newQuery(sql).bind(params || {}).all(rows);
     return rows;
+  }
+
+  function arenaFailureStatus(error) {
+    const statusCode = Number(error && error.statusCode);
+    if (statusCode === 401 || statusCode === 403 || statusCode === 404 || statusCode === 429) {
+      return statusCode;
+    }
+    return 502;
+  }
+
+  function arenaFailureBody(error, apiKey) {
+    const statusCode = Number(error && error.statusCode) || null;
+    return {
+      error: "Are.na API request failed",
+      status_code: statusCode,
+      needs_api_key: statusCode === 401 && !apiKey,
+      message: error && error.message ? error.message : String(error),
+    };
   }
 
   function requiredString(value, fieldName) {
