@@ -150,6 +150,7 @@ function getSeedFixtureItemDetail({ workspaceId, itemId }: ItemDetailQuery): Ite
             contentType: link.content_type ?? null,
             fetchedAt: link.fetched_at ?? null,
             asset: null,
+            thumbnail: null,
           }
         : null,
     },

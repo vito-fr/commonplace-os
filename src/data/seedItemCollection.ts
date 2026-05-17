@@ -104,6 +104,14 @@ export const seedFixtureItemCollectionClient: ItemCollectionClient = {
     throw new Error("Collection writes require live archive mode.");
   },
 
+  async connectCollection() {
+    throw new Error("Collection relationship writes require live archive mode.");
+  },
+
+  async deleteCollection() {
+    throw new Error("Collection deletes require live archive mode.");
+  },
+
   async getCollectionDetail({ collectionId, workspaceId }) {
     const collection = collections.find((row) => row.id === collectionId && row.workspace_id === workspaceId);
     if (!collection) {

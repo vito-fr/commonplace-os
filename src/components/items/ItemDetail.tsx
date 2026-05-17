@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { type ItemStatus } from "../atoms";
 import { ArchiveChevronIcon, ArchiveReturnButton } from "../ui/ArchiveControls";
+import { ActionHint } from "../ui/ActionHint";
 import { ArchiveIcon } from "../ui/ArchiveIcons";
 import { downloadArchiveFile } from "../../data/archiveDownload";
+import { PdfCanvasPreview } from "./PdfCanvasPreview";
 import type { ItemDetail, ItemDetailAIAnnotation } from "../../data/pocketBaseItemDetail";
 import type { CollectionIndexItem, CollectionPreviewItem } from "../../data/pocketBaseItemCollection";
 import { normalizeRemoteMediaUrl } from "../../data/pocketBaseFiles";
@@ -263,18 +265,20 @@ function PanelToggle({
   side: "left" | "right";
 }) {
   return (
-    <button
-      className="item-detail__panel-toggle"
-      type="button"
-      aria-expanded={open}
-      aria-label={`${open ? "Hide" : "Show"} ${label.toLowerCase()} panel`}
-      data-side={side}
-      onClick={onToggle}
-    >
-      <span>{label}</span>
-      <kbd>R</kbd>
-      <PanelChevronIcon side={side} open={open} />
-    </button>
+    <ActionHint className="item-detail__panel-toggle-hint" label={`${open ? "Hide" : "Show"} ${label}`} shortcut="R" side="left">
+      <button
+        className="item-detail__panel-toggle"
+        type="button"
+        aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} ${label.toLowerCase()} panel`}
+        data-side={side}
+        data-press-feedback="true"
+        onClick={onToggle}
+      >
+        <span>{label}</span>
+        <PanelChevronIcon side={side} open={open} />
+      </button>
+    </ActionHint>
   );
 }
 
@@ -449,16 +453,18 @@ function ArchiveSourceSection({ item, sourceUrl }: { item: ItemDetail; sourceUrl
 
 function SourceUrlLink({ label, sourceUrl }: { label: string; sourceUrl: string }) {
   return (
-    <a
-      className="item-detail__source-link"
-      href={sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={`Open source: ${label}`}
-    >
-      <span>{label}</span>
-      <ArchiveIcon name="external" />
-    </a>
+    <ActionHint label="Open source" side="top">
+      <a
+        className="item-detail__source-link"
+        href={sourceUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open source: ${label}`}
+      >
+        <span>{label}</span>
+        <ArchiveIcon name="external" />
+      </a>
+    </ActionHint>
   );
 }
 
@@ -1025,11 +1031,12 @@ function DownloadItemAction({ item }: { item: ItemDetail }) {
 
   return (
     <div className="detail-download">
-      <button className="status-action status-action--download" type="button" onClick={handleClick}>
-        <ArchiveIcon className="status-action__icon" name="download" />
-        <span>Download</span>
-        <kbd>D</kbd>
-      </button>
+      <ActionHint label="Download" shortcut="D" side="top">
+        <button className="status-action status-action--download" type="button" onClick={handleClick}>
+          <ArchiveIcon className="status-action__icon" name="download" />
+          <span>Download</span>
+        </button>
+      </ActionHint>
       {error ? <p className="detail-error">{error}</p> : null}
     </div>
   );
@@ -1586,18 +1593,21 @@ function ItemHero({
             width={item.content.image.width ?? undefined}
             height={item.content.image.height ?? undefined}
           />
-          <button
-            className="item-detail__media-action item-detail__media-expand"
-            type="button"
-            aria-label="Enlarge image"
-            data-action-label="Enlarge"
-            onClick={() => setExpandedImage(item.content.image?.fileRef ?? null)}
-          >
-            <span className="item-detail__media-action-label" aria-hidden="true">Enlarge</span>
-            <span className="item-detail__media-action-icon" aria-hidden="true">
-              <ExpandImageIcon />
-            </span>
-          </button>
+          <ActionHint label="Enlarge image" side="left">
+            <button
+              className="item-detail__media-action item-detail__media-expand"
+              type="button"
+              aria-label="Enlarge image"
+              data-action-label="Enlarge"
+              data-press-feedback="true"
+              onClick={() => setExpandedImage(item.content.image?.fileRef ?? null)}
+            >
+              <span className="item-detail__media-action-label" aria-hidden="true">Enlarge</span>
+              <span className="item-detail__media-action-icon" aria-hidden="true">
+                <ExpandImageIcon />
+              </span>
+            </button>
+          </ActionHint>
           {expandedImage ? (
             <div className="item-detail__lightbox" role="dialog" aria-modal="true" aria-label="enlarged image">
               <button
@@ -1657,24 +1667,23 @@ function ItemHero({
 
       return (
         <div className="item-detail__pdf-hero">
-          <iframe
-            className="item-detail__pdf-frame"
-            src={buildPdfPreviewUrl(pdfUrl, pdfLabel)}
-            title={pdfLabel}
-          />
-          <a
-            className="item-detail__media-action item-detail__media-open-pdf"
-            href={pdfUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open PDF"
-            data-action-label="Open PDF"
-          >
-            <span className="item-detail__media-action-label" aria-hidden="true">Open PDF</span>
-            <span className="item-detail__media-action-icon" aria-hidden="true">
-              <OpenMediaIcon />
-            </span>
-          </a>
+          <PdfCanvasPreview className="item-detail__pdf-frame" src={pdfUrl} title={pdfLabel} variant="detail" />
+          <ActionHint label="Open PDF" side="left">
+            <a
+              className="item-detail__media-action item-detail__media-open-pdf"
+              href={pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open PDF"
+              data-action-label="Open PDF"
+              data-press-feedback="true"
+            >
+              <span className="item-detail__media-action-label" aria-hidden="true">Open PDF</span>
+              <span className="item-detail__media-action-icon" aria-hidden="true">
+                <OpenMediaIcon />
+              </span>
+            </a>
+          </ActionHint>
         </div>
       );
     }
@@ -2022,7 +2031,8 @@ function LinkHero({ item }: { item: ItemDetail }) {
   const url = link?.url ?? null;
   const og = getOpenGraph(link?.ogMetadata ?? null);
   const isImageReference = isDirectImageUrl(url);
-  const previewImage = getDetailPreviewImageUrl(isImageReference ? url : og.image);
+  const localThumbnail = link?.thumbnail?.fileUrl ?? null;
+  const previewImage = getDetailPreviewImageUrl(localThumbnail ?? (isImageReference ? url : og.image));
   const title = getItemDisplayTitle(item, isImageReference ? "Image reference" : "Website");
   const description = isImageReference
     ? getDomain(url) ?? url ?? "Remote image URL"
@@ -2069,19 +2079,22 @@ function LinkHero({ item }: { item: ItemDetail }) {
           />
         )}
         {url ? (
-          <a
-            className="item-detail__media-action item-detail__media-open-link"
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open source"
-            data-action-label="Open source"
-          >
-            <span className="item-detail__media-action-label" aria-hidden="true">Open source</span>
-            <span className="item-detail__media-action-icon" aria-hidden="true">
-              <OpenMediaIcon />
-            </span>
-          </a>
+          <ActionHint label="Open source" side="left">
+            <a
+              className="item-detail__media-action item-detail__media-open-link"
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open source"
+              data-action-label="Open source"
+              data-press-feedback="true"
+            >
+              <span className="item-detail__media-action-label" aria-hidden="true">Open source</span>
+              <span className="item-detail__media-action-icon" aria-hidden="true">
+                <OpenMediaIcon />
+              </span>
+            </a>
+          </ActionHint>
         ) : null}
       </figure>
     );
@@ -2110,13 +2123,6 @@ function getPdfUrl(item: ItemDetail) {
 
   const url = item.content.link.url;
   return url && /^https?:\/\//i.test(url) ? url : null;
-}
-
-function buildPdfPreviewUrl(src: string, name: string) {
-  const searchParams = new URLSearchParams();
-  searchParams.set("src", src);
-  searchParams.set("name", name);
-  return `/pdf-preview?${searchParams.toString()}`;
 }
 
 function DetailSectionGroup({

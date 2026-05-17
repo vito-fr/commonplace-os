@@ -4,7 +4,7 @@ import http from "node:http";
 import https from "node:https";
 
 const args = parseArgs(process.argv.slice(2));
-const channel = args.channel;
+const channel = normalizeChannelInput(args.channel);
 const workspaceId = args.workspace || args["workspace-id"] || "seed:ws001";
 const baseUrl = normalizeBaseUrl(args["base-url"] || process.env.POCKETBASE_URL || "http://127.0.0.1:8090");
 
@@ -32,11 +32,7 @@ try {
 }
 
 if (!response.ok) {
-  console.error(JSON.stringify({
-    error: "Are.na import failed",
-    status: response.statusCode,
-    response: payload,
-  }, null, 2));
+  console.error(formatImportFailure(response.statusCode, payload));
   process.exit(1);
 }
 
@@ -111,6 +107,76 @@ function postJson(url, payload) {
 
 function normalizeBaseUrl(value) {
   return String(value || "http://127.0.0.1:8090").endsWith("/") ? String(value) : `${value}/`;
+}
+
+function normalizeChannelInput(value) {
+  const text = value == null ? "" : String(value).trim();
+  if (!/^https?:\/\//i.test(text)) {
+    return text.replace(/^@+/, "");
+  }
+
+  try {
+    const url = new URL(text);
+    const parts = url.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+    if (parts[0] === "block") {
+      return "";
+    }
+
+    return decodeURIComponent(channelSlugFromUrlParts(parts) || "").trim();
+  } catch {
+    return text;
+  }
+}
+
+function channelSlugFromUrlParts(parts) {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return "";
+  }
+
+  if (parts[0] === "channels" && parts[1]) {
+    return parts[1];
+  }
+
+  if (parts[0] === "v3" && parts[1] === "channels" && parts[2]) {
+    return parts[2];
+  }
+
+  return parts.length >= 2 ? parts[1] : parts[0];
+}
+
+function formatImportFailure(statusCode, payload) {
+  const response = payload && typeof payload === "object" ? payload : null;
+  const kind = response && typeof response.kind === "string" ? response.kind : "";
+  const targetChannel = response && typeof response.channel === "string" ? response.channel : channel;
+  const base = [`Are.na import failed${targetChannel ? ` for ${targetChannel}` : ""} (HTTP ${statusCode}).`];
+
+  if (kind === "auth_required") {
+    if (response && response.needs_api_key) {
+      base.push("This channel requires an Are.na API token. ARENA_API_KEY must be set in the environment that starts PocketBase, not only in this CLI shell.");
+    } else {
+      base.push("The configured Are.na API token is invalid or does not have access to this channel.");
+    }
+  } else if (kind === "forbidden") {
+    base.push("The configured Are.na API token does not have permission to read this channel.");
+  } else if (kind === "not_found") {
+    base.push("Are.na channel not found.");
+  } else if (kind === "rate_limited") {
+    base.push("Are.na rate limit hit. Try again after the retry window.");
+  }
+
+  if (response && response.arena_message) {
+    base.push(`Are.na: ${response.arena_message}`);
+  } else if (response && response.message) {
+    base.push(String(response.message));
+  }
+
+  base.push("");
+  base.push(JSON.stringify({
+    error: "Are.na import failed",
+    status: statusCode,
+    response: payload,
+  }, null, 2));
+  return base.join("\n");
 }
 
 function printUsage() {

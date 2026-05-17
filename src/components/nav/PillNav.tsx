@@ -14,6 +14,7 @@ import type { ItemCardFilters, ItemFormatFilter, ItemSourceFilter } from "../../
 import type { CollectionIndexItem } from "../../data/pocketBaseItemCollection";
 import { gsap } from "../../motion/MotionShell";
 import { SettingSlider } from "../ui/SettingSlider";
+import { useSurfacePresenceMotion } from "../ui/useSurfacePresenceMotion";
 
 export type PillNavPanel = "index" | "views" | "filters" | "settings";
 
@@ -25,8 +26,12 @@ export type GalleryObjectMode = "all" | "items" | "collections";
 export type ArchiveViewMode = "gallery" | "masonry" | "list" | "graph";
 type FilterFamily = "state" | "kind" | "source" | "collection" | "more";
 type SiteTheme = "light" | "dark";
+type SiteMetadata = {
+  faviconUrl: string;
+  title: string;
+};
 type SettingsSection = "appearance" | "views" | "shortcuts" | "import" | "system";
-export type ShortcutAction = "search" | "theme" | "galleryIncrease" | "galleryDecrease";
+export type ShortcutAction = "search" | "importItem" | "theme" | "galleryIncrease" | "galleryDecrease";
 export type ShortcutBinding = {
   key: string;
   modifier?: "mod";
@@ -62,12 +67,14 @@ export type PillNavProps = {
   readError: string | null;
   shortcutBindings: ShortcutBindings;
   shortcutError: string | null;
+  siteMetadata: SiteMetadata;
   siteTheme: SiteTheme;
   onGalleryColumnsChange: (columns: number) => void;
   onCardRadiusChange: (radius: number) => void;
   onMasonryColumnsChange: (columns: number) => void;
   onFormatChange: (format: ArchiveFormatFilter) => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
+  onSiteMetadataChange: (metadata: SiteMetadata) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
   onClearFilters: () => void;
@@ -118,6 +125,7 @@ export function PillNav(props: PillNavProps) {
     onGalleryColumnsChange,
     onMasonryColumnsChange,
     onPanelChange,
+    onSiteMetadataChange,
     onSiteThemeChange,
     onShortcutChange,
     onShortcutReset,
@@ -129,6 +137,7 @@ export function PillNav(props: PillNavProps) {
     readError,
     shortcutBindings,
     shortcutError,
+    siteMetadata,
     siteTheme,
     sourceOptions,
     statusOptions,
@@ -209,9 +218,11 @@ export function PillNav(props: PillNavProps) {
           shortcutBindings={shortcutBindings}
           shortcutError={shortcutError}
           siteTheme={siteTheme}
+          siteMetadata={siteMetadata}
           onGalleryColumnsChange={onGalleryColumnsChange}
           onCardRadiusChange={onCardRadiusChange}
           onRequestClose={() => onPanelChange(null)}
+          onSiteMetadataChange={onSiteMetadataChange}
           onSiteThemeChange={onSiteThemeChange}
           onShortcutChange={onShortcutChange}
           onShortcutReset={onShortcutReset}
@@ -1429,6 +1440,7 @@ function SettingsIsland({
   onCardRadiusChange,
   onGalleryColumnsChange,
   onRequestClose,
+  onSiteMetadataChange,
   onSiteThemeChange,
   onShortcutChange,
   onShortcutReset,
@@ -1436,6 +1448,7 @@ function SettingsIsland({
   readError,
   shortcutBindings,
   shortcutError,
+  siteMetadata,
   siteTheme,
 }: {
   cardRadius: number;
@@ -1444,6 +1457,7 @@ function SettingsIsland({
   onCardRadiusChange: (radius: number) => void;
   onGalleryColumnsChange: (columns: number) => void;
   onRequestClose: () => void;
+  onSiteMetadataChange: (metadata: SiteMetadata) => void;
   onSiteThemeChange: (theme: SiteTheme) => void;
   onShortcutChange: (action: ShortcutAction, binding: ShortcutBinding) => boolean;
   onShortcutReset: () => void;
@@ -1451,10 +1465,55 @@ function SettingsIsland({
   readError: string | null;
   shortcutBindings: ShortcutBindings;
   shortcutError: string | null;
+  siteMetadata: SiteMetadata;
   siteTheme: SiteTheme;
 }) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("shortcuts");
   const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
+  const islandRef = useRef<HTMLElement | null>(null);
+  useSurfacePresenceMotion(islandRef, presenceState, {
+    contentSelector: ".settings-island__tabs, .settings-island__panel",
+    membraneSelector: ".settings-island__tabs-membrane, .settings-island__panel-membrane",
+    y: 7,
+  });
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (
+        islandRef.current?.contains(target) ||
+        (target instanceof Element && target.closest(".pill-nav__group-shell, .pill-nav__subnav"))
+      ) {
+        return;
+      }
+
+      onRequestClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (recordingAction) {
+        setRecordingAction(null);
+        return;
+      }
+
+      onRequestClose();
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onRequestClose, recordingAction]);
+
   const captureShortcut = (action: ShortcutAction, event: ReactKeyboardEvent<HTMLInputElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1476,10 +1535,10 @@ function SettingsIsland({
 
   return (
     <section
+      ref={islandRef}
       className="settings-island"
       data-state={presenceState}
       aria-label="archive settings"
-      onMouseLeave={onRequestClose}
     >
       <div className="settings-island__tabs-shell ui-surface-shell">
         <div className="settings-island__tabs-membrane ui-surface-membrane" aria-hidden="true" />
@@ -1580,6 +1639,15 @@ function SettingsIsland({
                     onFocus={() => setRecordingAction("search")}
                     onKeyDown={captureShortcut}
                   />
+                  <ShortcutCaptureField
+                    action="importItem"
+                    binding={shortcutBindings.importItem}
+                    context="Import"
+                    label="Quick import"
+                    recording={recordingAction === "importItem"}
+                    onFocus={() => setRecordingAction("importItem")}
+                    onKeyDown={captureShortcut}
+                  />
                   <ShortcutStaticField context="Dismiss" label="Close or dismiss" value="Esc" />
                 </ShortcutGroup>
                 <ShortcutGroup title="Views">
@@ -1641,6 +1709,23 @@ function SettingsIsland({
               <span className="settings-island__note">
                 {readError ? "Archive needs attention" : "Archive is connected"} · {isPocketBaseMode ? "Live library" : "Demo library"}
               </span>
+              <label className="settings-island__field">
+                <span>Site name</span>
+                <input
+                  aria-label="site name"
+                  value={siteMetadata.title}
+                  onChange={(event) => onSiteMetadataChange({ ...siteMetadata, title: event.target.value })}
+                />
+              </label>
+              <label className="settings-island__field">
+                <span>Favicon URL</span>
+                <input
+                  aria-label="favicon URL"
+                  placeholder="https://example.com/favicon.png"
+                  value={siteMetadata.faviconUrl}
+                  onChange={(event) => onSiteMetadataChange({ ...siteMetadata, faviconUrl: event.target.value })}
+                />
+              </label>
             </div>
           ) : null}
         </div>

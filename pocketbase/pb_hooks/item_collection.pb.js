@@ -134,6 +134,44 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     }
   }
 
+  function parseDominantColors(value) {
+    const text = nullableString(value);
+    if (!text) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+
+      const colors = parsed.filter((color) => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color));
+      return colors.length > 0 ? colors : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function parseDominantColors(value) {
+    const text = nullableString(value);
+    if (!text) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+
+      const colors = parsed.filter((color) => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color));
+      return colors.length > 0 ? colors : null;
+    } catch {
+      return null;
+    }
+  }
+
   function nullableNumber(value) {
     const text = nullableString(value);
     if (text === null || text === "") {
@@ -231,6 +269,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       imageUrl: nullString(),
       imageWidth: nullString(),
       imageHeight: nullString(),
+      imageDominantColors: nullString(),
       ogMetadata: nullString(),
       assetFileRef: nullString(),
       assetMimeType: nullString(),
@@ -238,6 +277,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       videoMimeType: nullString(),
       videoPosterFileRef: nullString(),
       videoAspectRatio: nullString(),
+      videoDominantColors: nullString(),
       thumbnailFileRef: nullString(),
       textPreview: nullString(),
       sourceUrl: nullString(),
@@ -260,6 +300,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             img.file_ref AS imageUrl,
             CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
             CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+            img.dominant_colors AS imageDominantColors,
             link.og_metadata AS ogMetadata,
             asset.file_ref AS assetFileRef,
             asset.mime_type AS assetMimeType,
@@ -267,6 +308,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
             video.mime_type AS videoMimeType,
             video.poster_file_ref AS videoPosterFileRef,
             CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
+            video.dominant_colors AS videoDominantColors,
             thumb.file_ref AS thumbnailFileRef,
             SUBSTR(
               COALESCE(
@@ -350,6 +392,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
           imageUrl,
           imageWidth,
           imageHeight,
+          imageDominantColors,
           ogMetadata,
           assetFileRef,
           assetMimeType,
@@ -357,6 +400,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
           videoMimeType,
           videoPosterFileRef,
           videoAspectRatio,
+          videoDominantColors,
           thumbnailFileRef,
           textPreview,
           sourceUrl,
@@ -391,6 +435,8 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
     const videoPosterUrl = row.kind === "video" ? videoPosterFileRef || thumbnailFileRef : format === "video" ? ogImageUrl : null;
     const previewUrl = imageUrl || videoPosterUrl || ogImageUrl || (format === "pdf" ? assetFileRef : null);
     const previewAspectRatio = row.kind === "video" ? nullableNumber(row.videoAspectRatio) || aspectRatio : aspectRatio;
+    const dominantColors =
+      row.kind === "video" ? parseDominantColors(row.videoDominantColors) : parseDominantColors(row.imageDominantColors);
     const previewItem = {
       id: row.id,
       title: nullableString(row.title) || openGraph.title,
@@ -401,6 +447,7 @@ routerAdd("GET", "/api/vita/collection-index", (e) => {
       imageUrl,
       ogImageUrl,
       videoPosterUrl,
+      dominantColors,
       assetFileUrl: assetFileRef,
       assetMimeType,
       width: imageWidth,
@@ -496,6 +543,25 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       };
     } catch {
       return { image: null, title: null };
+    }
+  }
+
+  function parseDominantColors(value) {
+    const text = nullableString(value);
+    if (!text) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+
+      const colors = parsed.filter((color) => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color));
+      return colors.length > 0 ? colors : null;
+    } catch {
+      return null;
     }
   }
 
@@ -609,6 +675,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         img.file_ref AS imageUrl,
         CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
         CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+        img.dominant_colors AS imageDominantColors,
         caption.body AS captionText,
         note.body AS noteParagraph,
         link.url AS url,
@@ -621,6 +688,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         CASE WHEN video.duration_ms IS NULL THEN NULL ELSE CAST(video.duration_ms AS TEXT) END AS videoDurationMs,
         video.poster_file_ref AS videoPosterFileRef,
         CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
+        video.dominant_colors AS videoDominantColors,
         asset.file_ref AS assetFileUrl,
         asset.mime_type AS assetMimeType,
         thumb.file_ref AS thumbnailFileRef
@@ -671,6 +739,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       imageUrl: nullString(),
       imageWidth: nullString(),
       imageHeight: nullString(),
+      imageDominantColors: nullString(),
       captionText: nullString(),
       noteParagraph: nullString(),
       url: nullString(),
@@ -683,6 +752,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       videoDurationMs: nullString(),
       videoPosterFileRef: nullString(),
       videoAspectRatio: nullString(),
+      videoDominantColors: nullString(),
       assetFileUrl: nullString(),
       assetMimeType: nullString(),
       thumbnailFileRef: nullString(),
@@ -776,6 +846,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
             img.file_ref AS imageUrl,
             CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
             CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+            img.dominant_colors AS imageDominantColors,
             link.og_metadata AS ogMetadata,
             asset.file_ref AS assetFileRef,
             asset.mime_type AS assetMimeType,
@@ -783,6 +854,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
             video.mime_type AS videoMimeType,
             video.poster_file_ref AS videoPosterFileRef,
             CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
+            video.dominant_colors AS videoDominantColors,
             thumb.file_ref AS thumbnailFileRef,
             SUBSTR(
               COALESCE(
@@ -868,6 +940,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
           imageUrl,
           imageWidth,
           imageHeight,
+          imageDominantColors,
           ogMetadata,
           assetFileRef,
           assetMimeType,
@@ -875,6 +948,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
           videoMimeType,
           videoPosterFileRef,
           videoAspectRatio,
+          videoDominantColors,
           thumbnailFileRef,
           textPreview,
           sourceUrl,
@@ -892,6 +966,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         imageUrl: nullString(),
         imageWidth: nullString(),
         imageHeight: nullString(),
+        imageDominantColors: nullString(),
         ogMetadata: nullString(),
         assetFileRef: nullString(),
         assetMimeType: nullString(),
@@ -899,6 +974,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         videoMimeType: nullString(),
         videoPosterFileRef: nullString(),
         videoAspectRatio: nullString(),
+        videoDominantColors: nullString(),
         thumbnailFileRef: nullString(),
         textPreview: nullString(),
         sourceUrl: nullString(),
@@ -931,6 +1007,8 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     const imageHeight = row.type === "video" ? videoHeight : nullableNumber(row.imageHeight);
     const aspectRatio = row.type === "video" ? videoAspectRatio || aspectRatioFor(videoWidth, videoHeight) : aspectRatioFor(imageWidth, imageHeight);
     const thumbnailFileRef = nullableString(row.thumbnailFileRef);
+    const dominantColors =
+      row.type === "video" ? parseDominantColors(row.videoDominantColors) : parseDominantColors(row.imageDominantColors);
     const videoPosterUrl = row.type === "video" ? videoPosterFileRef || thumbnailFileRef : linkContentType === "video" ? openGraph.image : null;
     const previewUrl = imageUrl || videoPosterUrl || openGraph.image || (linkContentType === "pdf" ? assetFileUrl : null);
     const sourceLabel =
@@ -973,6 +1051,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       previewUrl,
       thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || openGraph.image,
       videoPosterUrl,
+      dominantColors,
       mediaPreview: {
         previewUrl,
         imageUrl,
@@ -981,6 +1060,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
         videoPosterUrl,
         assetFileUrl,
         assetMimeType,
+        dominantColors,
         width: imageWidth,
         height: imageHeight,
         aspectRatio,
@@ -1007,6 +1087,8 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
     const videoPosterUrl = row.kind === "video" ? videoPosterFileRef || thumbnailFileRef : format === "video" ? ogImageUrl : null;
     const previewUrl = imageUrl || videoPosterUrl || ogImageUrl || (format === "pdf" ? assetFileRef : null);
     const previewAspectRatio = row.kind === "video" ? nullableNumber(row.videoAspectRatio) || aspectRatio : aspectRatio;
+    const dominantColors =
+      row.kind === "video" ? parseDominantColors(row.videoDominantColors) : parseDominantColors(row.imageDominantColors);
     const previewItem = {
       id: row.id,
       title: nullableString(row.title) || openGraph.title,
@@ -1017,6 +1099,7 @@ routerAdd("GET", "/api/vita/collection-detail", (e) => {
       imageUrl,
       ogImageUrl,
       videoPosterUrl,
+      dominantColors,
       assetFileUrl: assetFileRef,
       assetMimeType,
       width: imageWidth,
@@ -1802,4 +1885,284 @@ routerAdd("POST", "/api/vita/collection-update", (e) => {
       previewItems: [],
     },
   });
+});
+
+routerAdd("POST", "/api/vita/collection-relationship", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    parent_collection_id: "",
+    child_collection_id: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const parentCollectionId = requiredString(body.parent_collection_id, "parent_collection_id");
+  const childCollectionId = requiredString(body.child_collection_id, "child_collection_id");
+  const actor = optionalString(body.actor) || "system";
+
+  if (parentCollectionId === childCollectionId) {
+    throw new BadRequestError("collection cannot connect to itself");
+  }
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function queryAll(app, sql, shape, params) {
+    const rows = arrayOf(new DynamicModel(shape));
+    app.db().newQuery(sql).bind(params).all(rows);
+    return rows;
+  }
+
+  function relationshipIdFor(parentId, childId, timestamp) {
+    const suffix = Math.random().toString(36).slice(2, 10);
+    return `collection-rel:${parentId}:${childId}:${timestamp}:${suffix}`;
+  }
+
+  let result = null;
+
+  e.app.runInTransaction((txApp) => {
+    const collectionRows = queryAll(
+      txApp,
+      `
+        SELECT id
+        FROM collections
+        WHERE workspace_id = {:workspaceId}
+          AND (id = {:parentCollectionId} OR id = {:childCollectionId})
+      `,
+      { id: "" },
+      { workspaceId, parentCollectionId, childCollectionId },
+    );
+
+    if (collectionRows.length !== 2) {
+      throw new NotFoundError("collection not found");
+    }
+
+    const cycleRows = queryAll(
+      txApp,
+      `
+        WITH RECURSIVE descendants(id) AS (
+          SELECT child_collection_id
+          FROM collection_relationships
+          WHERE workspace_id = {:workspaceId}
+            AND parent_collection_id = {:childCollectionId}
+          UNION
+          SELECT cr.child_collection_id
+          FROM collection_relationships cr
+          INNER JOIN descendants d
+            ON d.id = cr.parent_collection_id
+          WHERE cr.workspace_id = {:workspaceId}
+        )
+        SELECT id
+        FROM descendants
+        WHERE id = {:parentCollectionId}
+        LIMIT 1
+      `,
+      { id: "" },
+      { workspaceId, parentCollectionId, childCollectionId },
+    );
+
+    if (cycleRows.length > 0) {
+      throw new BadRequestError("collection relationship would create a cycle");
+    }
+
+    const existingRows = queryAll(
+      txApp,
+      `
+        SELECT position, added_at AS addedAt, added_by AS addedBy
+        FROM collection_relationships
+        WHERE workspace_id = {:workspaceId}
+          AND parent_collection_id = {:parentCollectionId}
+          AND child_collection_id = {:childCollectionId}
+        LIMIT 1
+      `,
+      { position: 0, addedAt: "", addedBy: "" },
+      { workspaceId, parentCollectionId, childCollectionId },
+    );
+
+    if (existingRows.length > 0) {
+      const existing = existingRows[0];
+      result = {
+        relationship: {
+          parentCollectionId,
+          childCollectionId,
+          position: Number(existing.position) || 0,
+          addedAt: existing.addedAt,
+          addedBy: existing.addedBy,
+          created: false,
+        },
+      };
+      return;
+    }
+
+    const positionRows = queryAll(
+      txApp,
+      `
+        SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition
+        FROM collection_relationships
+        WHERE workspace_id = {:workspaceId}
+          AND parent_collection_id = {:parentCollectionId}
+      `,
+      { nextPosition: 0 },
+      { workspaceId, parentCollectionId },
+    );
+    const now = new Date().toISOString();
+    const position = Number(positionRows[0]?.nextPosition) || 0;
+    const relationshipId = relationshipIdFor(parentCollectionId, childCollectionId, now);
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          INSERT INTO collection_relationships (
+            id,
+            workspace_id,
+            parent_collection_id,
+            child_collection_id,
+            position,
+            added_at,
+            added_by
+          ) VALUES (
+            {:relationshipId},
+            {:workspaceId},
+            {:parentCollectionId},
+            {:childCollectionId},
+            {:position},
+            {:now},
+            {:actor}
+          )
+        `,
+      )
+      .bind({ relationshipId, workspaceId, parentCollectionId, childCollectionId, position, now, actor })
+      .execute();
+
+    result = {
+      relationship: {
+        parentCollectionId,
+        childCollectionId,
+        position,
+        addedAt: now,
+        addedBy: actor,
+        created: true,
+      },
+    };
+  });
+
+  return e.json(200, result);
+});
+
+routerAdd("POST", "/api/vita/collection-delete", (e) => {
+  const body = new DynamicModel({
+    workspace_id: "",
+    collection_id: "",
+    actor: "",
+  });
+  e.bindBody(body);
+
+  const workspaceId = requiredString(body.workspace_id, "workspace_id");
+  const collectionId = requiredString(body.collection_id, "collection_id");
+  const actor = optionalString(body.actor) || "system";
+
+  function requiredString(value, fieldName) {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
+
+  function optionalString(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function queryAll(app, sql, shape, params) {
+    const rows = arrayOf(new DynamicModel(shape));
+    app.db().newQuery(sql).bind(params).all(rows);
+    return rows;
+  }
+
+  let result = null;
+
+  e.app.runInTransaction((txApp) => {
+    const rows = queryAll(
+      txApp,
+      `
+        SELECT id, name
+        FROM collections
+        WHERE workspace_id = {:workspaceId}
+          AND id = {:collectionId}
+        LIMIT 1
+      `,
+      { id: "", name: "" },
+      { workspaceId, collectionId },
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundError("collection not found");
+    }
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          DELETE FROM collection_relationships
+          WHERE workspace_id = {:workspaceId}
+            AND (parent_collection_id = {:collectionId} OR child_collection_id = {:collectionId})
+        `,
+      )
+      .bind({ workspaceId, collectionId })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          DELETE FROM collection_items
+          WHERE collection_id = {:collectionId}
+        `,
+      )
+      .bind({ collectionId })
+      .execute();
+
+    txApp
+      .db()
+      .newQuery(
+        `
+          DELETE FROM collections
+          WHERE workspace_id = {:workspaceId}
+            AND id = {:collectionId}
+        `,
+      )
+      .bind({ workspaceId, collectionId })
+      .execute();
+
+    const now = new Date().toISOString();
+    result = {
+      collection: {
+        id: collectionId,
+        name: rows[0].name,
+        deletedAt: now,
+        deletedBy: actor,
+      },
+    };
+  });
+
+  return e.json(200, result);
 });

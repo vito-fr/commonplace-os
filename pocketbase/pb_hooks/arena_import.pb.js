@@ -12,7 +12,7 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     e.bindBody(body);
 
     const workspaceId = requiredString(body.workspace_id, "workspace_id");
-    const channelSlug = requiredString(body.channel, "channel");
+    const channelSlug = normalizeChannelInput(requiredString(body.channel, "channel"));
     const actor = optionalString(body.actor) || "subagent:import";
     const apiKey = optionalString($os.getenv("ARENA_API_KEY"));
 
@@ -21,12 +21,14 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     }
 
     let channel;
+    let contents;
     const client = createArenaApiClient({ apiKey });
 
     try {
       channel = client.getChannel(channelSlug);
+      contents = client.getChannelContents(channelContentHandle(channel), { per: 100, sort: "position_desc" });
     } catch (error) {
-      return e.json(arenaFailureStatus(error), arenaFailureBody(error, apiKey));
+      return e.json(arenaFailureStatus(error), arenaFailureBody(error, apiKey, channelSlug));
     }
 
     const now = new Date().toISOString();
@@ -38,15 +40,15 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     try {
       importArenaChannel(e.app, {
         actor,
-        client,
         collection,
+        contents,
         existingItems,
         sourceId,
         summary,
         workspaceId,
       });
     } catch (error) {
-      return e.json(arenaFailureStatus(error), arenaFailureBody(error, apiKey));
+      return e.json(arenaFailureStatus(error), arenaFailureBody(error, apiKey, channelSlug));
     }
 
     return e.json(200, summary);
@@ -232,8 +234,7 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     return index;
   }
 
-  function importArenaChannel(app, { actor, client, collection, existingItems, sourceId, summary, workspaceId }) {
-    const contents = client.getChannelContents(channelHandle(collection), { per: 100, sort: "position_desc" });
+  function importArenaChannel(app, { actor, collection, contents, existingItems, sourceId, summary, workspaceId }) {
     for (let index = 0; index < contents.length; index += 1) {
       const draft = mapArenaConnectableToItemDraft(contents[index]);
       processArenaDraft(app, {
@@ -320,8 +321,8 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     return draft.itemType === "collection" ? "nested_channel_skipped" : draft.itemType;
   }
 
-  function channelHandle(collection) {
-    return requiredString(collection.slug || collection.arenaChannelId, "channel handle");
+  function channelContentHandle(channel) {
+    return requiredString(channel && channel.id != null ? String(channel.id) : channel && channel.slug, "channel handle");
   }
 
   function existingItemFromDraft(itemId, draft) {
@@ -897,14 +898,38 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     return 502;
   }
 
-  function arenaFailureBody(error, apiKey) {
+  function arenaFailureBody(error, apiKey, channelInput) {
     const statusCode = Number(error && error.statusCode) || null;
+    const apiKeyPresent = Boolean(apiKey);
     return {
       error: "Are.na API request failed",
+      kind: arenaFailureKind(statusCode),
       status_code: statusCode,
-      needs_api_key: statusCode === 401 && !apiKey,
+      channel: optionalString(channelInput) || null,
+      api_key_present: apiKeyPresent,
+      needs_api_key: statusCode === 401 && !apiKeyPresent,
+      retry_after: optionalString(error && error.retryAfter) || null,
+      arena_error: optionalString(error && error.responseError) || null,
+      arena_code: optionalString(error && error.responseCode) || null,
+      arena_message: optionalString(error && error.responseMessage) || null,
       message: error && error.message ? error.message : String(error),
     };
+  }
+
+  function arenaFailureKind(statusCode) {
+    if (statusCode === 401) {
+      return "auth_required";
+    }
+    if (statusCode === 403) {
+      return "forbidden";
+    }
+    if (statusCode === 404) {
+      return "not_found";
+    }
+    if (statusCode === 429) {
+      return "rate_limited";
+    }
+    return "upstream_failed";
   }
 
   function requiredString(value, fieldName) {
@@ -918,6 +943,45 @@ routerAdd("POST", "/api/vita/import-arena", (e) => {
     }
 
     return text;
+  }
+
+  function normalizeChannelInput(value) {
+    const text = requiredString(value, "channel");
+
+    if (!/^https?:\/\//i.test(text)) {
+      return text.replace(/^@+/, "");
+    }
+
+    let url;
+    try {
+      url = new URL(text);
+    } catch {
+      return text;
+    }
+
+    const parts = url.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+    if (parts[0] === "block") {
+      throw new BadRequestError("Are.na block URLs import as links, not channels");
+    }
+
+    const slug = channelSlugFromUrlParts(parts);
+    return requiredString(decodeURIComponent(slug), "channel");
+  }
+
+  function channelSlugFromUrlParts(parts) {
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return "";
+    }
+
+    if (parts[0] === "channels" && parts[1]) {
+      return parts[1];
+    }
+
+    if (parts[0] === "v3" && parts[1] === "channels" && parts[2]) {
+      return parts[2];
+    }
+
+    return parts.length >= 2 ? parts[1] : parts[0];
   }
 
   function nonNegativeInteger(value, fallback, fieldName) {

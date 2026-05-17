@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ShortcutBinding } from "../nav/PillNav";
+import { useSurfacePresenceMotion } from "../ui/useSurfacePresenceMotion";
 
 export type SpotlightCaptureRequest =
   | { type: "link"; url: string }
+  | { type: "arena-channel"; channel: string; url: string }
   | { type: "note"; body: string }
   | { type: "image"; file: File }
   | { type: "pdf"; file: File }
@@ -24,6 +26,8 @@ export type SpotlightDockProps = {
   captureError: string | null;
   captureNotice: string | null;
   searchShortcut: ShortcutBinding;
+  importIntentToken?: number;
+  importContextLabel?: string | null;
   onCapture: (request: SpotlightCaptureRequest) => Promise<SpotlightCaptureResult> | SpotlightCaptureResult;
   onOpen?: () => void;
 };
@@ -48,6 +52,8 @@ export function SpotlightDock({
   captureError,
   captureNotice,
   isPocketBaseMode,
+  importIntentToken = 0,
+  importContextLabel = null,
   onCapture,
   onChange,
   onOpen,
@@ -67,12 +73,18 @@ export function SpotlightDock({
   const importInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusSearchRef = useRef(false);
+  const handledImportIntentTokenRef = useRef(importIntentToken);
   const isSearchOpen = activeMode === "search";
   const isImportOpen = activeMode === "import";
   const pastePreview = useMemo(() => getPastePreview(importValue), [importValue]);
   const readyFileCount = fileQueue.filter((item) => item.status === "ready").length;
   const isBusy = pendingCapture || isQueueImporting;
   const importPresence = useDeferredPresence(isImportOpen, 260);
+  useSurfacePresenceMotion(panelRef, importPresence.state, {
+    contentSelector: ".spotlight-import-panel__modes, .spotlight-import-panel__hint, .spotlight-import-panel__content",
+    membraneSelector: ".spotlight-import-panel__modes-membrane, .spotlight-import-panel__membrane",
+    y: 10,
+  });
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -106,6 +118,17 @@ export function SpotlightDock({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onOpen, searchShortcut]);
+
+  useEffect(() => {
+    if (importIntentToken === handledImportIntentTokenRef.current) {
+      return;
+    }
+
+    handledImportIntentTokenRef.current = importIntentToken;
+    onOpen?.();
+    setImportMode("paste");
+    setActiveMode("import");
+  }, [importIntentToken, onOpen]);
 
   useEffect(() => {
     if (!activeMode) {
@@ -167,7 +190,12 @@ export function SpotlightDock({
     }
 
     try {
-      const request = pastePreview.kind === "note" ? { type: "note" as const, body: input } : { type: "link" as const, url: input };
+      const request =
+        pastePreview.kind === "note"
+          ? { type: "note" as const, body: input }
+          : pastePreview.kind === "arena-channel"
+            ? { type: "arena-channel" as const, channel: pastePreview.channel, url: input }
+            : { type: "link" as const, url: input };
       const result = await onCapture(request);
       setImportValue("");
       setBatchNotice(result?.created === false ? "Already in archive." : getPasteSuccessMessage(pastePreview));
@@ -278,7 +306,6 @@ export function SpotlightDock({
           ref={panelRef}
           role="dialog"
           aria-label="import to archive"
-          onMouseLeave={closeImport}
         >
           <form className="spotlight-import-panel__form" onSubmit={submitImport}>
             <div className="spotlight-import-panel__topbar">
@@ -311,7 +338,9 @@ export function SpotlightDock({
                   </button>
                 </div>
               </div>
-              <span className="spotlight-import-panel__hint">{getImportHint(importMode)}</span>
+              <span className="spotlight-import-panel__hint">
+                {importContextLabel ? `Importing into ${importContextLabel}` : getImportHint(importMode)}
+              </span>
             </div>
 
             <div className="spotlight-import-panel__dock-shell ui-surface-shell">
@@ -492,7 +521,7 @@ function SourceImportGuide() {
   return (
     <div className="spotlight-import-panel__sources" aria-label="supported sources">
       <SourceImportRow label="Pinterest" copy="Paste pin, profile, or image URLs. They filter as Pinterest." />
-      <SourceImportRow label="Are.na" copy="Paste Are.na URLs. They filter as Are.na." />
+      <SourceImportRow label="Are.na" copy="Channel URLs import the channel. Block URLs import as links." />
       <SourceImportRow label="YouTube" copy="Paste video URLs. They import as video links." />
       <SourceImportRow label="APIs" copy="Account API import is deferred until URL capture proves the workflow." />
     </div>
@@ -555,10 +584,20 @@ function getPastePreview(value: string) {
   }
 
   if (isArenaHost(host)) {
+    const channel = getArenaChannelSlug(url);
+    if (channel) {
+      return {
+        kind: "arena-channel" as const,
+        channel,
+        label: "Are.na channel",
+        detail: `This will import ${channel}.`,
+      };
+    }
+
     return {
       kind: "link" as const,
-      label: "Are.na URL",
-      detail: "This will filter under Source: Are.na.",
+      label: "Are.na block URL",
+      detail: "This will import as an Are.na link.",
     };
   }
 
@@ -672,6 +711,20 @@ function isPinterestHost(host: string) {
 
 function isArenaHost(host: string) {
   return host === "are.na" || host.endsWith(".are.na");
+}
+
+function getArenaChannelSlug(url: URL) {
+  const host = url.hostname.toLowerCase();
+  if (!isArenaHost(host)) {
+    return null;
+  }
+
+  const parts = url.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2 || parts[0] === "block") {
+    return null;
+  }
+
+  return decodeURIComponent(parts[1] || "").trim() || null;
 }
 
 function isVideoHost(host: string) {

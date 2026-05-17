@@ -15,12 +15,16 @@
     "typecheck": "tsc --noEmit",
     "visual:qa": "node scripts/visual-qa.mjs",
     "visual:qa:refs": "node scripts/visual-qa.mjs --refs",
+    "probe:collection-detail": "node scripts/collection-detail-probe.mjs",
     "link-metadata:backfill": "node scripts/backfill-link-metadata.mjs",
+    "link-screenshots:backfill": "node scripts/link-screenshot-worker.mjs",
+    "link-screenshots:worker": "node scripts/link-screenshot-worker.mjs --serve",
     "import:arena": "node scripts/import-arena.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "gsap": "^3.15.0",
+    "pdfjs-dist": "^5.7.284",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },

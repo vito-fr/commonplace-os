@@ -8,9 +8,11 @@ export type VideoCardProps = {
   mimeType?: string | null;
   width?: number | null;
   height?: number | null;
+  fetchPriority?: "high" | "low" | "auto";
   loading?: "eager" | "lazy";
   onMediaError: (url: string) => void;
   onPosterLoad?: (event: SyntheticEvent<HTMLImageElement>) => void;
+  placeholderColors?: string[] | null;
 };
 
 type AutoplayPlayer = {
@@ -23,10 +25,12 @@ const autoplayStartRatio = 0.15;
 
 export function VideoCard({
   height = null,
+  fetchPriority = "auto",
   loading = "lazy",
   mimeType = null,
   onMediaError,
   onPosterLoad,
+  placeholderColors = null,
   posterUrl,
   src,
   title,
@@ -38,7 +42,6 @@ export function VideoCard({
   const mountedRef = useRef(false);
   const [shouldLoadVideo, setShouldLoadVideo] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const fetchPriority = loading === "eager" ? "high" : "auto";
 
   const stopPlayback = useCallback(() => {
     const video = videoRef.current;
@@ -217,6 +220,7 @@ export function VideoCard({
           fetchPriority={fetchPriority}
           width={width ?? undefined}
           height={height ?? undefined}
+          placeholderColors={placeholderColors}
           onMediaError={onMediaError}
           onLoad={onPosterLoad}
         />

@@ -14,9 +14,10 @@ function createArenaApiClient(options) {
 
   return {
     getChannel(idOrSlug) {
+      const channelHandle = normalizeChannelHandle(idOrSlug);
       return requestJson({
         baseUrl,
-        path: "/channels/" + encodeURIComponent(requiredString(idOrSlug, "channel")),
+        path: "/channels/" + encodeURIComponent(channelHandle),
         apiKey,
         send,
         sleeper,
@@ -25,6 +26,7 @@ function createArenaApiClient(options) {
     },
 
     getChannelContentsPage(idOrSlug, pageOptions) {
+      const channelHandle = normalizeChannelHandle(idOrSlug);
       const pagination = pageOptions || {};
       const page = positiveInteger(pagination.page, 1);
       const per = clampPositiveInteger(pagination.per, arenaDefaultPerPage, 1, arenaDefaultPerPage);
@@ -37,7 +39,7 @@ function createArenaApiClient(options) {
 
       return requestJson({
         baseUrl,
-        path: "/channels/" + encodeURIComponent(requiredString(idOrSlug, "channel")) + "/contents" + query,
+        path: "/channels/" + encodeURIComponent(channelHandle) + "/contents" + query,
         apiKey,
         send,
         sleeper,
@@ -160,11 +162,27 @@ function parseResponseJson(response) {
 
 function arenaHttpError(response, url) {
   const bodyText = typeof toString === "function" ? toString(response.body || [], 4000) : bodyToString(response.body).slice(0, 4000);
+  const bodyJson = parseJsonOrNull(bodyText);
   const message = "Are.na API request failed with HTTP " + response.statusCode + " for " + url;
-  const error = new Error(bodyText ? message + ": " + bodyText : message);
+  const responseMessage = arenaResponseMessage(bodyJson);
+  const error = new Error(responseMessage ? message + ": " + responseMessage : bodyText ? message + ": " + bodyText : message);
   error.statusCode = response.statusCode;
   error.url = url;
+  error.responseBody = bodyText;
+  error.responseError = bodyJson && bodyJson.error ? String(bodyJson.error) : "";
+  error.responseCode = bodyJson && bodyJson.code != null ? String(bodyJson.code) : "";
+  error.responseMessage = responseMessage;
+  error.retryAfter = headerValue(response.headers, "Retry-After") || headerValue(response.headers, "X-RateLimit-Reset");
   return error;
+}
+
+function arenaResponseMessage(bodyJson) {
+  if (!bodyJson || typeof bodyJson !== "object") {
+    return "";
+  }
+
+  const details = bodyJson.details && typeof bodyJson.details === "object" ? bodyJson.details : null;
+  return stringValue(details && details.message) || stringValue(bodyJson.message) || stringValue(bodyJson.error);
 }
 
 function normalizeBaseUrl(value) {
@@ -178,6 +196,43 @@ function requiredString(value, label) {
   }
 
   return text;
+}
+
+function normalizeChannelHandle(value) {
+  const text = requiredString(value, "channel");
+
+  if (!/^https?:\/\//i.test(text)) {
+    return text.replace(/^@+/, "");
+  }
+
+  try {
+    const url = new URL(text);
+    const parts = url.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+    const slug = channelSlugFromUrlParts(parts) || parts[parts.length - 1] || "";
+    return requiredString(decodeURIComponent(slug), "channel");
+  } catch {
+    return text;
+  }
+}
+
+function channelSlugFromUrlParts(parts) {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return "";
+  }
+
+  if (parts[0] === "block") {
+    return "";
+  }
+
+  if (parts[0] === "channels" && parts[1]) {
+    return parts[1];
+  }
+
+  if (parts[0] === "v3" && parts[1] === "channels" && parts[2]) {
+    return parts[2];
+  }
+
+  return parts.length >= 2 ? parts[1] : parts[0];
 }
 
 function stringValue(value) {
@@ -217,6 +272,18 @@ function headerValue(headers, name) {
   }
 
   return "";
+}
+
+function parseJsonOrNull(text) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function bodyToString(body) {

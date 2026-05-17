@@ -83,6 +83,13 @@ export type ItemDetailContent = {
       mimeType: string | null;
       sizeBytes: number | null;
     } | null;
+    thumbnail: {
+      fileRef: string | null;
+      fileUrl: string | null;
+      originalName: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+    } | null;
   } | null;
   video?: {
     fileRef: string | null;
@@ -294,6 +301,12 @@ function resolveItemDetailFileRefs(item: ItemDetail, baseUrl: string): ItemDetai
           ? {
               ...item.content.link.asset,
               fileUrl: resolvePocketBaseFileUrl(baseUrl, item.content.link.asset.fileRef),
+            }
+          : null,
+        thumbnail: item.content.link.thumbnail
+          ? {
+              ...item.content.link.thumbnail,
+              fileUrl: resolvePocketBaseFileUrl(baseUrl, item.content.link.thumbnail.fileRef),
             }
           : null,
       }

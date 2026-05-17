@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { CardActionMenu, CardGlyph, useCardActionMenu } from "./CardActions";
 import { CardMediaImage } from "./CardMediaImage";
+import { ActionHint } from "../ui/ActionHint";
 
 export type CollectionCardModel = {
   id: string;
@@ -12,6 +13,12 @@ export type CollectionCardModel = {
   lastUpdatedAt: string;
   previewItems: CollectionCardPreviewItem[];
   href?: string;
+  onConnect?: (collectionId: string) => void;
+  onCopy?: (collectionId: string) => Promise<void> | void;
+  onDelete?: (collectionId: string) => Promise<void> | void;
+  onDownload?: (collectionId: string) => void;
+  onEdit?: (collectionId: string) => void;
+  onImportInto?: (collectionId: string) => void;
   onNavigate?: (collectionId: string) => void;
 };
 
@@ -25,6 +32,7 @@ export type CollectionCardPreviewItem = {
   imageUrl?: string | null;
   ogImageUrl?: string | null;
   videoPosterUrl?: string | null;
+  dominantColors?: string[] | null;
   width?: number | null;
   height?: number | null;
   aspectRatio?: number | null;
@@ -35,25 +43,22 @@ export type CollectionCardPreviewItem = {
 
 export type CollectionCardProps = {
   collection: CollectionCardModel;
+  mediaFetchPriority?: "high" | "low" | "auto";
   mediaLoading?: "eager" | "lazy";
 };
 
 const maxCollectionTitleLength = 50;
 
-export function CollectionCard({ collection, mediaLoading = "lazy" }: CollectionCardProps) {
+export function CollectionCard({ collection, mediaFetchPriority = "auto", mediaLoading = "lazy" }: CollectionCardProps) {
   const href = collection.href ?? `/collections/${encodeURIComponent(collection.id)}`;
-  const addItemsHref = `${href}#add-to-collection`;
   const editHref = `${href}#collection-title`;
   const displayTitle = formatCollectionTitle(collection.name);
   const relativeAddedTime = formatAddedTime(collection.createdAt ?? null);
   const cardClassName = ["collection-card", relativeAddedTime ? "collection-card--has-added-time" : ""]
     .filter(Boolean)
     .join(" ");
-  const frameTags = [
-    { key: "kind", label: collection.kindSummary },
-    { key: "count", label: formatPieceCount(collection.pieceCount) },
-  ].filter((tag) => tag.label.trim() !== "");
   const [copied, setCopied] = useState(false);
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const previewSourceSignature = collection.previewItems
     .map((item) => [item.id, item.thumbnailUrl, item.imageUrl, item.ogImageUrl, item.videoPosterUrl].join("|"))
     .join(";");
@@ -116,7 +121,48 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
   const copyCollectionLink = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (collection.onCopy) {
+      void collection.onCopy(collection.id);
+      actionMenu.close();
+      return;
+    }
+
     void copyLink();
+  };
+  const editCollection = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (collection.onEdit) {
+      event.preventDefault();
+      event.stopPropagation();
+      collection.onEdit(collection.id);
+      actionMenu.close();
+      return;
+    }
+
+    openCollectionTarget(event, "collection-title");
+  };
+  const connectCollection = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    collection.onConnect?.(collection.id);
+    actionMenu.close();
+  };
+  const downloadCollection = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    collection.onDownload?.(collection.id);
+    actionMenu.close();
+  };
+  const deleteCollection = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDeleteConfirming) {
+      setIsDeleteConfirming(true);
+      return;
+    }
+
+    void collection.onDelete?.(collection.id);
+    setIsDeleteConfirming(false);
+    actionMenu.close();
   };
 
   return (
@@ -135,23 +181,7 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
     >
       <a className="collection-card__link" href={href} onClick={openCollection} aria-label={`Open ${collection.name}`}>
         <div className="collection-card__cover" aria-hidden="true" data-empty={collection.previewItems.length === 0 ? "true" : "false"}>
-          {renderCoverTiles(collection, mediaLoading, failedPreviewUrls, markPreviewUrlFailed)}
-          {frameTags.length > 0 ? (
-            <span className="collection-card__frame-tags" aria-hidden="true">
-              {frameTags.map((tag, index) => (
-                <span
-                  className="collection-card__frame-tag"
-                  key={tag.key}
-                  style={{
-                    "--card-label-enter-delay": `${Math.min(index, 8) * 35}ms`,
-                    "--card-label-exit-delay": `${Math.min(frameTags.length - index - 1, 8) * 28}ms`,
-                  } as CSSProperties}
-                >
-                  {tag.label}
-                </span>
-              ))}
-            </span>
-          ) : null}
+          {renderCoverTiles(collection, mediaLoading, mediaFetchPriority, failedPreviewUrls, markPreviewUrlFailed)}
         </div>
         <div className="collection-card__body">
           <h2 title={collection.name}>
@@ -172,14 +202,18 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
           }
         }}
       >
-        <a
-          className="item-card__action-cell item-card__action-cell--add collection-card__action-cell collection-card__action-cell--add"
-          href={addItemsHref}
-          onClick={(event) => openCollectionTarget(event, "add-to-collection")}
-          aria-label={`Add items to ${collection.name}`}
-        >
-          <CardGlyph name="add" className="item-card__plus-icon" />
-        </a>
+        <ActionHint className="item-card__add-hint collection-card__add-hint" label="Connect collection" shortcut="C" side="left">
+          <button
+            className="item-card__action-cell item-card__action-cell--add collection-card__action-cell collection-card__action-cell--add"
+            type="button"
+            disabled={!collection.onConnect}
+            onClick={connectCollection}
+            aria-label={`Connect ${collection.name} to another collection`}
+            data-press-feedback="true"
+          >
+            <CardGlyph name="add" className="item-card__plus-icon" />
+          </button>
+        </ActionHint>
         <CardActionMenu
           ariaLabel={`More actions for ${collection.name}`}
           buttonClassName="collection-card__action-cell collection-card__action-cell--more"
@@ -189,21 +223,14 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
           menuClassName="collection-card__more-menu"
           menuRef={actionMenu.menuRef}
           onToggle={actionMenu.toggle}
+          tooltipLabel="More actions"
         >
-          <a
-            className="item-card__menu-action item-card__menu-action--add collection-card__more-menu-link"
-            href={addItemsHref}
-            onClick={(event) => openCollectionTarget(event, "add-to-collection")}
-            role="menuitem"
-          >
-            <CardGlyph name="add" className="item-card__menu-icon" />
-            <span className="item-card__menu-label">Add</span>
-          </a>
           <a
             className="item-card__menu-action item-card__menu-action--edit collection-card__more-menu-link"
             href={editHref}
-            onClick={(event) => openCollectionTarget(event, "collection-title")}
+            onClick={editCollection}
             role="menuitem"
+            data-press-feedback="true"
           >
             <CardGlyph name="edit" className="item-card__menu-icon" />
             <span className="item-card__menu-label">Edit</span>
@@ -213,9 +240,33 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
             type="button"
             role="menuitem"
             onClick={copyCollectionLink}
+            data-press-feedback="true"
           >
             <CardGlyph name="copy" className="item-card__menu-icon" />
             <span className="item-card__menu-label">{copied ? "Copied" : "Copy"}</span>
+          </button>
+          <button
+            className="item-card__menu-action item-card__menu-action--download"
+            type="button"
+            role="menuitem"
+            disabled={!collection.onDownload}
+            onClick={downloadCollection}
+            data-press-feedback="true"
+          >
+            <CardGlyph name="download" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">Download</span>
+          </button>
+          <button
+            className="item-card__menu-action item-card__menu-action--delete"
+            type="button"
+            role="menuitem"
+            disabled={!collection.onDelete}
+            onClick={deleteCollection}
+            data-confirming={isDeleteConfirming ? "true" : "false"}
+            data-press-feedback="true"
+          >
+            <CardGlyph name="delete" className="item-card__menu-icon" />
+            <span className="item-card__menu-label">{isDeleteConfirming ? "Confirm" : "Delete"}</span>
           </button>
         </CardActionMenu>
       </div>
@@ -226,18 +277,22 @@ export function CollectionCard({ collection, mediaLoading = "lazy" }: Collection
 export function NewCollectionCard({ disabled = false, onCreate }: { disabled?: boolean; onCreate: () => void }) {
   return (
     <article className="collection-card collection-card--create">
-      <button className="collection-card__create-button" disabled={disabled} type="button" onClick={onCreate}>
-        <div className="collection-card__cover collection-card__cover--create" aria-hidden="true" data-empty="true">
-          <span className="collection-card__cover-empty">
-            <strong>+</strong>
-            <small>empty set</small>
-          </span>
-        </div>
-        <div className="collection-card__body">
-          <h2>New Collection</h2>
-          <span className="collection-card__count">Create</span>
-        </div>
-      </button>
+      <ActionHint label="Create collection" side="top">
+        <button className="collection-card__create-button" disabled={disabled} type="button" onClick={onCreate} data-press-feedback="true">
+          <div className="collection-card__cover collection-card__cover--create" aria-hidden="true" data-empty="true">
+            <span className="collection-card__create-affordance">
+              <span className="collection-card__create-icon">
+                <CardGlyph name="add" className="collection-card__create-glyph" />
+              </span>
+              <small>create set</small>
+            </span>
+          </div>
+          <div className="collection-card__body">
+            <h2>New Collection</h2>
+            <span className="collection-card__count">Create</span>
+          </div>
+        </button>
+      </ActionHint>
     </article>
   );
 }
@@ -245,6 +300,7 @@ export function NewCollectionCard({ disabled = false, onCreate }: { disabled?: b
 function renderCoverTiles(
   collection: CollectionCardModel,
   mediaLoading: "eager" | "lazy",
+  mediaFetchPriority: "high" | "low" | "auto",
   failedPreviewUrls: string[],
   onMediaError: (url: string) => void,
 ) {
@@ -271,17 +327,21 @@ function renderCoverTiles(
       [item.thumbnailUrl, item.imageUrl, item.ogImageUrl, item.videoPosterUrl],
       failedPreviewUrls,
     );
+    const tileLoading = index === 0 ? mediaLoading : "lazy";
+    const tileFetchPriority = index === 0 ? mediaFetchPriority : "auto";
+
     if (imageUrl) {
       return (
         <span className="collection-card__preview-tile collection-card__preview-tile--visual" key={`${item.id}:${index}`}>
           <CardMediaImage
             src={imageUrl}
             alt=""
-            loading={mediaLoading}
+            loading={tileLoading}
             decoding="async"
-            fetchPriority={mediaLoading === "eager" ? "high" : "auto"}
+            fetchPriority={tileFetchPriority}
             width={item.width ?? undefined}
             height={item.height ?? undefined}
+            placeholderColors={item.dominantColors}
             onMediaError={onMediaError}
           />
         </span>

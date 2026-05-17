@@ -9,18 +9,26 @@ const viewportResizeFlipSuppressMs = 360;
 
 type GridFlipReason = "layout" | "resize";
 
-type GridFlipRect = Pick<DOMRect, "bottom" | "height" | "left" | "right" | "top" | "width">;
+export type GridFlipRect = Pick<DOMRect, "bottom" | "height" | "left" | "right" | "top" | "width">;
+export type GridFlipSnapshot = Map<string, GridFlipRect>;
 
 type GridFlipOptions = {
   disabled?: boolean;
   maxResizeItems?: number;
+  motionChildSelector?: string;
   reason?: GridFlipReason;
   scaleChildSelector?: string;
   suppressViewportResize?: boolean;
 };
 
 const activeFlipAnimations = new WeakMap<HTMLElement, Animation>();
+const activeMotionAnimations = new WeakMap<HTMLElement, Animation>();
 const activeScaleAnimations = new WeakMap<HTMLElement, Animation>();
+
+type AnimateGridFlipFromRectsOptions = Pick<
+  GridFlipOptions,
+  "maxResizeItems" | "motionChildSelector" | "reason" | "scaleChildSelector"
+>;
 
 export function useGridFlipAnimation(
   containerRef: RefObject<HTMLElement | null>,
@@ -33,6 +41,7 @@ export function useGridFlipAnimation(
   const suppressFlipUntilRef = useRef(0);
   const disabled = options.disabled ?? false;
   const maxResizeItems = options.maxResizeItems ?? 90;
+  const motionChildSelector = options.motionChildSelector;
   const reason = options.reason ?? "layout";
   const scaleChildSelector = options.scaleChildSelector;
   const suppressViewportResize = options.suppressViewportResize ?? true;
@@ -126,6 +135,7 @@ export function useGridFlipAnimation(
 
     for (const { deltaX, deltaY, element, previousRect, nextRect } of activeMoves) {
       const layoutTransform = getLayoutTransform(element);
+      const motionChild = getMotionChild(element, motionChildSelector);
       const child = getScaleChild(element, scaleChildSelector);
       const scaleX = previousRect.width / Math.max(1, nextRect.width);
       const scaleY = previousRect.height / Math.max(1, nextRect.height);
@@ -152,6 +162,26 @@ export function useGridFlipAnimation(
         activeScaleAnimations.set(child, childAnimation);
         bindAnimationCleanup(activeScaleAnimations, child, childAnimation);
         animations.push(childAnimation);
+        continue;
+      }
+
+      if (motionChild) {
+        cancelActiveAnimation(activeMotionAnimations, motionChild);
+        motionChild.style.transformOrigin = "0 0";
+        motionChild.style.willChange = "transform";
+        const motionAnimation = motionChild.animate(
+          [
+            { transform: formatMotionTransform(deltaX, deltaY, scaleX, scaleY) },
+            { transform: "translate3d(0, 0, 0) scale(1, 1)" },
+          ],
+          {
+            duration,
+            easing,
+          },
+        );
+        activeMotionAnimations.set(motionChild, motionAnimation);
+        bindAnimationCleanup(activeMotionAnimations, motionChild, motionAnimation);
+        animations.push(motionAnimation);
         continue;
       }
 
@@ -235,7 +265,164 @@ export function useGridFlipAnimation(
       cancelGridFlipAnimations(container);
     }
     hasMeasuredRef.current = true;
-  }, [containerRef, disabled, maxResizeItems, reason, scaleChildSelector, signature, suppressViewportResize]);
+  }, [
+    containerRef,
+    disabled,
+    maxResizeItems,
+    motionChildSelector,
+    reason,
+    scaleChildSelector,
+    signature,
+    suppressViewportResize,
+  ]);
+}
+
+export function captureGridFlipRects(container: HTMLElement): GridFlipSnapshot {
+  const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-archive-key]"));
+  const containerRect = container.getBoundingClientRect();
+  const rects: GridFlipSnapshot = new Map();
+
+  for (const element of elements) {
+    const key = element.dataset.archiveKey;
+    if (!key) {
+      continue;
+    }
+
+    rects.set(key, getArchiveElementRect(element, containerRect));
+  }
+
+  return rects;
+}
+
+export function animateGridFlipFromRects(
+  container: HTMLElement,
+  previousRects: GridFlipSnapshot,
+  options: AnimateGridFlipFromRectsOptions = {},
+) {
+  if (typeof window === "undefined" || previousRects.size === 0) {
+    return;
+  }
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (prefersReducedMotion) {
+    return;
+  }
+
+  const reason = options.reason ?? "layout";
+  const maxResizeItems = options.maxResizeItems ?? 90;
+  const motionChildSelector = options.motionChildSelector;
+  const scaleChildSelector = options.scaleChildSelector;
+  const elements = Array.from(container.querySelectorAll<HTMLElement>("[data-archive-key]"));
+  const containerRect = container.getBoundingClientRect();
+  const moves: Array<{
+    deltaX: number;
+    deltaY: number;
+    element: HTMLElement;
+    previousRect: GridFlipRect;
+    nextRect: GridFlipRect;
+  }> = [];
+
+  for (const element of elements) {
+    const key = element.dataset.archiveKey;
+    if (!key) {
+      continue;
+    }
+
+    const previousRect = previousRects.get(key);
+    if (!previousRect) {
+      continue;
+    }
+
+    const nextRect = getArchiveElementRect(element, containerRect);
+    const deltaX = snapToDevicePixel(previousRect.left - nextRect.left);
+    const deltaY = snapToDevicePixel(previousRect.top - nextRect.top);
+    const resized = Math.abs(previousRect.width - nextRect.width) > 0.5 || Math.abs(previousRect.height - nextRect.height) > 0.5;
+    const moved = Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5;
+
+    if ((moved || resized) && isNearViewport(previousRect, nextRect, reason)) {
+      moves.push({ deltaX, deltaY, element, previousRect, nextRect });
+    }
+  }
+
+  if (moves.length === 0) {
+    container.removeAttribute(gridFlipActiveAttribute);
+    return;
+  }
+
+  container.setAttribute(gridFlipActiveAttribute, "active");
+
+  const activeMoves = reason === "resize" ? moves.slice(0, maxResizeItems) : moves;
+  const duration = reason === "resize" ? gridResizeFlipDuration : gridFlipDuration;
+  const easing = reason === "resize" ? gridResizeFlipEase : gridFlipEase;
+  const animations: Animation[] = [];
+
+  for (const { deltaX, deltaY, element, previousRect, nextRect } of activeMoves) {
+    const motionChild = getMotionChild(element, motionChildSelector);
+    const child = getScaleChild(element, scaleChildSelector);
+    const scaleX = previousRect.width / Math.max(1, nextRect.width);
+    const scaleY = previousRect.height / Math.max(1, nextRect.height);
+    const shouldScale = Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01;
+
+    if (motionChild) {
+      cancelActiveAnimation(activeMotionAnimations, motionChild);
+      motionChild.style.transformOrigin = "0 0";
+      motionChild.style.willChange = "transform";
+      const motionAnimation = motionChild.animate(
+        [
+          { transform: formatMotionTransform(deltaX, deltaY, scaleX, scaleY) },
+          { transform: "translate3d(0, 0, 0) scale(1, 1)" },
+        ],
+        {
+          duration,
+          easing,
+        },
+      );
+      activeMotionAnimations.set(motionChild, motionAnimation);
+      bindAnimationCleanup(activeMotionAnimations, motionChild, motionAnimation);
+      animations.push(motionAnimation);
+      continue;
+    }
+
+    cancelActiveAnimation(activeFlipAnimations, element);
+    element.style.willChange = "transform";
+
+    const animation = element.animate(
+      [
+        { transform: formatTranslate(deltaX, deltaY) },
+        { transform: formatTranslate(0, 0) },
+      ],
+      {
+        duration,
+        easing,
+      },
+    );
+    activeFlipAnimations.set(element, animation);
+    bindAnimationCleanup(activeFlipAnimations, element, animation);
+    animations.push(animation);
+
+    if (child && shouldScale) {
+      cancelActiveAnimation(activeScaleAnimations, child);
+      child.style.transformOrigin = "0 0";
+      child.style.willChange = "transform";
+      const childAnimation = child.animate(
+        [
+          { transform: `scale(${roundFlipValue(scaleX)}, ${roundFlipValue(scaleY)})` },
+          { transform: "scale(1, 1)" },
+        ],
+        {
+          duration,
+          easing,
+        },
+      );
+      activeScaleAnimations.set(child, childAnimation);
+      bindAnimationCleanup(activeScaleAnimations, child, childAnimation);
+      animations.push(childAnimation);
+    }
+  }
+
+  Promise.allSettled(animations.map((animation) => animation.finished)).finally(() => {
+    container.removeAttribute(gridFlipActiveAttribute);
+  });
 }
 
 function bindAnimationCleanup(
@@ -278,6 +465,10 @@ function getScaleChild(element: HTMLElement, selector: string | undefined) {
   }
 
   return child;
+}
+
+function getMotionChild(element: HTMLElement, selector: string | undefined) {
+  return getScaleChild(element, selector);
 }
 
 function getLayoutTransform(element: HTMLElement) {
@@ -347,6 +538,7 @@ function cancelGridFlipAnimations(container: HTMLElement | null) {
   container.removeAttribute(gridFlipActiveAttribute);
   container.querySelectorAll<HTMLElement>("[data-archive-key]").forEach((element) => {
     cancelActiveAnimation(activeFlipAnimations, element);
+    element.querySelectorAll<HTMLElement>("*").forEach((child) => cancelActiveAnimation(activeMotionAnimations, child));
     element.querySelectorAll<HTMLElement>("*").forEach((child) => cancelActiveAnimation(activeScaleAnimations, child));
   });
 }

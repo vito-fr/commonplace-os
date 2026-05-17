@@ -17,7 +17,7 @@ export function ArchiveReturnButton({
   const classes = ["collection-return-button", className].filter(Boolean).join(" ");
 
   return (
-    <button className={classes} type="button" onClick={onClick} aria-label={ariaLabel ?? label}>
+    <button className={classes} type="button" onClick={onClick} aria-label={ariaLabel ?? label} data-press-feedback="true">
       <ArchiveIcon className="collection-return-button__arrow" name="back" />
       <span className="collection-return-button__label">{label}</span>
     </button>

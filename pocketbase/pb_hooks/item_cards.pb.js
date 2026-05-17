@@ -182,6 +182,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       imageUrl: nullString(),
       imageWidth: nullString(),
       imageHeight: nullString(),
+      imageDominantColors: nullString(),
       captionText: nullString(),
       noteParagraph: nullString(),
       url: nullString(),
@@ -194,6 +195,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       videoDurationMs: nullString(),
       videoPosterFileRef: nullString(),
       videoAspectRatio: nullString(),
+      videoDominantColors: nullString(),
       assetFileRef: nullString(),
       assetMimeType: nullString(),
       thumbnailFileRef: nullString(),
@@ -231,6 +233,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           img.file_ref AS imageUrl,
           CASE WHEN img.width IS NULL THEN NULL ELSE CAST(img.width AS TEXT) END AS imageWidth,
           CASE WHEN img.height IS NULL THEN NULL ELSE CAST(img.height AS TEXT) END AS imageHeight,
+          img.dominant_colors AS imageDominantColors,
           caption.body AS captionText,
           note.body AS noteParagraph,
           link.url AS url,
@@ -243,6 +246,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
           CASE WHEN video.duration_ms IS NULL THEN NULL ELSE CAST(video.duration_ms AS TEXT) END AS videoDurationMs,
           video.poster_file_ref AS videoPosterFileRef,
           CASE WHEN video.aspect_ratio IS NULL THEN NULL ELSE CAST(video.aspect_ratio AS TEXT) END AS videoAspectRatio,
+          video.dominant_colors AS videoDominantColors,
           asset.file_ref AS assetFileRef,
           asset.mime_type AS assetMimeType,
           thumb.file_ref AS thumbnailFileRef,
@@ -319,6 +323,25 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     }
   }
 
+  function parseDominantColors(value) {
+    const text = nullableString(value);
+    if (!text) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+
+      const colors = parsed.filter((color) => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color));
+      return colors.length > 0 ? colors : null;
+    } catch {
+      return null;
+    }
+  }
+
   function nullableNumber(value) {
     const text = nullableString(value);
     if (text === null || text === "") {
@@ -375,6 +398,8 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
     const imageWidth = row.type === "video" ? videoWidth : nullableNumber(row.imageWidth);
     const imageHeight = row.type === "video" ? videoHeight : nullableNumber(row.imageHeight);
     const thumbnailFileRef = nullableString(row.thumbnailFileRef);
+    const dominantColors =
+      row.type === "video" ? parseDominantColors(row.videoDominantColors) : parseDominantColors(row.imageDominantColors);
     const aspectRatio = row.type === "video" ? videoAspectRatio || aspectRatioFor(videoWidth, videoHeight) : aspectRatioFor(imageWidth, imageHeight);
     const fallbackImageUrl = !openGraph.image && isDirectImageUrl(rowUrl) ? rowUrl : null;
     const ogImageUrl = openGraph.image || fallbackImageUrl;
@@ -403,6 +428,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
       previewUrl,
       thumbnailUrl: thumbnailFileRef || videoPosterFileRef || imageUrl || ogImageUrl,
       videoPosterUrl,
+      dominantColors,
       imageWidth,
       imageHeight,
       aspectRatio,
@@ -414,6 +440,7 @@ routerAdd("GET", "/api/vita/item-cards", (e) => {
         videoPosterUrl,
         assetFileUrl,
         assetMimeType,
+        dominantColors,
         width: imageWidth,
         height: imageHeight,
         aspectRatio,

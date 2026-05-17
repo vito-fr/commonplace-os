@@ -1,13 +1,16 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
+import { ActionHint, type ActionHintSide } from "../ui/ActionHint";
 import { ArchiveIcon, type ArchiveIconName } from "../ui/ArchiveIcons";
+import { gsap } from "../../motion/MotionShell";
 
 export type CardActionSurface = "actions" | "collection";
 
@@ -135,6 +138,9 @@ export function CardActionMenu({
   menuClassName = "",
   menuRef,
   onToggle,
+  shortcut,
+  tooltipLabel,
+  tooltipSide = "left",
 }: {
   ariaLabel: string;
   buttonClassName?: string;
@@ -145,6 +151,9 @@ export function CardActionMenu({
   menuClassName?: string;
   menuRef: RefObject<HTMLDivElement | null>;
   onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
+  shortcut?: string;
+  tooltipLabel?: string;
+  tooltipSide?: ActionHintSide;
 }) {
   const controlClasses = ["item-card__more-control", controlClassName].filter(Boolean).join(" ");
   const buttonClasses = ["item-card__action-cell", "item-card__action-cell--more", buttonClassName].filter(Boolean).join(" ");
@@ -161,19 +170,65 @@ export function CardActionMenu({
     return () => window.clearTimeout(timeout);
   }, [isOpen]);
 
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu || !isMenuRendered || typeof window === "undefined") {
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    gsap.killTweensOf(menu);
+
+    if (prefersReducedMotion) {
+      gsap.set(menu, { autoAlpha: isOpen ? 1 : 0, clearProps: "transform" });
+      return;
+    }
+
+    if (isOpen) {
+      gsap.fromTo(
+        menu,
+        { autoAlpha: 0, force3D: "auto", scale: 0.985, y: -3 },
+        {
+          autoAlpha: 1,
+          clearProps: "opacity,visibility,transform",
+          duration: 0.2,
+          ease: "power3.out",
+          force3D: "auto",
+          overwrite: true,
+          scale: 1,
+          y: 0,
+        },
+      );
+      return;
+    }
+
+    gsap.to(menu, {
+      autoAlpha: 0,
+      duration: 0.15,
+      ease: "power2.in",
+      force3D: "auto",
+      overwrite: true,
+      scale: 0.985,
+      y: -3,
+    });
+  }, [isMenuRendered, isOpen, menuRef]);
+
   return (
     <span className={controlClasses} data-open={isOpen ? "true" : "false"}>
-      <button
-        className={buttonClasses}
-        type="button"
-        onClick={onToggle}
-        aria-label={ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        ref={buttonRef}
-      >
-        <CardGlyph name="more" className="item-card__dots-icon" />
-      </button>
+      <ActionHint disabled={isOpen} label={tooltipLabel ?? ariaLabel} shortcut={shortcut} side={tooltipSide}>
+        <button
+          className={buttonClasses}
+          type="button"
+          onClick={onToggle}
+          aria-label={ariaLabel}
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          data-press-feedback="true"
+          ref={buttonRef}
+        >
+          <CardGlyph name="more" className="item-card__dots-icon" />
+        </button>
+      </ActionHint>
       {isMenuRendered ? (
         <div className={menuClasses} role="menu" ref={menuRef} data-open={isOpen ? "true" : "false"}>
           {children}

@@ -5,6 +5,7 @@ import type { CollectionCardModel } from "./CollectionCard";
 import { ItemCard, type ItemCardProps } from "./ItemCard";
 import { getArchiveObjectKey, getArchiveObjectRenderSignature } from "./archiveObjectIdentity";
 import { useGridFlipAnimation } from "./useGridFlip";
+import { useGridIntroMotion } from "./useGridIntroMotion";
 
 export type MasonryViewProps = {
   objects: ArchiveObject[];
@@ -29,6 +30,7 @@ type MasonryItemStyle = CSSProperties & {
 };
 
 type MasonryObjectContentProps = {
+  mediaFetchPriority: "high" | "low" | "auto";
   mediaLoading: "eager" | "lazy";
   measuredAspectRatio: number | null;
   object: ArchiveObject;
@@ -68,7 +70,6 @@ export function MasonryView({
   const {
     containerWidth: measuredContainerWidth,
     introViewportBottom,
-    isResizing,
   } = useMasonryContainerWidth(viewElement, loading ? "loading" : "ready");
   const cachedMediaRatios = useMemo(() => readCachedMasonryMediaRatios(objects), [objects]);
   const runtimeMediaRatios = cachedMediaRatios;
@@ -98,11 +99,21 @@ export function MasonryView({
         .join("|"),
     [layout.items],
   );
+  const introMotionSignature = useMemo(
+    () => objects.slice(0, 24).map(getArchiveObjectKey).join("|"),
+    [objects],
+  );
   useGridFlipAnimation(viewRef, exactFlipSignature, {
     maxResizeItems: 90,
     reason: "layout",
     scaleChildSelector: ".masonry-view__motion",
     suppressViewportResize: false,
+  });
+  useGridIntroMotion(viewRef, {
+    enabled: !loading && objects.length > 0,
+    selector: '.masonry-view__motion[data-entry-card="intro"][data-intro-state="active"]',
+    signature: introMotionSignature,
+    y: 12,
   });
 
   const handleMediaAspectRatio = useCallback((id: string, aspectRatio: number, sourceUrl: string | null) => {
@@ -158,13 +169,13 @@ export function MasonryView({
     <section
       ref={setViewNode}
       className={viewClassName}
-      data-resizing={isResizing ? "true" : undefined}
       onAnimationEnd={settleIntroMotion}
       style={viewStyle}
       aria-label={ariaLabel}
     >
       {layout.items.map(({ enterIndex, height, mediaHeight, object, objectKey, renderSignature, width, x, y }) => {
-        const mediaLoading = enterIndex < Math.max(8, columnCount) ? "eager" : "lazy";
+        const mediaFetchPriority = "auto";
+        const mediaLoading = enterIndex < Math.max(2, columnCount) ? "eager" : "lazy";
         const introIndex = introOrderByKey.get(objectKey);
         const isIntroEntry = introIndex != null;
         const measuredAspectRatio =
@@ -195,6 +206,7 @@ export function MasonryView({
               data-intro-state={isIntroEntry ? "active" : undefined}
             >
               <MasonryObjectContent
+                mediaFetchPriority={mediaFetchPriority}
                 mediaLoading={mediaLoading}
                 measuredAspectRatio={measuredAspectRatio}
                 object={object}
@@ -210,6 +222,7 @@ export function MasonryView({
 }
 
 const MasonryObjectContent = memo(function MasonryObjectContent({
+  mediaFetchPriority,
   mediaLoading,
   measuredAspectRatio,
   object,
@@ -221,6 +234,7 @@ const MasonryObjectContent = memo(function MasonryObjectContent({
       <ItemCard
         {...object.item}
         measuredAspectRatio={measuredAspectRatio}
+        mediaFetchPriority={mediaFetchPriority}
         mediaLoading={mediaLoading}
         onMediaAspectRatio={onMediaAspectRatio}
         variant="masonry"
@@ -229,7 +243,7 @@ const MasonryObjectContent = memo(function MasonryObjectContent({
   }
 
   if (object.objectType === "collection") {
-    return <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />;
+    return <CollectionCard collection={object.collection} mediaFetchPriority={mediaFetchPriority} mediaLoading={mediaLoading} />;
   }
 
   return <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />;
@@ -241,6 +255,7 @@ function areMasonryObjectContentPropsEqual(
 ) {
   return (
     previousProps.mediaLoading === nextProps.mediaLoading &&
+    previousProps.mediaFetchPriority === nextProps.mediaFetchPriority &&
     previousProps.measuredAspectRatio === nextProps.measuredAspectRatio &&
     previousProps.renderSignature === nextProps.renderSignature
   );
@@ -264,7 +279,6 @@ function useMasonryContainerWidth(element: HTMLElement | null, measureKey: strin
   const [containerState, setContainerState] = useState(() => ({
     containerWidth: getInitialMasonryContainerWidth(),
     introViewportBottom: getInitialMasonryIntroViewportBottom(),
-    isResizing: false,
   }));
 
   useEffect(() => {
@@ -282,9 +296,6 @@ function useMasonryContainerWidth(element: HTMLElement | null, measureKey: strin
       latestWidthRef.current = measuredWidth;
 
       if (isResizeFrame) {
-        setContainerState((currentState) =>
-          currentState.isResizing ? currentState : { ...currentState, isResizing: true },
-        );
         return;
       }
 
@@ -295,13 +306,11 @@ function useMasonryContainerWidth(element: HTMLElement | null, measureKey: strin
 
       setContainerState((currentState) =>
         Math.abs(currentState.containerWidth - committedWidthRef.current) <= 0.1 &&
-        currentState.introViewportBottom === nextIntroViewportBottom &&
-        !currentState.isResizing
+        currentState.introViewportBottom === nextIntroViewportBottom
           ? currentState
           : {
               containerWidth: committedWidthRef.current,
               introViewportBottom: nextIntroViewportBottom,
-              isResizing: false,
             },
       );
     };
@@ -370,6 +379,7 @@ function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCo
 
   useEffect(() => {
     let frame = 0;
+    let settleTimeout = 0;
     const updateColumns = () => {
       frame = 0;
       const nextColumns = getResponsiveMasonryColumns(includeDefaultCount);
@@ -384,7 +394,13 @@ function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCo
       if (frame) {
         return;
       }
-      frame = window.requestAnimationFrame(updateColumns);
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (settleTimeout) {
+          window.clearTimeout(settleTimeout);
+        }
+        settleTimeout = window.setTimeout(updateColumns, masonryResizeSettleMs);
+      });
     };
 
     updateColumns();
@@ -392,6 +408,9 @@ function useResponsiveMasonryColumns({ includeDefaultCount }: { includeDefaultCo
     return () => {
       if (frame) {
         window.cancelAnimationFrame(frame);
+      }
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
       window.removeEventListener("resize", scheduleUpdate);
     };

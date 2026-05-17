@@ -81,9 +81,9 @@ function parseItemCardsResponse(payload: PocketBaseItemCardResponse, baseUrl: st
     const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, row.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
     const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, row.videoPosterUrl) ?? ogImageUrl ?? null;
     const previewUrl =
-      resolvePocketBaseFileUrl(baseUrl, row.previewUrl) ??
-      imageUrl ??
       thumbnailUrl ??
+      imageUrl ??
+      resolvePocketBaseFileUrl(baseUrl, row.previewUrl) ??
       videoPosterUrl ??
       ogImageUrl ??
       assetFileUrl ??
@@ -124,10 +124,10 @@ function resolveMediaPreview(
   const videoPosterUrl =
     resolvePocketBaseFileUrl(baseUrl, preview?.videoPosterUrl) ?? fallback.videoPosterUrl ?? ogImageUrl;
   const previewUrl =
+    thumbnailUrl ??
+    imageUrl ??
     resolvePocketBaseFileUrl(baseUrl, preview?.previewUrl) ??
     fallback.previewUrl ??
-    imageUrl ??
-    thumbnailUrl ??
     videoPosterUrl ??
     ogImageUrl ??
     assetFileUrl;
@@ -136,6 +136,7 @@ function resolveMediaPreview(
     ...preview,
     assetFileUrl,
     assetMimeType: preview?.assetMimeType ?? fallback.assetMimeType,
+    dominantColors: preview?.dominantColors ?? null,
     imageUrl,
     ogImageUrl,
     previewUrl,

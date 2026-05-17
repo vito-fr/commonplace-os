@@ -460,12 +460,9 @@ routerAdd("POST", "/api/vita/item-thumbnail", (e) => {
       `
         SELECT i.id
         FROM items i
-        INNER JOIN items_image img
-          ON img.item_id = i.id
         WHERE i.workspace_id = {:workspaceId}
           AND i.id = {:itemId}
-          AND img.file_ref IS NOT NULL
-          AND img.file_ref != ''
+          AND i.type IN ('image', 'link', 'video')
         LIMIT 1
       `,
     )
@@ -473,7 +470,7 @@ routerAdd("POST", "/api/vita/item-thumbnail", (e) => {
     .all(itemRows);
 
   if (itemRows.length === 0) {
-    throw new NotFoundError("image item not found");
+    throw new NotFoundError("thumbnail target item not found");
   }
 
   const now = new Date().toISOString();
@@ -914,6 +911,7 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
         "description",
       ]);
       const siteName = firstMetaContent(html, ["og:site_name", "application-name"]);
+      const favicon = firstLinkHref(html, ["apple-touch-icon", "icon", "shortcut icon", "mask-icon"]);
       const metadata = { url: value };
 
       if (title) {
@@ -930,6 +928,10 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
 
       if (siteName) {
         metadata.siteName = siteName;
+      }
+
+      if (favicon) {
+        metadata.favicon = absoluteUrlFor(favicon, value);
       }
 
       if (!metadata.image && providerMetadata && providerMetadata.image) {
@@ -1109,6 +1111,34 @@ routerAdd("POST", "/api/vita/item-capture", (e) => {
           const content = attrValue(tag, "content");
           if (content) {
             return normalizeMetadataText(content);
+          }
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function firstLinkHref(html, relNames) {
+    const tags = html.match(/<link\b[^>]*>/gi) || [];
+
+    for (let tagIndex = 0; tagIndex < tags.length; tagIndex += 1) {
+      const tag = tags[tagIndex];
+      const rel = attrValue(tag, "rel").toLowerCase();
+
+      if (!rel) {
+        continue;
+      }
+
+      const relTokens = rel.split(/\s+/).filter(Boolean);
+
+      for (let nameIndex = 0; nameIndex < relNames.length; nameIndex += 1) {
+        const expectedTokens = relNames[nameIndex].toLowerCase().split(/\s+/).filter(Boolean);
+
+        if (expectedTokens.every((token) => relTokens.includes(token))) {
+          const href = attrValue(tag, "href");
+          if (href) {
+            return href;
           }
         }
       }

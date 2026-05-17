@@ -105,7 +105,11 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         asset.file_ref AS assetFileRef,
         asset.original_name AS assetOriginalName,
         asset.mime_type AS assetMimeType,
-        CASE WHEN asset.size_bytes IS NULL THEN NULL ELSE CAST(asset.size_bytes AS TEXT) END AS assetSizeBytes
+        CASE WHEN asset.size_bytes IS NULL THEN NULL ELSE CAST(asset.size_bytes AS TEXT) END AS assetSizeBytes,
+        thumb.file_ref AS thumbnailFileRef,
+        thumb.original_name AS thumbnailOriginalName,
+        thumb.mime_type AS thumbnailMimeType,
+        CASE WHEN thumb.size_bytes IS NULL THEN NULL ELSE CAST(thumb.size_bytes AS TEXT) END AS thumbnailSizeBytes
       FROM items i
       LEFT JOIN sources s
         ON s.id = i.source_id
@@ -124,6 +128,10 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
         ON asset.item_id = i.id
         AND asset.workspace_id = i.workspace_id
         AND asset.role = 'source_file'
+      LEFT JOIN item_assets thumb
+        ON thumb.item_id = i.id
+        AND thumb.workspace_id = i.workspace_id
+        AND thumb.role = 'thumbnail'
       WHERE i.workspace_id = {:workspaceId}
         AND i.id = {:itemId}
       LIMIT 1
@@ -178,6 +186,10 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
       assetOriginalName: nullString(),
       assetMimeType: nullString(),
       assetSizeBytes: nullString(),
+      thumbnailFileRef: nullString(),
+      thumbnailOriginalName: nullString(),
+      thumbnailMimeType: nullString(),
+      thumbnailSizeBytes: nullString(),
     },
     { workspaceId, itemId },
   );
@@ -392,6 +404,14 @@ routerAdd("GET", "/api/vita/item-detail", (e) => {
                   originalName: nullableString(row.assetOriginalName),
                   mimeType: nullableString(row.assetMimeType),
                   sizeBytes: nullableNumber(row.assetSizeBytes),
+                }
+              : null,
+            thumbnail: nullableString(row.thumbnailFileRef)
+              ? {
+                  fileRef: nullableString(row.thumbnailFileRef),
+                  originalName: nullableString(row.thumbnailOriginalName),
+                  mimeType: nullableString(row.thumbnailMimeType),
+                  sizeBytes: nullableNumber(row.thumbnailSizeBytes),
                 }
               : null,
           }

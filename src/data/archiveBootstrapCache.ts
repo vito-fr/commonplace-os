@@ -1,7 +1,7 @@
 import type { ItemCardProps } from "../components/items";
 import type { ItemCardQuery } from "./itemCardReader";
 
-const archiveBootstrapCacheVersion = 1;
+const archiveBootstrapCacheVersion = 2;
 const archiveBootstrapCachePrefix = `vita:archive-bootstrap:v${archiveBootstrapCacheVersion}`;
 const archiveBootstrapCacheTtlMs = 1000 * 60 * 60 * 24 * 7;
 

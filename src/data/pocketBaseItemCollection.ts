@@ -46,6 +46,7 @@ export type CollectionDetailItem = {
   previewUrl?: string | null;
   thumbnailUrl?: string | null;
   videoPosterUrl?: string | null;
+  dominantColors?: string[] | null;
   mediaPreview?: ItemMediaPreview | null;
 };
 
@@ -59,6 +60,7 @@ export type CollectionPreviewItem = {
   imageUrl?: string | null;
   ogImageUrl?: string | null;
   videoPosterUrl?: string | null;
+  dominantColors?: string[] | null;
   assetFileUrl?: string | null;
   assetMimeType?: string | null;
   width?: number | null;
@@ -149,6 +151,19 @@ export type CollectionUpdate = {
   actor?: string;
 };
 
+export type CollectionRelationshipCreate = {
+  workspaceId: string;
+  parentCollectionId: string;
+  childCollectionId: string;
+  actor?: string;
+};
+
+export type CollectionDelete = {
+  workspaceId: string;
+  collectionId: string;
+  actor?: string;
+};
+
 export type ItemCollectionAttachResult = {
   membership: {
     collectionId: string;
@@ -207,6 +222,26 @@ export type CollectionUpdateResult = {
   collection: CollectionIndexItem;
 };
 
+export type CollectionRelationshipCreateResult = {
+  relationship: {
+    parentCollectionId: string;
+    childCollectionId: string;
+    position: number;
+    addedAt: string;
+    addedBy: string;
+    created: boolean;
+  };
+};
+
+export type CollectionDeleteResult = {
+  collection: {
+    id: string;
+    name: string;
+    deletedAt: string;
+    deletedBy: string;
+  };
+};
+
 export type ItemCollectionClient = {
   getCollectionDetail(query: CollectionDetailQuery): Promise<CollectionDetail>;
   listCollectionIndex(query: CollectionIndexQuery): Promise<CollectionIndexItem[]>;
@@ -215,6 +250,8 @@ export type ItemCollectionClient = {
   createCollection(change: CollectionCreate): Promise<CollectionCreateResult>;
   createCollectionAndAttach(change: ItemCollectionCreateAndAttach): Promise<ItemCollectionCreateAndAttachResult>;
   removeCollection(change: ItemCollectionRemove): Promise<ItemCollectionRemoveResult>;
+  connectCollection(change: CollectionRelationshipCreate): Promise<CollectionRelationshipCreateResult>;
+  deleteCollection(change: CollectionDelete): Promise<CollectionDeleteResult>;
   updateCollection(change: CollectionUpdate): Promise<CollectionUpdateResult>;
 };
 
@@ -226,6 +263,8 @@ export type PocketBaseItemCollectionClientOptions = {
   attachEndpointPath?: string;
   createEndpointPath?: string;
   removeEndpointPath?: string;
+  relationshipEndpointPath?: string;
+  deleteEndpointPath?: string;
   updateEndpointPath?: string;
   fetcher?: Fetcher;
 };
@@ -250,6 +289,8 @@ export function createPocketBaseItemCollectionClient({
   attachEndpointPath = "/api/vita/item-collection",
   createEndpointPath = "/api/vita/collection-create",
   removeEndpointPath = "/api/vita/item-collection-remove",
+  relationshipEndpointPath = "/api/vita/collection-relationship",
+  deleteEndpointPath = "/api/vita/collection-delete",
   updateEndpointPath = "/api/vita/collection-update",
   fetcher = globalThis.fetch,
 }: PocketBaseItemCollectionClientOptions): ItemCollectionClient {
@@ -446,6 +487,61 @@ export function createPocketBaseItemCollectionClient({
 
       return payload;
     },
+
+    async connectCollection(change) {
+      const response = await fetcher(buildCollectionRelationshipUrl(baseUrl, relationshipEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          parent_collection_id: change.parentCollectionId,
+          child_collection_id: change.childCollectionId,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await readPocketBaseErrorMessage(response);
+        throw new Error(formatPocketBaseHttpError("PocketBase collection relationship create failed", response.status, message));
+      }
+
+      const payload = (await response.json()) as CollectionRelationshipCreateResult;
+      if (!payload.relationship) {
+        throw new Error("PocketBase collection relationship response must include { relationship }");
+      }
+
+      return payload;
+    },
+
+    async deleteCollection(change) {
+      const response = await fetcher(buildCollectionDeleteUrl(baseUrl, deleteEndpointPath), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_id: change.workspaceId,
+          collection_id: change.collectionId,
+          actor: change.actor,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await readPocketBaseErrorMessage(response);
+        throw new Error(formatPocketBaseHttpError("PocketBase collection delete failed", response.status, message));
+      }
+
+      const payload = (await response.json()) as CollectionDeleteResult;
+      if (!payload.collection) {
+        throw new Error("PocketBase collection delete response must include { collection }");
+      }
+
+      return payload;
+    },
   };
 }
 
@@ -499,6 +595,14 @@ function buildCollectionUpdateUrl(baseUrl: string, endpointPath: string) {
   return new URL(endpointPath, normalizeBaseUrl(baseUrl));
 }
 
+function buildCollectionRelationshipUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
+}
+
+function buildCollectionDeleteUrl(baseUrl: string, endpointPath: string) {
+  return new URL(endpointPath, normalizeBaseUrl(baseUrl));
+}
+
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
 }
@@ -528,9 +632,9 @@ function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem
   const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
   const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
   const previewUrl =
-    resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
-    imageUrl ??
     thumbnailUrl ??
+    imageUrl ??
+    resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
     videoPosterUrl ??
     ogImageUrl ??
     assetFileUrl ??
@@ -543,12 +647,14 @@ function resolveCollectionDetailItem(baseUrl: string, item: CollectionDetailItem
     ogImageUrl,
     previewUrl,
     thumbnailUrl,
-    videoPosterUrl,
-    mediaPreview: {
-      ...item.mediaPreview,
-      assetFileUrl,
-      assetMimeType: item.mediaPreview?.assetMimeType ?? item.assetMimeType,
-      imageUrl,
+      videoPosterUrl,
+      dominantColors: item.dominantColors ?? null,
+      mediaPreview: {
+        ...item.mediaPreview,
+        assetFileUrl,
+        assetMimeType: item.mediaPreview?.assetMimeType ?? item.assetMimeType,
+        dominantColors: item.mediaPreview?.dominantColors ?? item.dominantColors ?? null,
+        imageUrl,
       ogImageUrl: mediaPreviewOgImageUrl,
       previewUrl,
       thumbnailUrl,
@@ -567,9 +673,9 @@ function resolveCollectionPreviewUrls<T extends { previewItems: CollectionPrevie
       const thumbnailUrl = resolvePocketBaseFileUrl(baseUrl, item.thumbnailUrl) ?? imageUrl ?? ogImageUrl ?? null;
       const videoPosterUrl = resolvePocketBaseFileUrl(baseUrl, item.videoPosterUrl) ?? ogImageUrl ?? null;
       const previewUrl =
-        resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
         thumbnailUrl ??
         imageUrl ??
+        resolvePocketBaseFileUrl(baseUrl, item.previewUrl) ??
         videoPosterUrl ??
         ogImageUrl ??
         assetFileUrl ??
@@ -583,6 +689,7 @@ function resolveCollectionPreviewUrls<T extends { previewItems: CollectionPrevie
         previewUrl,
         thumbnailUrl,
         videoPosterUrl,
+        dominantColors: item.dominantColors ?? null,
       };
     }),
   };

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
 import { type ItemStatus, type ItemType } from "../atoms";
 import { CardActionMenu, CardGlyph, emitCardActionSurfaceOpen, useCardActionMenu } from "./CardActions";
 import { CardMediaImage } from "./CardMediaImage";
+import { PdfCanvasPreview } from "./PdfCanvasPreview";
 import { VideoCard } from "./VideoCard";
 import { downloadArchiveFile } from "../../data/archiveDownload";
+import { ActionHint } from "../ui/ActionHint";
+import { useCardFrameTagMotion } from "./useCardFrameTagMotion";
 
 export type ItemCardActionAnchor = {
   bottom: number;
@@ -30,12 +33,14 @@ export type ItemMediaPreview = {
   videoPosterUrl?: string | null;
   assetFileUrl?: string | null;
   assetMimeType?: string | null;
+  dominantColors?: string[] | null;
   width?: number | null;
   height?: number | null;
   aspectRatio?: number | null;
 };
 
 export type CardMediaLoading = "eager" | "lazy";
+export type CardMediaFetchPriority = "high" | "low" | "auto";
 
 export interface ItemCardProps {
   id: string;
@@ -59,10 +64,12 @@ export interface ItemCardProps {
   previewUrl?: string | null;
   thumbnailUrl?: string | null;
   videoPosterUrl?: string | null;
+  dominantColors?: string[] | null;
   imageWidth?: number | null;
   imageHeight?: number | null;
   aspectRatio?: number | null;
   mediaPreview?: ItemMediaPreview | null;
+  mediaFetchPriority?: CardMediaFetchPriority;
   mediaLoading?: CardMediaLoading;
   measuredAspectRatio?: number | null;
   variant?: "gallery" | "masonry";
@@ -106,10 +113,12 @@ export function ItemCard({
   previewUrl = null,
   thumbnailUrl = null,
   videoPosterUrl = null,
+  dominantColors = null,
   imageWidth = null,
   imageHeight = null,
   aspectRatio = null,
   mediaPreview = null,
+  mediaFetchPriority = "auto",
   mediaLoading = "lazy",
   measuredAspectRatio = null,
   variant = "gallery",
@@ -305,6 +314,16 @@ export function ItemCard({
     frameTags.push({ key: "rights", label: formatLabel(rightsStatus), tone: "warning" });
   }
 
+  const frameTagsRef = useRef<HTMLSpanElement | null>(null);
+  const [isFrameTagSurfaceActive, setIsFrameTagSurfaceActive] = useState(false);
+  const frameTagSignature = frameTags.map((item) => `${item.key}:${item.label}:${item.tone ?? ""}`).join("|");
+
+  useCardFrameTagMotion(
+    frameTagsRef,
+    isFrameTagSurfaceActive || actionMenu.isOpen || isCollectionPickerOpen,
+    frameTagSignature,
+  );
+
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
       !onNavigate ||
@@ -437,13 +456,22 @@ export function ItemCard({
       className={resolvedCardClassName}
       data-menu-open={actionMenu.isOpen ? "true" : "false"}
       data-type={type}
+      onPointerEnter={() => setIsFrameTagSurfaceActive(true)}
       onPointerLeave={(event) => {
+        setIsFrameTagSurfaceActive(false);
         actionMenu.close();
         if (event.pointerType === "mouse") {
           const activeElement = document.activeElement;
           if (activeElement instanceof HTMLElement && event.currentTarget.contains(activeElement)) {
             activeElement.blur();
           }
+        }
+      }}
+      onFocus={() => setIsFrameTagSurfaceActive(true)}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+          setIsFrameTagSurfaceActive(false);
         }
       }}
     >
@@ -463,22 +491,21 @@ export function ItemCard({
             resolvedOgImageUrl,
             resolvedVideoPosterUrl,
             ogTitle,
+            mediaPreview?.dominantColors ?? dominantColors,
             mediaPreview?.width ?? imageWidth,
             mediaPreview?.height ?? imageHeight,
+            mediaFetchPriority,
             mediaLoading,
             markMediaUrlFailed,
             reportMediaAspectRatio,
           )}
-          <span className="item-card__frame-tags" aria-hidden="true">
-            {frameTags.map((item, index) => (
+          <span className="item-card__frame-tags" aria-hidden="true" ref={frameTagsRef}>
+            {frameTags.map((item) => (
               <span
                 className={`item-card__frame-tag${item.tone === "warning" ? " item-card__frame-tag--warning" : ""}${item.tone === "upload" ? " item-card__frame-tag--upload" : ""}${item.tone === "collection" ? " item-card__frame-tag--collection" : ""}`}
+                data-card-frame-tag="true"
                 data-source={item.source}
                 key={item.key}
-                style={{
-                  "--card-label-enter-delay": `${Math.min(index, 8) * 35}ms`,
-                  "--card-label-exit-delay": `${Math.min(frameTags.length - index - 1, 8) * 28}ms`,
-                } as CSSProperties}
               >
                 {item.label}
               </span>
@@ -490,16 +517,19 @@ export function ItemCard({
           {relativeAddedTime ? <span className="item-card__label-time">{relativeAddedTime}</span> : null}
         </span>
       </a>
-      <button
-        className="item-card__select"
-        type="button"
-        aria-label={`${isSelected ? "Deselect" : "Select"} ${primaryLabel}`}
-        aria-pressed={isSelected}
-        disabled={!onSelectToggle}
-        onClick={toggleSelection}
-      >
-        <span aria-hidden="true" />
-      </button>
+      <ActionHint className="item-card__select-hint" label={isSelected ? "Deselect" : "Select"} side="right">
+        <button
+          className="item-card__select"
+          type="button"
+          aria-label={`${isSelected ? "Deselect" : "Select"} ${primaryLabel}`}
+          aria-pressed={isSelected}
+          data-press-feedback="true"
+          disabled={!onSelectToggle}
+          onClick={toggleSelection}
+        >
+          <span aria-hidden="true" data-press-target="true" />
+        </button>
+      </ActionHint>
       <span
         className="item-card__actions"
         data-menu-open={actionMenu.isOpen ? "true" : "false"}
@@ -517,12 +547,14 @@ export function ItemCard({
           isOpen={actionMenu.isOpen}
           menuRef={actionMenu.menuRef}
           onToggle={actionMenu.toggle}
+          tooltipLabel="More actions"
         >
           <button
             className="item-card__menu-action item-card__menu-action--download"
             type="button"
             role="menuitem"
             disabled={!downloadUrl}
+            data-press-feedback="true"
             onClick={downloadItem}
           >
             <CardGlyph name="download" className="item-card__menu-icon" />
@@ -534,6 +566,7 @@ export function ItemCard({
             role="menuitem"
             onClick={openShareIsland}
             aria-expanded={isShareIslandOpen}
+            data-press-feedback="true"
           >
             <CardGlyph name="share" className="item-card__menu-icon" />
             <span className="item-card__menu-label">Share</span>
@@ -545,6 +578,7 @@ export function ItemCard({
             disabled={!onDelete || isDeleting}
             onClick={deleteItem}
             data-confirming={isDeleteConfirming ? "true" : "false"}
+            data-press-feedback="true"
           >
             <CardGlyph name="delete" className="item-card__menu-icon" />
             <span className="item-card__menu-label">
@@ -582,17 +616,20 @@ export function ItemCard({
           ) : null}
           {menuError ? <span className="item-card__menu-status">{menuError}</span> : null}
         </CardActionMenu>
-        <button
-          className="item-card__action-cell item-card__action-cell--add"
-          type="button"
-          onClick={addToCollection}
-          aria-label={`Add ${primaryLabel} to collection`}
-          aria-expanded={isCollectionPickerOpen}
-          data-active={isCollectionPickerOpen ? "true" : "false"}
-          disabled={!onAddToCollection}
-        >
-          <CardGlyph name="add" className="item-card__plus-icon" />
-        </button>
+        <ActionHint className="item-card__add-hint" label="Add to collection" side="left">
+          <button
+            className="item-card__action-cell item-card__action-cell--add"
+            type="button"
+            onClick={addToCollection}
+            aria-label={`Add ${primaryLabel} to collection`}
+            aria-expanded={isCollectionPickerOpen}
+            data-active={isCollectionPickerOpen ? "true" : "false"}
+            data-press-feedback="true"
+            disabled={!onAddToCollection}
+          >
+            <CardGlyph name="add" className="item-card__plus-icon" />
+          </button>
+        </ActionHint>
       </span>
     </article>
   );
@@ -738,14 +775,14 @@ function renderContent(
   ogImageUrl: string | null,
   videoPosterUrl: string | null,
   ogTitle: string | null,
+  dominantColors: string[] | null | undefined,
   width: number | null | undefined,
   height: number | null | undefined,
+  mediaFetchPriority: CardMediaFetchPriority,
   mediaLoading: CardMediaLoading,
   onMediaError: (url: string) => void,
   onMediaLoad?: (event: SyntheticEvent<HTMLImageElement>) => void,
 ) {
-  const fetchPriority = mediaLoading === "eager" ? "high" : "auto";
-
   if (type === "image") {
     return imageUrl ? (
       <CardMediaImage
@@ -754,9 +791,10 @@ function renderContent(
         alt={title ?? ""}
         loading={mediaLoading}
         decoding="async"
-        fetchPriority={fetchPriority}
+        fetchPriority={mediaFetchPriority}
         width={width ?? undefined}
         height={height ?? undefined}
+        placeholderColors={dominantColors}
         onMediaError={onMediaError}
         onLoad={onMediaLoad}
       />
@@ -790,31 +828,45 @@ function renderContent(
         mimeType={assetMimeType}
         width={width ?? undefined}
         height={height ?? undefined}
+        placeholderColors={dominantColors}
         loading={mediaLoading}
+        fetchPriority={mediaFetchPriority}
         onMediaError={onMediaError}
         onPosterLoad={onMediaLoad}
       />
     );
   }
 
-  if (linkContentType === "pdf" && assetFileUrl) {
-    const previewUrl = buildPdfPreviewUrl(assetFileUrl, title ?? ogTitle ?? "PDF preview");
+  const previewImageUrl = imageUrl || ogImageUrl || directImageUrl;
 
+  if (linkContentType === "pdf" && previewImageUrl) {
     return (
-      <div className="item-card__pdf-preview" aria-label="PDF preview">
-        <iframe
-          className="item-card__pdf-frame"
-          src={previewUrl}
-          title={title ?? ogTitle ?? "PDF preview"}
-          tabIndex={-1}
-          scrolling="no"
+      <div className="item-card__link-preview item-card__link-preview--pdf" aria-label="PDF preview" data-preview-kind="pdf">
+        <CardMediaImage
+          className="item-card__image"
+          src={previewImageUrl}
+          alt={ogTitle ?? title ?? "PDF preview"}
           loading={mediaLoading}
+          decoding="async"
+          fetchPriority={mediaFetchPriority}
+          width={width ?? undefined}
+          height={height ?? undefined}
+          placeholderColors={dominantColors}
+          onMediaError={onMediaError}
+          onLoad={onMediaLoad}
         />
       </div>
     );
   }
 
-  const previewImageUrl = ogImageUrl || directImageUrl;
+  if (linkContentType === "pdf" && assetFileUrl) {
+    return (
+      <div className="item-card__pdf-preview" aria-label="PDF preview" data-preview-kind="pdf">
+        <PdfCanvasPreview src={assetFileUrl} title={ogTitle ?? title ?? "PDF preview"} variant="card" />
+      </div>
+    );
+  }
+
   const isVideoPreview = linkContentType === "video" || Boolean(assetMimeType?.startsWith("video/"));
 
   return (
@@ -830,9 +882,10 @@ function renderContent(
           alt={ogTitle ?? title ?? ""}
           loading={mediaLoading}
           decoding="async"
-          fetchPriority={fetchPriority}
+          fetchPriority={mediaFetchPriority}
           width={width ?? undefined}
           height={height ?? undefined}
+          placeholderColors={dominantColors}
           onMediaError={onMediaError}
           onLoad={onMediaLoad}
         />
@@ -856,14 +909,6 @@ function getFirstAvailableMediaUrl(
       (candidate): candidate is string => candidate != null && candidate !== "" && !failedUrls.includes(candidate),
     ) ?? null
   );
-}
-
-function buildPdfPreviewUrl(src: string, name: string) {
-  const searchParams = new URLSearchParams();
-  searchParams.set("src", src);
-  searchParams.set("name", name);
-  searchParams.set("surface", "card");
-  return `/pdf-preview?${searchParams.toString()}`;
 }
 
 function getAbsoluteItemUrl(itemHref: string) {

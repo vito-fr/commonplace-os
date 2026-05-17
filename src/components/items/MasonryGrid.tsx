@@ -15,7 +15,8 @@ import type { ArchiveObject } from "./ArchiveObject";
 import { CollectionCard, NewCollectionCard } from "./CollectionCard";
 import { ItemCard } from "./ItemCard";
 import { getArchiveObjectKey, getArchiveObjectRenderSignature } from "./archiveObjectIdentity";
-import { useGridFlipAnimation } from "./useGridFlip";
+import { animateGridFlipFromRects, captureGridFlipRects, type GridFlipSnapshot } from "./useGridFlip";
+import { useGridIntroMotion } from "./useGridIntroMotion";
 
 export type MasonryDensity = "comfortable" | "dense" | "editorial";
 
@@ -40,6 +41,7 @@ type CardEnterStyle = CSSProperties & {
 };
 
 type GridObjectContentProps = {
+  mediaFetchPriority: "high" | "low" | "auto";
   mediaLoading: "eager" | "lazy";
   object: ArchiveObject;
   renderSignature: string;
@@ -70,28 +72,28 @@ export function MasonryGrid({
     .join(" ");
   const gridRef = useRef<HTMLElement | null>(null);
   const hasLeadingTile = Boolean(leadingTile);
-  const entryCardLimit = Math.max(minGridEntryCards, columns * 3);
   const [entryState, setEntryState] = useState<"initial" | "settled">("initial");
   const [settledIntroKeys, setSettledIntroKeys] = useState<Set<string>>(() => new Set());
-  const objectOrderSignature = useMemo(() => objects.map(getArchiveObjectKey).join("|"), [objects]);
-  const layoutSignature = useMemo(
-    () => [columns, density, hasLeadingTile ? "leading" : "none", objectOrderSignature].join("::"),
-    [columns, density, hasLeadingTile, objectOrderSignature],
-  );
-  const resizeLayoutToken = useLiveGalleryTrackMetrics(gridRef, columns, layoutSignature);
-  const flipSignature = useMemo(
-    () => [layoutSignature, "resize", resizeLayoutToken].join("::"),
-    [layoutSignature, resizeLayoutToken],
-  );
+  const committedColumns = useSettledGalleryLayout(gridRef, columns);
+  const entryCardLimit = Math.max(minGridEntryCards, committedColumns * 3);
   const gridStyle: GalleryGridStyle = {
-    "--gallery-columns": columns,
+    "--gallery-columns": committedColumns,
   };
+  const introMotionSignature = useMemo(
+    () =>
+      [
+        entryState,
+        hasLeadingTile ? "leading" : "none",
+        objects.slice(0, minGridEntryCards).map(getArchiveObjectKey).join("|"),
+      ].join(":"),
+    [entryState, hasLeadingTile, objects],
+  );
 
-  useGridFlipAnimation(gridRef, flipSignature, {
-    maxResizeItems: 90,
-    reason: "layout",
-    scaleChildSelector: ".item-card, .collection-card",
-    suppressViewportResize: false,
+  useGridIntroMotion(gridRef, {
+    enabled: !loading && entryState === "initial",
+    selector: '.masonry-grid__motion[data-entry-card="intro"][data-intro-state="active"]',
+    signature: introMotionSignature,
+    y: 10,
   });
 
   const settleIntroCard = useCallback((event: AnimationEvent<HTMLElement>) => {
@@ -100,11 +102,12 @@ export function MasonryGrid({
     }
 
     const target = event.target;
-    if (!(target instanceof HTMLElement) || !target.classList.contains("masonry-grid__item")) {
+    if (!(target instanceof HTMLElement) || !target.classList.contains("masonry-grid__motion")) {
       return;
     }
 
-    const objectKey = target.dataset.archiveKey;
+    const item = target.closest<HTMLElement>(".masonry-grid__item[data-archive-key]");
+    const objectKey = item?.dataset.archiveKey;
     if (!objectKey) {
       return;
     }
@@ -163,16 +166,22 @@ export function MasonryGrid({
         <div
           className="masonry-grid__item masonry-grid__item--leading"
           data-archive-key="collection:leading"
-          data-entry-card="intro"
-          data-intro-state={entryState === "initial" && !settledIntroKeys.has("collection:leading") ? "active" : "settled"}
           style={{ "--archive-card-index": 0 } as CardEnterStyle}
         >
-          {leadingTile}
+          <div
+            className="masonry-grid__motion"
+            data-entry-card="intro"
+            data-intro-state={entryState === "initial" && !settledIntroKeys.has("collection:leading") ? "active" : "settled"}
+          >
+            {leadingTile}
+          </div>
         </div>
       ) : null}
       {objects.map((object, index) => {
         const objectKey = getArchiveObjectKey(object);
         const entryIndex = leadingTile ? index + 1 : index;
+        const mediaFetchPriority = "auto";
+        const mediaLoading = index < Math.max(2, committedColumns) ? "eager" : "lazy";
         const isIntroEntry = entryIndex < entryCardLimit;
         const introState =
           isIntroEntry && entryState === "initial" && !settledIntroKeys.has(objectKey) ? "active" : "settled";
@@ -181,16 +190,21 @@ export function MasonryGrid({
           <div
             className="masonry-grid__item"
             data-archive-key={objectKey}
-            data-entry-card={isIntroEntry ? "intro" : undefined}
-            data-intro-state={isIntroEntry ? introState : undefined}
             key={objectKey}
             style={{ "--archive-card-index": entryIndex } as CardEnterStyle}
           >
-            <GridObjectContent
-              mediaLoading={index < Math.max(8, columns) ? "eager" : "lazy"}
-              object={object}
-              renderSignature={getArchiveObjectRenderSignature(object)}
-            />
+            <div
+              className="masonry-grid__motion"
+              data-entry-card={isIntroEntry ? "intro" : undefined}
+              data-intro-state={isIntroEntry ? introState : undefined}
+            >
+              <GridObjectContent
+                mediaFetchPriority={mediaFetchPriority}
+                mediaLoading={mediaLoading}
+                object={object}
+                renderSignature={getArchiveObjectRenderSignature(object)}
+              />
+            </div>
           </div>
         );
       })}
@@ -200,92 +214,150 @@ export function MasonryGrid({
 }
 
 const GridObjectContent = memo(function GridObjectContent({
+  mediaFetchPriority,
   mediaLoading,
   object,
   renderSignature: _renderSignature,
 }: GridObjectContentProps) {
   if (object.objectType === "item") {
-    return <ItemCard {...object.item} mediaLoading={mediaLoading} />;
+    return <ItemCard {...object.item} mediaFetchPriority={mediaFetchPriority} mediaLoading={mediaLoading} />;
   }
 
   if (object.objectType === "collection") {
-    return <CollectionCard collection={object.collection} mediaLoading={mediaLoading} />;
+    return <CollectionCard collection={object.collection} mediaFetchPriority={mediaFetchPriority} mediaLoading={mediaLoading} />;
   }
 
   return <NewCollectionCard disabled={object.disabled} onCreate={object.onCreateCollection} />;
 }, areGridObjectContentPropsEqual);
 
 function areGridObjectContentPropsEqual(previousProps: GridObjectContentProps, nextProps: GridObjectContentProps) {
-  return previousProps.mediaLoading === nextProps.mediaLoading && previousProps.renderSignature === nextProps.renderSignature;
+  return (
+    previousProps.mediaFetchPriority === nextProps.mediaFetchPriority &&
+    previousProps.mediaLoading === nextProps.mediaLoading &&
+    previousProps.renderSignature === nextProps.renderSignature
+  );
 }
 
-function useLiveGalleryTrackMetrics(
+function useSettledGalleryLayout(
   containerRef: RefObject<HTMLElement | null>,
-  columns: number,
-  measureKey: string,
+  requestedColumns: number,
 ) {
-  const [resizeLayoutToken, setResizeLayoutToken] = useState(0);
+  const [committedColumns, setCommittedColumns] = useState(requestedColumns);
+  const [layoutToken, setLayoutToken] = useState(0);
+  const committedColumnsRef = useRef(requestedColumns);
+  const pendingFlipRectsRef = useRef<GridFlipSnapshot | null>(null);
+  const trackWidthRef = useRef(0);
+
+  useLayoutEffect(() => {
+    committedColumnsRef.current = committedColumns;
+  }, [committedColumns]);
+
+  const commitGalleryLayout = useCallback((nextColumns: number) => {
+    const container = containerRef.current;
+    if (!container) {
+      setCommittedColumns(nextColumns);
+      return;
+    }
+
+    const nextTrackWidth = measureGalleryTrackWidth(container, nextColumns);
+    const columnsChanged = committedColumnsRef.current !== nextColumns;
+    const widthChanged = Math.abs(trackWidthRef.current - nextTrackWidth) > 0.1;
+
+    if (trackWidthRef.current <= 0 && !columnsChanged) {
+      trackWidthRef.current = nextTrackWidth;
+      container.style.setProperty("--gallery-column-width", `${formatGridTrackWidth(nextTrackWidth)}px`);
+      return;
+    }
+
+    if (!columnsChanged && !widthChanged) {
+      return;
+    }
+
+    pendingFlipRectsRef.current = captureGridFlipRects(container);
+    trackWidthRef.current = nextTrackWidth;
+    committedColumnsRef.current = nextColumns;
+    setCommittedColumns(nextColumns);
+    setLayoutToken((currentToken) => currentToken + 1);
+  }, [containerRef]);
+
+  useLayoutEffect(() => {
+    commitGalleryLayout(requestedColumns);
+  }, [commitGalleryLayout, requestedColumns]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) {
       return;
     }
-    const previousTrackWidthRef = { current: null as number | null };
 
-    let frame = 0;
+    const nextTrackWidth = trackWidthRef.current || measureGalleryTrackWidth(container, committedColumns);
+    trackWidthRef.current = nextTrackWidth;
+    container.style.setProperty("--gallery-column-width", `${formatGridTrackWidth(nextTrackWidth)}px`);
+
+    const previousRects = pendingFlipRectsRef.current;
+    pendingFlipRectsRef.current = null;
+    if (!previousRects) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      animateGridFlipFromRects(container, previousRects, {
+        maxResizeItems: 90,
+        motionChildSelector: ".masonry-grid__motion",
+        reason: "resize",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [committedColumns, containerRef, layoutToken]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
     let settleTimeout = 0;
-    const measureTrackWidth = (isResizeFrame: boolean) => {
-      frame = 0;
-      const styles = window.getComputedStyle(container);
-      const gap = parseFloat(styles.columnGap || styles.gap) || 0;
-      const containerWidth = container.getBoundingClientRect().width;
-      const safeColumns = Math.max(1, columns);
-      const nextTrackWidth = Math.max(1, (containerWidth - gap * (safeColumns - 1)) / safeColumns);
-
-      const previousTrackWidth = previousTrackWidthRef.current;
-      const widthChanged = previousTrackWidth == null || Math.abs(previousTrackWidth - nextTrackWidth) > 0.1;
-      if (widthChanged) {
-        previousTrackWidthRef.current = nextTrackWidth;
-        if (!isResizeFrame) {
-          container.style.setProperty("--gallery-column-width", formatGridTrackWidth(nextTrackWidth) + "px");
-          setResizeLayoutToken((currentToken) => currentToken + 1);
-        }
-      }
-
-      if (isResizeFrame && widthChanged) {
-        if (settleTimeout) {
-          window.clearTimeout(settleTimeout);
-        }
-        settleTimeout = window.setTimeout(() => measureTrackWidth(false), galleryResizeSettleMs);
-      }
+    const commitSettledWidth = () => {
+      settleTimeout = 0;
+      commitGalleryLayout(committedColumnsRef.current);
     };
-    const scheduleTrackWidth = () => {
-      if (frame) {
-        return;
+    const scheduleSettledCommit = () => {
+      if (settleTimeout) {
+        window.clearTimeout(settleTimeout);
       }
-
-      frame = window.requestAnimationFrame(() => measureTrackWidth(true));
+      settleTimeout = window.setTimeout(commitSettledWidth, galleryResizeSettleMs);
     };
 
-    measureTrackWidth(false);
+    trackWidthRef.current = measureGalleryTrackWidth(container, committedColumnsRef.current);
+    container.style.setProperty("--gallery-column-width", `${formatGridTrackWidth(trackWidthRef.current)}px`);
 
-    const observer = new ResizeObserver(scheduleTrackWidth);
+    const observer = new ResizeObserver(scheduleSettledCommit);
     observer.observe(container);
+    window.addEventListener("resize", scheduleSettledCommit);
+    window.visualViewport?.addEventListener("resize", scheduleSettledCommit);
 
     return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-      }
       if (settleTimeout) {
         window.clearTimeout(settleTimeout);
       }
       observer.disconnect();
+      window.removeEventListener("resize", scheduleSettledCommit);
+      window.visualViewport?.removeEventListener("resize", scheduleSettledCommit);
     };
-  }, [columns, containerRef, measureKey]);
+  }, [commitGalleryLayout, containerRef]);
 
-  return resizeLayoutToken;
+  return committedColumns;
 }
+
+function measureGalleryTrackWidth(container: HTMLElement, columns: number) {
+  const styles = window.getComputedStyle(container);
+  const gap = parseFloat(styles.columnGap || styles.gap) || 0;
+  const containerWidth = container.getBoundingClientRect().width;
+  const safeColumns = Math.max(1, columns);
+  return Math.max(1, (containerWidth - gap * (safeColumns - 1)) / safeColumns);
+}
+
 function formatGridTrackWidth(value: number) {
   const rounded = Math.round(value * 1000) / 1000;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");

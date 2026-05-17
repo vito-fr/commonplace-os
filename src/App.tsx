@@ -1,12 +1,22 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { ScrollTrigger } from "./motion/MotionShell";
 import type { ItemStatus, ItemType } from "./components/atoms";
 import { MasonryGrid, MasonryView } from "./components/items";
+import { PdfCanvasPreview } from "./components/items/PdfCanvasPreview";
 import type { ArchiveObject, CollectionCardModel, ItemCardActionAnchor, ItemCardProps } from "./components/items";
 import type { DetailArchiveFlow } from "./components/items/ItemDetail";
 import { readCachedArchiveItemCards, writeCachedArchiveItemCards } from "./data/archiveBootstrapCache";
 import { readCachedArchiveCollectionIndex, writeCachedArchiveCollectionIndex } from "./data/archiveCollectionIndexCache";
-import { preloadCriticalArchiveImages } from "./data/archiveCriticalPreload";
 import { SafariCardRepro } from "./components/debug/SafariCardRepro";
 import { SafariRasterOverlay } from "./components/debug/SafariRasterOverlay";
 import type { ItemCardFilters, ItemCardReader, ItemFormatFilter, ItemSourceFilter } from "./data/itemCardReader";
@@ -48,6 +58,36 @@ type ArchiveTypeFilter = ItemType | "all";
 type ArchiveSourceFilter = ItemSourceFilter | "all";
 type ArchiveFormatFilter = ItemFormatFilter | "all";
 type SiteTheme = "light" | "dark";
+type SiteMetadata = {
+  faviconUrl: string;
+  title: string;
+};
+type ArenaImportSummary = {
+  blocks_seen: number;
+  items_created: number;
+  items_skipped: number;
+  items_updated: number;
+  collection_memberships_created?: number;
+  collection_id: string;
+  channel?: {
+    id?: string | null;
+    slug?: string | null;
+    title?: string | null;
+  } | null;
+  by_block_type?: Record<string, number>;
+  errors?: Array<{ error?: string; source_external_id?: string; block_type?: string }>;
+};
+type ArenaImportFailure = {
+  error?: string;
+  kind?: "auth_required" | "forbidden" | "not_found" | "rate_limited" | "upstream_failed";
+  message?: string;
+  needs_api_key?: boolean;
+  api_key_present?: boolean;
+  status_code?: number | null;
+  channel?: string | null;
+  arena_message?: string | null;
+  retry_after?: string | null;
+};
 
 const statusFilterOptions: ArchiveStatusFilter[] = [
   "all",
@@ -84,9 +124,20 @@ const maxMasonryColumns = 8;
 const maxCollectionTitleLength = 50;
 const responsiveColumnHysteresisPx = 18;
 const responsiveResizeSettleMs = 160;
+const archiveInitialBatchMin = 24;
+const archiveIdleBatchSize = 48;
+const archiveIdleBatchDelayMs = 420;
+const archiveIdleAutoBatchLimit = 1;
+const archiveScrollAppendScreens = 2.4;
 const shortcutStorageKey = "vita:shortcut-bindings:v1";
+const siteMetadataStorageKey = "vita:site-metadata:v1";
+const defaultSiteMetadata: SiteMetadata = {
+  faviconUrl: "",
+  title: "Vita Brain",
+};
 const defaultShortcutBindings: ShortcutBindings = {
   search: { key: "k", modifier: "mod" },
+  importItem: { key: "i" },
   theme: { key: "m" },
   galleryIncrease: { key: "+", alternateKeys: ["="] },
   galleryDecrease: { key: "-" },
@@ -323,11 +374,7 @@ function useResponsiveMasonryColumnConfig() {
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromLocation());
   const [itemCardFilters, setItemCardFilters] = useState<ItemCardFilters>(() => getFiltersFromLocation());
-  const [items, setItems] = useState<ItemCardProps[]>(() =>
-    route.kind === "grid"
-      ? readCachedArchiveItemCards({ workspaceId, cacheScope: archiveCacheScope, filters: itemCardFilters }) ?? []
-      : [],
-  );
+  const [items, setItems] = useState<ItemCardProps[]>([]);
   const [archivePanel, setArchivePanel] = useState<PillNavPanel | null>(null);
   const [galleryObjectMode, setGalleryObjectMode] = useState<GalleryObjectMode>(() => getGalleryObjectModeFromLocation());
   const [archiveViewMode, setArchiveViewMode] = useState<ArchiveViewMode>(() => getArchiveViewModeFromLocation());
@@ -343,24 +390,24 @@ export function App() {
     Math.max(minMasonryColumns, responsiveMasonryColumns.columnCount + masonryColumnOffset),
   );
   const [siteTheme, setSiteTheme] = useState<SiteTheme>(() => getInitialSiteTheme());
+  const [siteMetadata, setSiteMetadata] = useState<SiteMetadata>(() => getInitialSiteMetadata());
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(() => getInitialShortcutBindings());
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showArchiveLoadingFallback, setShowArchiveLoadingFallback] = useState(false);
-  const [archiveRevealReady, setArchiveRevealReady] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
+  const [hasArchiveItemsSettled, setHasArchiveItemsSettled] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
+  const [spotlightImportIntentToken, setSpotlightImportIntentToken] = useState(0);
+  const [spotlightImportTargetCollectionId, setSpotlightImportTargetCollectionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [collectionOptions, setCollectionOptions] = useState<CollectionOption[]>([]);
-  const [collectionIndex, setCollectionIndex] = useState<CollectionIndexItem[]>(() =>
-    route.kind === "grid" || route.kind === "item"
-      ? readCachedArchiveCollectionIndex(workspaceId, archiveCacheScope) ?? []
-      : [],
-  );
+  const [collectionIndex, setCollectionIndex] = useState<CollectionIndexItem[]>([]);
   const [collectionDetail, setCollectionDetail] = useState<CollectionDetail | null>(null);
   const [isCollectionIndexLoading, setIsCollectionIndexLoading] = useState(false);
+  const [hasCollectionIndexSettled, setHasCollectionIndexSettled] = useState(false);
   const [isCollectionLoading, setIsCollectionLoading] = useState(false);
   const [collectionIndexError, setCollectionIndexError] = useState<string | null>(null);
   const [collectionReadError, setCollectionReadError] = useState<string | null>(null);
@@ -422,6 +469,15 @@ export function App() {
   }, [siteTheme]);
 
   useEffect(() => {
+    const title = normalizeSiteTitle(siteMetadata.title);
+    const faviconUrl = siteMetadata.faviconUrl.trim();
+
+    document.title = title;
+    syncFavicon(faviconUrl);
+    window.localStorage.setItem(siteMetadataStorageKey, JSON.stringify({ faviconUrl, title }));
+  }, [siteMetadata]);
+
+  useEffect(() => {
     document.documentElement.style.setProperty("--archive-card-radius", `${archiveCardRadius}px`);
     window.localStorage.setItem("vita:card-radius", String(archiveCardRadius));
   }, [archiveCardRadius]);
@@ -450,6 +506,13 @@ export function App() {
       if (matchesShortcut(event, shortcutBindings.theme)) {
         event.preventDefault();
         setSiteTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+        return;
+      }
+
+      if (matchesShortcut(event, shortcutBindings.importItem)) {
+        event.preventDefault();
+        setSpotlightImportTargetCollectionId(null);
+        setSpotlightImportIntentToken((token) => token + 1);
         return;
       }
 
@@ -521,30 +584,37 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    let cacheFrame = 0;
+    let hasFreshItems = false;
+    let cachedItems: ItemCardProps[] | null = null;
 
     if (route.kind !== "grid") {
       setIsLoading(false);
+      setHasArchiveItemsSettled(true);
       return () => {
         isCurrent = false;
       };
     }
 
     const itemCardQuery = { workspaceId, cacheScope: archiveCacheScope, filters: itemCardFilters };
-    const cachedItems = readCachedArchiveItemCards(itemCardQuery);
-    if (cachedItems?.length) {
-      preloadCriticalArchiveImages(cachedItems);
-      setItems(cachedItems);
-      setReadError(null);
-      setIsLoading(false);
-    } else {
-      setIsLoading(true);
-    }
+    setIsLoading(true);
+    setHasArchiveItemsSettled(false);
+    cacheFrame = window.requestAnimationFrame(() => {
+      cacheFrame = 0;
+      cachedItems = readCachedArchiveItemCards(itemCardQuery);
+      if (isCurrent && !hasFreshItems && cachedItems?.length) {
+        setItems(cachedItems);
+        setReadError(null);
+        setIsLoading(false);
+        setHasArchiveItemsSettled(true);
+      }
+    });
 
     itemCardReader
       .listItemCards(itemCardQuery)
       .then((nextItems) => {
         if (isCurrent) {
-          preloadCriticalArchiveImages(nextItems);
+          hasFreshItems = true;
           setItems(nextItems);
           writeCachedArchiveItemCards(itemCardQuery, nextItems);
           setReadError(null);
@@ -559,22 +629,25 @@ export function App() {
       .finally(() => {
         if (isCurrent) {
           setIsLoading(false);
+          setHasArchiveItemsSettled(true);
         }
       });
 
     return () => {
       isCurrent = false;
+      if (cacheFrame) {
+        window.cancelAnimationFrame(cacheFrame);
+      }
     };
   }, [itemCardFilters, route.kind]);
 
   useEffect(() => {
     const isWaitingForArchiveItems =
-      route.kind === "grid" && galleryObjectMode !== "collections" && isLoading && items.length === 0 && !readError;
+      route.kind === "grid" && galleryObjectMode !== "collections" && !hasArchiveItemsSettled && !readError;
     const isWaitingForArchiveCollections =
       route.kind === "grid" &&
       galleryObjectMode !== "items" &&
-      isCollectionIndexLoading &&
-      collectionIndex.length === 0 &&
+      !hasCollectionIndexSettled &&
       !collectionIndexError;
 
     if (!isWaitingForArchiveItems && !isWaitingForArchiveCollections) {
@@ -593,63 +666,8 @@ export function App() {
     collectionIndex.length,
     collectionIndexError,
     galleryObjectMode,
-    isCollectionIndexLoading,
-    isLoading,
-    items.length,
-    readError,
-    route.kind,
-  ]);
-
-  const archiveRevealHasSettledRef = useRef(false);
-
-  useEffect(() => {
-    if (route.kind !== "grid" || (archiveViewMode !== "gallery" && archiveViewMode !== "masonry")) {
-      setArchiveRevealReady(true);
-      return undefined;
-    }
-
-    const waitingForItems = galleryObjectMode !== "collections" && isLoading && items.length === 0 && !readError;
-    const waitingForCollections =
-      galleryObjectMode !== "items" &&
-      isCollectionIndexLoading &&
-      collectionIndex.length === 0 &&
-      !collectionIndexError;
-
-    if (waitingForItems || waitingForCollections) {
-      if (!archiveRevealHasSettledRef.current) {
-        setArchiveRevealReady(false);
-      }
-      return undefined;
-    }
-
-    if (archiveRevealHasSettledRef.current) {
-      setArchiveRevealReady(true);
-      return undefined;
-    }
-
-    setArchiveRevealReady(false);
-    let firstFrame = 0;
-    let secondFrame = 0;
-    firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        archiveRevealHasSettledRef.current = true;
-        setArchiveRevealReady(true);
-      });
-    });
-
-    return () => {
-      if (firstFrame) {
-        window.cancelAnimationFrame(firstFrame);
-      }
-      if (secondFrame) {
-        window.cancelAnimationFrame(secondFrame);
-      }
-    };
-  }, [
-    archiveViewMode,
-    collectionIndex.length,
-    collectionIndexError,
-    galleryObjectMode,
+    hasArchiveItemsSettled,
+    hasCollectionIndexSettled,
     isCollectionIndexLoading,
     isLoading,
     items.length,
@@ -772,23 +790,38 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    let cacheFrame = 0;
+    let hasFreshCollections = false;
+    let cachedCollections: CollectionIndexItem[] | null = null;
     const needsCollections = route.kind === "grid" || route.kind === "item";
 
     if (!needsCollections) {
       setCollectionIndexError(null);
       setIsCollectionIndexLoading(false);
+      setHasCollectionIndexSettled(true);
       return () => {
         isCurrent = false;
       };
     }
 
     setIsCollectionIndexLoading(true);
+    setHasCollectionIndexSettled(false);
     setCollectionIndexError(null);
+    cacheFrame = window.requestAnimationFrame(() => {
+      cacheFrame = 0;
+      cachedCollections = readCachedArchiveCollectionIndex(workspaceId, archiveCacheScope);
+      if (isCurrent && !hasFreshCollections && cachedCollections?.length) {
+        setCollectionIndex(cachedCollections);
+        setIsCollectionIndexLoading(false);
+        setHasCollectionIndexSettled(true);
+      }
+    });
 
     itemCollectionClient
       .listCollectionIndex({ workspaceId })
       .then((nextCollections) => {
         if (isCurrent) {
+          hasFreshCollections = true;
           setCollectionIndex(nextCollections);
           writeCachedArchiveCollectionIndex(workspaceId, nextCollections, archiveCacheScope);
         }
@@ -796,18 +829,24 @@ export function App() {
       .catch((error: unknown) => {
         if (isCurrent) {
           console.error(error);
-          setCollectionIndex([]);
-          setCollectionIndexError(getReadableLoadError(error, "collections"));
+          if (!cachedCollections?.length) {
+            setCollectionIndex([]);
+            setCollectionIndexError(getReadableLoadError(error, "collections"));
+          }
         }
       })
       .finally(() => {
         if (isCurrent) {
           setIsCollectionIndexLoading(false);
+          setHasCollectionIndexSettled(true);
         }
       });
 
     return () => {
       isCurrent = false;
+      if (cacheFrame) {
+        window.cancelAnimationFrame(cacheFrame);
+      }
     };
   }, [galleryObjectMode, route.kind]);
 
@@ -1875,6 +1914,119 @@ export function App() {
     }
   };
 
+  const openCollectionImport = (collectionId: string) => {
+    setSpotlightImportTargetCollectionId(collectionId);
+    setSpotlightImportIntentToken((token) => token + 1);
+    setArchivePanel(null);
+  };
+
+  const editArchiveCollectionFromCard = (collectionId: string) => {
+    openCollection(collectionId);
+    window.requestAnimationFrame(() => {
+      window.history.replaceState(null, "", `${buildCollectionUrl(collectionId)}#collection-title`);
+      window.setTimeout(() => {
+        document.getElementById("collection-title")?.scrollIntoView({ block: "center", behavior: "smooth" });
+        const input = document.querySelector<HTMLInputElement>("#collection-title input");
+        input?.focus();
+        input?.select();
+      }, 120);
+    });
+  };
+
+  const connectArchiveCollectionFromCard = async (childCollectionId: string) => {
+    if (!isPocketBaseMode) {
+      setCollectionIndexError("Collection nesting requires live archive mode.");
+      return;
+    }
+
+    const parentCollectionId = window.prompt("Parent collection ID");
+    if (!parentCollectionId) {
+      return;
+    }
+
+    try {
+      await itemCollectionClient.connectCollection({
+        workspaceId,
+        parentCollectionId: parentCollectionId.trim(),
+        childCollectionId,
+        actor: "system",
+      });
+      await refreshArchiveCollectionState();
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionIndexError("Unable to connect collection.");
+    }
+  };
+
+  const copyArchiveCollectionFromCard = async (collectionId: string) => {
+    if (!isPocketBaseMode) {
+      setCollectionIndexError("Collection copy requires live archive mode.");
+      return;
+    }
+
+    try {
+      const detail = await itemCollectionClient.getCollectionDetail({ workspaceId, collectionId });
+      const result = await itemCollectionClient.createCollection({
+        workspaceId,
+        name: `${detail.name} copy`,
+        description: detail.description ?? undefined,
+        actor: "system",
+      });
+      for (const item of detail.items) {
+        await itemCollectionClient.attachCollection({
+          workspaceId,
+          itemId: item.id,
+          collectionId: result.collection.id,
+          actor: "system",
+        });
+      }
+      await refreshArchiveCollectionState();
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionIndexError("Unable to copy collection.");
+    }
+  };
+
+  const downloadArchiveCollectionFromCard = async (collectionId: string) => {
+    try {
+      const detail = await itemCollectionClient.getCollectionDetail({ workspaceId, collectionId });
+      const blob = new Blob([JSON.stringify(detail, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${slug(detail.name) || "collection"}.json`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionIndexError("Unable to download collection.");
+    }
+  };
+
+  const deleteArchiveCollectionFromCard = async (collectionId: string) => {
+    if (!isPocketBaseMode) {
+      setCollectionIndexError("Collection delete requires live archive mode.");
+      return;
+    }
+
+    try {
+      await itemCollectionClient.deleteCollection({
+        workspaceId,
+        collectionId,
+        actor: "system",
+      });
+      setCollectionIndex((current) => current.filter((collection) => collection.id !== collectionId));
+      if (route.kind === "collection" && route.collectionId === collectionId) {
+        closeCollection();
+      }
+    } catch (error: unknown) {
+      console.error(error);
+      setCollectionIndexError("Unable to delete collection.");
+    }
+  };
+
   const captureArchiveInput = async (captureInput: SpotlightCaptureRequest) => {
     if (!isPocketBaseMode) {
       return;
@@ -1885,7 +2037,8 @@ export function App() {
     setCaptureNotice(null);
 
     try {
-      let captureResult: { created: boolean };
+      let captureResult: { created: boolean; item?: { id: string } };
+      let linkScreenshotRefresh: Promise<void> | null = null;
 
       if (captureInput.type === "link") {
         const normalizedUrl = normalizeCaptureUrl(captureInput.url);
@@ -1897,6 +2050,27 @@ export function App() {
           sourceExternalId: normalizedUrl,
           actor: "system",
         });
+        if (captureResult.item?.id) {
+          linkScreenshotRefresh = requestLinkScreenshotThumbnail({
+            itemId: captureResult.item.id,
+            url: normalizedUrl,
+            workspaceId,
+          });
+        }
+      } else if (captureInput.type === "arena-channel") {
+        const arenaSummary = await importArenaChannelCapture({
+          actor: "system",
+          baseUrl: pocketBaseUrl,
+          channel: captureInput.channel,
+          workspaceId,
+        });
+        captureResult = {
+          created:
+            arenaSummary.items_created > 0 ||
+            arenaSummary.items_updated > 0 ||
+            (arenaSummary.collection_memberships_created ?? 0) > 0,
+        };
+        setCaptureNotice(formatArenaImportNotice(arenaSummary));
       } else if (captureInput.type === "image") {
         captureResult = await itemCaptureWriter.captureImage({
           workspaceId,
@@ -1928,26 +2102,64 @@ export function App() {
         });
       }
 
+      if (spotlightImportTargetCollectionId && captureResult.item?.id) {
+        try {
+          await itemCollectionClient.attachCollection({
+            workspaceId,
+            itemId: captureResult.item.id,
+            collectionId: spotlightImportTargetCollectionId,
+            actor: "system",
+          });
+        } catch (attachError: unknown) {
+          const message = attachError instanceof Error ? attachError.message.toLowerCase() : "";
+          if (!message.includes("already in collection")) {
+            throw attachError;
+          }
+        }
+      }
+
       const nextItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
+      await refreshArchiveCollectionState();
       setItems(nextItems);
       setReadError(null);
-      setCaptureNotice(
-        captureInput.type === "link"
-          ? "Imported URL."
-          : captureInput.type === "image"
-            ? "Imported image."
-            : captureInput.type === "pdf"
-              ? "Imported PDF."
-              : captureInput.type === "video"
-                ? "Imported video."
-                : "Added note.",
-      );
+      const targetCollection = spotlightImportTargetCollectionId
+        ? collectionIndex.find((collection) => collection.id === spotlightImportTargetCollectionId)
+        : null;
+      if (captureInput.type !== "arena-channel") {
+        setCaptureNotice(
+          captureInput.type === "link"
+            ? targetCollection
+              ? `Imported URL into ${targetCollection.name}.`
+              : "Imported URL."
+            : captureInput.type === "image"
+              ? targetCollection
+                ? `Imported image into ${targetCollection.name}.`
+                : "Imported image."
+              : captureInput.type === "pdf"
+                ? targetCollection
+                  ? `Imported PDF into ${targetCollection.name}.`
+                  : "Imported PDF."
+                : captureInput.type === "video"
+                  ? targetCollection
+                    ? `Imported video into ${targetCollection.name}.`
+                    : "Imported video."
+                  : targetCollection
+                    ? `Added note to ${targetCollection.name}.`
+                    : "Added note.",
+        );
+      }
+      if (linkScreenshotRefresh) {
+        void linkScreenshotRefresh.then(async () => {
+          const refreshedItems = await itemCardReader.listItemCards({ workspaceId, filters: itemCardFilters });
+          setItems(refreshedItems);
+        });
+      }
       return {
         created: captureResult.created,
       };
     } catch (error: unknown) {
       console.error(error);
-      setCaptureError("Unable to import.");
+      setCaptureError(error instanceof Error ? error.message : "Unable to import.");
       throw error;
     } finally {
       setIsCapturing(false);
@@ -2128,8 +2340,10 @@ export function App() {
         siteTheme={siteTheme}
         onShortcutChange={updateShortcutBinding}
         onShortcutReset={resetShortcutBindings}
+        onSiteMetadataChange={setSiteMetadata}
         statusOptions={statusFilterOptions}
         sourceOptions={sourceFilterOptions}
+        siteMetadata={siteMetadata}
         formatOptions={formatFilterOptions}
       />
     ) : null;
@@ -2236,7 +2450,7 @@ export function App() {
     );
   } else {
     const needsItemObjects = galleryObjectMode !== "collections";
-    const isWaitingForInitialItems = needsItemObjects && isLoading && items.length === 0 && !readError;
+    const isWaitingForInitialItems = needsItemObjects && !hasArchiveItemsSettled && !readError;
     const showInitialArchiveLoading = isWaitingForInitialItems && showArchiveLoadingFallback;
     const renderedItems = items.map((item) => ({
       ...item,
@@ -2261,11 +2475,19 @@ export function App() {
           }),
     }));
     const renderedCollections = filterCollectionCards(collectionIndex, itemCardFilters).map((collection) =>
-      toCollectionCardModel(collection, openCollection),
+      toCollectionCardModel(collection, {
+        onConnect: connectArchiveCollectionFromCard,
+        onCopy: copyArchiveCollectionFromCard,
+        onDelete: deleteArchiveCollectionFromCard,
+        onDownload: downloadArchiveCollectionFromCard,
+        onEdit: editArchiveCollectionFromCard,
+        onImportInto: openCollectionImport,
+        onNavigate: openCollection,
+      }),
     );
     const needsCollectionObjects = galleryObjectMode !== "items";
     const isWaitingForInitialCollections =
-      needsCollectionObjects && isCollectionIndexLoading && collectionIndex.length === 0 && !collectionIndexError;
+      needsCollectionObjects && !hasCollectionIndexSettled && !collectionIndexError;
     const archiveObjects = buildArchiveObjects({
       collections: renderedCollections,
       items: renderedItems,
@@ -2275,60 +2497,54 @@ export function App() {
     const showInitialCollectionsLoading =
       isWaitingForInitialCollections && showArchiveLoadingFallback;
     const galleryLoading = showInitialArchiveLoading || showInitialCollectionsLoading;
-    const visibleArchiveObjects = isWaitingForInitialItems || isWaitingForInitialCollections ? [] : archiveObjects;
+    const isWaitingForInitialArchive = isWaitingForInitialItems || isWaitingForInitialCollections;
+    const canRenderArchiveEmptyState =
+      (!needsItemObjects || hasArchiveItemsSettled) &&
+      (!needsCollectionObjects || hasCollectionIndexSettled) &&
+      !isWaitingForInitialArchive;
+    const archiveMaterializationKey = [
+      galleryObjectMode,
+      itemCardFilters.status ?? "",
+      itemCardFilters.type ?? "",
+      itemCardFilters.source ?? "",
+      itemCardFilters.format ?? "",
+      itemCardFilters.collection ?? "",
+      itemCardFilters.text ?? "",
+      archiveObjects.length,
+    ].join("\u001f");
 
     routeContent = (
       <main
         className="app-shell app-shell--archive"
-        data-archive-reveal={archiveRevealReady ? "ready" : "preparing"}
         aria-label="Vita archive"
       >
         <h1 className="visually-hidden">Archive</h1>
-        <section className="archive-canvas" aria-label="archive objects">
-          {archiveViewMode === "gallery" ? (
-            <MasonryGrid
-              objects={visibleArchiveObjects}
-              density="comfortable"
-              columns={effectiveGalleryColumns}
-              loading={galleryLoading}
-              emptyState={
-                <ArchiveEmptyState
-                  collectionError={collectionIndexError}
-                  objectMode={galleryObjectMode}
-                  filters={itemCardFilters}
-                  readError={readError}
-                  onClearFilters={clearArchiveFilters}
-                />
-              }
-              ariaLabel="archive objects"
-            />
-          ) : archiveViewMode === "masonry" ? (
-            <MasonryView
-              objects={visibleArchiveObjects}
-              columns={masonryColumns}
-              loading={galleryLoading}
-              emptyState={
-                <ArchiveEmptyState
-                  collectionError={collectionIndexError}
-                  objectMode={galleryObjectMode}
-                  filters={itemCardFilters}
-                  readError={readError}
-                  onClearFilters={clearArchiveFilters}
-                />
-              }
-              ariaLabel="masonry archive objects"
-            />
-          ) : (
-            <ArchiveComingSoonState
-              viewMode={archiveViewMode}
-              objectMode={galleryObjectMode}
-              onBackToGallery={() => setArchiveViewMode("gallery")}
-            />
-          )}
-        </section>
-        {archiveViewMode === "gallery" || archiveViewMode === "masonry" ? (
-          <div className="archive-preload-veil" aria-hidden="true" />
-        ) : null}
+        <ArchiveCanvas
+          archiveViewMode={archiveViewMode}
+          columns={effectiveGalleryColumns}
+          emptyState={
+            canRenderArchiveEmptyState ? (
+              <ArchiveEmptyState
+                collectionError={collectionIndexError}
+                objectMode={galleryObjectMode}
+                filters={itemCardFilters}
+                readError={readError}
+                onClearFilters={clearArchiveFilters}
+                onOpenImport={() => {
+                  setSpotlightImportTargetCollectionId(null);
+                  setSpotlightImportIntentToken((token) => token + 1);
+                }}
+              />
+            ) : null
+          }
+          galleryObjectMode={galleryObjectMode}
+          loading={galleryLoading}
+          masonryColumns={masonryColumns}
+          materializationKey={archiveMaterializationKey}
+          objects={archiveObjects}
+          onBackToGallery={() => setArchiveViewMode("gallery")}
+          shouldMaterialize={!isWaitingForInitialArchive}
+        />
       </main>
     );
   }
@@ -2390,12 +2606,223 @@ export function App() {
           captureError={captureError}
           captureNotice={captureNotice}
           searchShortcut={shortcutBindings.search}
+          importIntentToken={spotlightImportIntentToken}
+          importContextLabel={
+            spotlightImportTargetCollectionId
+              ? collectionIndex.find((collection) => collection.id === spotlightImportTargetCollectionId)?.name ?? "collection"
+              : null
+          }
           onCapture={captureArchiveInput}
           onOpen={() => setArchivePanel(null)}
         />
       ) : null}
     </>
   );
+}
+
+function ArchiveCanvas({
+  archiveViewMode,
+  columns,
+  emptyState,
+  galleryObjectMode,
+  loading,
+  masonryColumns,
+  materializationKey,
+  objects,
+  onBackToGallery,
+  shouldMaterialize,
+}: {
+  archiveViewMode: ArchiveViewMode;
+  columns: number;
+  emptyState: ReactNode;
+  galleryObjectMode: GalleryObjectMode;
+  loading: boolean;
+  masonryColumns: number;
+  materializationKey: string;
+  objects: ArchiveObject[];
+  onBackToGallery: () => void;
+  shouldMaterialize: boolean;
+}) {
+  const materializedObjects = useProgressiveArchiveObjects(objects, {
+    columns: archiveViewMode === "masonry" ? masonryColumns : columns,
+    enabled: shouldMaterialize && (archiveViewMode === "gallery" || archiveViewMode === "masonry"),
+    resetKey: materializationKey,
+  });
+  const gridObjects = shouldMaterialize ? materializedObjects : [];
+  const deferredEmptyState = objects.length > 0 && gridObjects.length === 0 ? null : emptyState;
+
+  return (
+    <section className="archive-canvas" aria-label="archive objects" data-total-objects={objects.length}>
+      {archiveViewMode === "gallery" ? (
+        <MasonryGrid
+          objects={gridObjects}
+          density="comfortable"
+          columns={columns}
+          loading={loading}
+          emptyState={deferredEmptyState}
+          ariaLabel="archive objects"
+        />
+      ) : archiveViewMode === "masonry" ? (
+        <MasonryView
+          objects={gridObjects}
+          columns={masonryColumns}
+          loading={loading}
+          emptyState={deferredEmptyState}
+          ariaLabel="masonry archive objects"
+        />
+      ) : (
+        <ArchiveComingSoonState
+          viewMode={archiveViewMode}
+          objectMode={galleryObjectMode}
+          onBackToGallery={onBackToGallery}
+        />
+      )}
+    </section>
+  );
+}
+
+function useProgressiveArchiveObjects(
+  objects: ArchiveObject[],
+  {
+    columns,
+    enabled,
+    resetKey,
+  }: {
+    columns: number;
+    enabled: boolean;
+    resetKey: string;
+  },
+) {
+  const [visibleCount, setVisibleCount] = useState(() => (enabled ? 0 : objects.length));
+  const visibleCountRef = useRef(visibleCount);
+  const totalCountRef = useRef(objects.length);
+  const initialCount = Math.min(objects.length, Math.max(archiveInitialBatchMin, columns * 4));
+
+  useEffect(() => {
+    visibleCountRef.current = visibleCount;
+  }, [visibleCount]);
+
+  useEffect(() => {
+    totalCountRef.current = objects.length;
+  }, [objects.length]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setVisibleCount(objects.length);
+      return undefined;
+    }
+
+    let frame = 0;
+    let timeout = 0;
+    let idleCallback = 0;
+    let cancelled = false;
+    let backgroundAppendCount = 0;
+    const fallbackClearTimeout = window.clearTimeout.bind(window);
+    const fallbackSetTimeout = window.setTimeout.bind(window);
+
+    const appendBatch = (multiplier = 1) => {
+      setVisibleCount((currentCount) => {
+        const nextCount = Math.min(objects.length, currentCount + archiveIdleBatchSize * multiplier);
+        visibleCountRef.current = nextCount;
+        return nextCount;
+      });
+    };
+    const cancelIdle = () => {
+      if (idleCallback) {
+        if ("cancelIdleCallback" in window) {
+          window.cancelIdleCallback(idleCallback);
+        } else {
+          fallbackClearTimeout(idleCallback);
+        }
+        idleCallback = 0;
+      }
+    };
+    const scheduleBackgroundAppend = () => {
+      if (cancelled || visibleCountRef.current >= totalCountRef.current) {
+        return;
+      }
+
+      timeout = window.setTimeout(() => {
+        if (cancelled || visibleCountRef.current >= totalCountRef.current) {
+          return;
+        }
+
+        if ("requestIdleCallback" in window) {
+          idleCallback = window.requestIdleCallback(
+            () => {
+              idleCallback = 0;
+              if (cancelled) {
+                return;
+              }
+              appendBatch();
+              backgroundAppendCount += 1;
+              if (backgroundAppendCount < archiveIdleAutoBatchLimit) {
+                scheduleBackgroundAppend();
+              }
+            },
+            { timeout: 1400 },
+          );
+        } else {
+          idleCallback = fallbackSetTimeout(() => {
+            idleCallback = 0;
+            if (cancelled) {
+              return;
+            }
+            appendBatch();
+            backgroundAppendCount += 1;
+            if (backgroundAppendCount < archiveIdleAutoBatchLimit) {
+              scheduleBackgroundAppend();
+            }
+          }, 180);
+        }
+      }, archiveIdleBatchDelayMs);
+    };
+    const appendForScroll = () => {
+      const scrollRoot = document.documentElement;
+      const distanceToBottom = scrollRoot.scrollHeight - (window.scrollY + window.innerHeight);
+      if (distanceToBottom <= window.innerHeight * archiveScrollAppendScreens) {
+        appendBatch(2);
+      }
+    };
+
+    setVisibleCount(0);
+    visibleCountRef.current = 0;
+
+    frame = window.requestAnimationFrame(() => {
+      frame = 0;
+      if (cancelled) {
+        return;
+      }
+
+      setVisibleCount(initialCount);
+      visibleCountRef.current = initialCount;
+      scheduleBackgroundAppend();
+    });
+
+    window.addEventListener("scroll", appendForScroll, { passive: true });
+    window.addEventListener("resize", appendForScroll);
+
+    return () => {
+      cancelled = true;
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      if (timeout) {
+        window.clearTimeout(timeout);
+      }
+      cancelIdle();
+      window.removeEventListener("scroll", appendForScroll);
+      window.removeEventListener("resize", appendForScroll);
+    };
+  }, [enabled, objects.length, resetKey]);
+
+  return useMemo(() => {
+    if (!enabled || visibleCount >= objects.length) {
+      return objects;
+    }
+
+    return objects.slice(0, Math.max(0, visibleCount));
+  }, [enabled, objects, visibleCount]);
 }
 
 function PendingDeleteUndoToast({
@@ -2502,7 +2929,15 @@ function getCollectionImportFileKind(file: File): "image" | "pdf" | "video" | nu
 
 function toCollectionCardModel(
   collection: CollectionIndexItem,
-  onNavigate: (collectionId: string) => void,
+  handlers: {
+    onConnect: (collectionId: string) => void;
+    onCopy: (collectionId: string) => void;
+    onDelete: (collectionId: string) => Promise<void> | void;
+    onDownload: (collectionId: string) => void;
+    onEdit: (collectionId: string) => void;
+    onImportInto: (collectionId: string) => void;
+    onNavigate: (collectionId: string) => void;
+  },
 ): CollectionCardModel {
   return {
     id: collection.id,
@@ -2514,7 +2949,13 @@ function toCollectionCardModel(
     lastUpdatedAt: collection.lastUpdatedAt,
     previewItems: collection.previewItems,
     href: buildCollectionUrl(collection.id),
-    onNavigate,
+    onConnect: handlers.onConnect,
+    onCopy: handlers.onCopy,
+    onDelete: handlers.onDelete,
+    onDownload: handlers.onDownload,
+    onEdit: handlers.onEdit,
+    onImportInto: handlers.onImportInto,
+    onNavigate: handlers.onNavigate,
   };
 }
 
@@ -2651,12 +3092,14 @@ function ArchiveEmptyState({
   objectMode,
   readError,
   onClearFilters,
+  onOpenImport,
 }: {
   collectionError: string | null;
   filters: ItemCardFilters;
   objectMode: GalleryObjectMode;
   readError: string | null;
   onClearFilters: () => void;
+  onOpenImport: () => void;
 }) {
   const hasFilters = hasActiveFilters(filters);
   const filterSummary = formatFilterSummary(filters);
@@ -2686,13 +3129,14 @@ function ArchiveEmptyState({
 
   if (hasFilters) {
     return (
-      <div className="archive-state">
+      <div className="archive-state archive-state--empty archive-state--filtered">
+        <EmptyStateGlyph />
         <span className="archive-state__kicker">empty {objectLabel}</span>
         <h2 className="archive-state__title">
           {filters.text?.trim() ? "No results match this search." : `No ${objectLabel} match these filters.`}
         </h2>
         <p className="archive-state__copy">{filterSummary || "Clear the active filters to return to Gallery."}</p>
-        <button className="text-button" type="button" onClick={onClearFilters}>
+        <button className="archive-state__action" type="button" onClick={onClearFilters}>
           Clear filters
         </button>
       </div>
@@ -2701,29 +3145,49 @@ function ArchiveEmptyState({
 
   if (objectMode === "collections") {
     return (
-      <div className="archive-state">
-        <span className="archive-state__kicker">empty collections</span>
-        <h2 className="archive-state__title">No collections yet.</h2>
-        <p className="archive-state__copy">Select items in Gallery and create a collection to make it appear here.</p>
+      <div className="archive-state archive-state--empty archive-state--empty-home">
+        <EmptyStateGlyph />
+        <h2 className="archive-state__title">Archive is empty.</h2>
+        <button className="archive-state__action" type="button" onClick={onOpenImport}>
+          Import
+        </button>
       </div>
     );
   }
 
   if (objectMode === "items") {
     return (
-      <div className="archive-state">
-        <span className="archive-state__kicker">empty items</span>
-        <h2 className="archive-state__title">No items in Gallery yet.</h2>
-        <p className="archive-state__copy">Use Import to add notes, links, images, PDFs, or videos.</p>
+      <div className="archive-state archive-state--empty archive-state--empty-home">
+        <EmptyStateGlyph />
+        <h2 className="archive-state__title">Archive is empty.</h2>
+        <button className="archive-state__action" type="button" onClick={onOpenImport}>
+          Import
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="archive-state">
-      <span className="archive-state__kicker">empty Gallery</span>
-      <h2 className="archive-state__title">Gallery is empty.</h2>
-      <p className="archive-state__copy">Use Import to add archive items, then collect related pieces into Collections.</p>
+    <div className="archive-state archive-state--empty archive-state--empty-home">
+      <EmptyStateGlyph />
+      <h2 className="archive-state__title">Archive is empty.</h2>
+      <button className="archive-state__action" type="button" onClick={onOpenImport}>
+        Import
+      </button>
+    </div>
+  );
+}
+
+function EmptyStateGlyph() {
+  return (
+    <div className="archive-state__glyph" aria-hidden="true">
+      <span className="archive-state__glyph-node archive-state__glyph-node--center" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--a" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--b" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--c" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--d" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--e" />
+      <span className="archive-state__glyph-node archive-state__glyph-node--f" />
     </div>
   );
 }
@@ -3236,71 +3700,15 @@ function PdfPreview({
   src: string;
   surface: "card" | "reader";
 }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const label = name || "PDF preview";
-
-  useEffect(() => {
-    if (!src) {
-      setObjectUrl(null);
-      setError("PDF unavailable.");
-      return;
-    }
-
-    const controller = new AbortController();
-    let nextObjectUrl: string | null = null;
-
-    setObjectUrl(null);
-    setError(null);
-
-    fetch(src, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`PDF preview failed with HTTP ${response.status}`);
-        }
-
-        return response.blob();
-      })
-      .then((blob) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
-        nextObjectUrl = URL.createObjectURL(pdfBlob);
-        setObjectUrl(nextObjectUrl);
-      })
-      .catch((fetchError: unknown) => {
-        if (!controller.signal.aborted) {
-          console.error(fetchError);
-          setError("PDF preview unavailable.");
-        }
-      });
-
-    return () => {
-      controller.abort();
-
-      if (nextObjectUrl) {
-        URL.revokeObjectURL(nextObjectUrl);
-      }
-    };
-  }, [src]);
 
   return (
     <main className="pdf-preview-shell" data-surface={surface} aria-label={label}>
       <div className="pdf-preview-shell__page">
-        {objectUrl ? (
-          <>
-            <iframe
-              className="pdf-preview-shell__frame"
-              src={`${objectUrl}#page=1&view=FitH`}
-              title={label}
-            />
-          </>
-        ) : (
-          <div className="pdf-preview-shell__fallback" role={error ? "alert" : "status"}>
+        {src ? <PdfCanvasPreview src={src} title={label} variant="reader" /> : (
+          <div className="pdf-preview-shell__fallback" role="alert">
             <span>PDF</span>
-            <small>{error ?? label}</small>
+            <small>PDF unavailable.</small>
           </div>
         )}
       </div>
@@ -3610,6 +4018,149 @@ function normalizeCaptureUrl(rawInput: string) {
   return url.toString().replace(/\/$/, "");
 }
 
+async function importArenaChannelCapture({
+  actor,
+  baseUrl,
+  channel,
+  workspaceId,
+}: {
+  actor: string;
+  baseUrl: string;
+  channel: string;
+  workspaceId: string;
+}) {
+  const response = await fetch(buildPocketBaseUrl(baseUrl, "/api/vita/import-arena"), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      actor,
+      channel,
+      workspace_id: workspaceId,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as ArenaImportSummary | ArenaImportFailure | null;
+
+  if (!response.ok) {
+    throw new Error(formatArenaImportError(payload, response.status));
+  }
+
+  if (!payload || !("blocks_seen" in payload) || typeof payload.blocks_seen !== "number") {
+    throw new Error("Are.na import response must include blocks_seen.");
+  }
+
+  return payload;
+}
+
+function buildPocketBaseUrl(baseUrl: string, path: string) {
+  return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+}
+
+function formatArenaImportNotice(summary: ArenaImportSummary) {
+  const channelTitle = summary.channel?.title || summary.channel?.slug || "Are.na channel";
+  const blockSummary = formatArenaBlockSummary(summary.by_block_type);
+  const created = summary.items_created;
+  const skipped = summary.items_skipped;
+  const updated = summary.items_updated;
+  const errors = summary.errors?.length ?? 0;
+  const importSummary = [
+    created > 0 ? `${created} ${pluralize("item", created)} created` : "",
+    updated > 0 ? `${updated} updated` : "",
+    skipped > 0 ? `${skipped} skipped` : "",
+    errors > 0 ? `${errors} ${pluralize("block error", errors)}` : "",
+  ].filter(Boolean);
+
+  return `Imported ${channelTitle}: ${summary.blocks_seen} ${pluralize("block", summary.blocks_seen)} seen${
+    blockSummary ? `, ${blockSummary}` : ""
+  }${importSummary.length ? `. ${importSummary.join(", ")}.` : "."}`;
+}
+
+function formatArenaImportError(payload: ArenaImportFailure | ArenaImportSummary | null, status: number) {
+  const failure = payload && typeof payload === "object" && "kind" in payload ? (payload as ArenaImportFailure) : null;
+  const channel = failure?.channel ? ` for ${failure.channel}` : "";
+
+  if (failure?.kind === "auth_required") {
+    return failure.needs_api_key
+      ? `This Are.na channel${channel} requires an API token. Restart PocketBase with ARENA_API_KEY.`
+      : `The Are.na token is invalid or does not have access to this channel${channel}.`;
+  }
+
+  if (failure?.kind === "forbidden") {
+    return `The Are.na token does not have permission to read this channel${channel}.`;
+  }
+
+  if (failure?.kind === "not_found") {
+    return `Are.na channel${channel} not found.`;
+  }
+
+  if (failure?.kind === "rate_limited") {
+    return `Are.na rate limit hit${failure.retry_after ? `; try again after ${failure.retry_after}` : ""}.`;
+  }
+
+  if (failure?.arena_message) {
+    return `Are.na import failed${channel}: ${failure.arena_message}`;
+  }
+
+  if (failure?.message) {
+    return failure.message;
+  }
+
+  if (payload && "error" in payload && typeof payload.error === "string") {
+    return payload.error;
+  }
+
+  return `Are.na import failed with HTTP ${status}.`;
+}
+
+function formatArenaBlockSummary(byBlockType: ArenaImportSummary["by_block_type"]) {
+  if (!byBlockType) {
+    return "";
+  }
+
+  return Object.entries(byBlockType)
+    .filter(([, count]) => count > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => `${count} ${type.toLowerCase()}${count === 1 ? "" : "s"}`)
+    .join(", ");
+}
+
+function pluralize(label: string, count: number) {
+  return count === 1 ? label : `${label}s`;
+}
+
+async function requestLinkScreenshotThumbnail({
+  itemId,
+  url,
+  workspaceId,
+}: {
+  itemId: string;
+  url: string;
+  workspaceId: string;
+}) {
+  try {
+    await fetch("http://127.0.0.1:5178/api/link-screenshot", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ itemId, url, workspaceId }),
+    });
+  } catch {
+    // The local screenshot worker is optional; OpenGraph remains the fallback.
+  }
+}
+
+function slug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function getReadableLoadError(error: unknown, surface: "archive" | "collection" | "collections") {
   if (isApiUnreachableError(error)) {
     return `${pocketBaseUnavailableTitle}\n${pocketBaseUnavailableCopy}`;
@@ -3697,6 +4248,7 @@ function getInitialShortcutBindings(): ShortcutBindings {
 
     return {
       search: sanitizeShortcutBinding(parsed.search) ?? defaultShortcutBindings.search,
+      importItem: sanitizeShortcutBinding(parsed.importItem) ?? defaultShortcutBindings.importItem,
       theme: sanitizeShortcutBinding(parsed.theme) ?? defaultShortcutBindings.theme,
       galleryIncrease: sanitizeShortcutBinding(parsed.galleryIncrease) ?? defaultShortcutBindings.galleryIncrease,
       galleryDecrease: sanitizeShortcutBinding(parsed.galleryDecrease) ?? defaultShortcutBindings.galleryDecrease,
@@ -3796,6 +4348,8 @@ function formatShortcutAction(action: ShortcutAction) {
   switch (action) {
     case "search":
       return "Search archive";
+    case "importItem":
+      return "Quick import";
     case "theme":
       return "Toggle theme";
     case "galleryIncrease":
@@ -3813,6 +4367,45 @@ function getInitialSiteTheme(): SiteTheme {
   }
 
   return "light";
+}
+
+function getInitialSiteMetadata(): SiteMetadata {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(siteMetadataStorageKey) ?? "null") as Partial<SiteMetadata> | null;
+    const title = normalizeSiteTitle(parsed?.title);
+    const faviconUrl = typeof parsed?.faviconUrl === "string" ? parsed.faviconUrl.trim() : "";
+
+    return {
+      faviconUrl,
+      title,
+    };
+  } catch {
+    return defaultSiteMetadata;
+  }
+}
+
+function normalizeSiteTitle(value: unknown) {
+  const title = typeof value === "string" ? value.trim() : "";
+  return title || defaultSiteMetadata.title;
+}
+
+function syncFavicon(faviconUrl: string) {
+  const selector = 'link[rel="icon"][data-vita-managed="true"]';
+  const existing = document.head.querySelector<HTMLLinkElement>(selector);
+
+  if (!faviconUrl) {
+    existing?.remove();
+    return;
+  }
+
+  const link = existing ?? document.createElement("link");
+  link.rel = "icon";
+  link.href = faviconUrl;
+  link.dataset.vitaManaged = "true";
+
+  if (!existing) {
+    document.head.appendChild(link);
+  }
 }
 
 function getInitialArchiveCardRadius() {
